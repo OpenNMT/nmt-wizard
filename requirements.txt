@@ -1,0 +1,7 @@
+boto3
+enum34
+flask
+ovh
+paramiko
+redis
+requests

@@ -1,0 +1,23 @@
+{
+    "name": "ssaling-cluster",
+    "description": "ssaling GPU clusters",
+    "module": "services.torque",
+    "maxInstance": 100,
+    "variables": {
+        "master_node": "ssaling01",
+        "torque_install_path": "/usr/local/torque/bin",
+        "log_dir": "inftraining_logs"
+    },
+    "privateKey": "credentials/id_rsa",
+    "docker": {
+        "mount": [
+            "/mnt/nmt-corpus-pn9:/root/corpus"
+        ],
+        "envvar": {
+            "AWS_ACCESS_KEY_ID": "XXXXX",
+            "AWS_SECRET_ACCESS_KEY": "XXXXX",
+            "AWS_DEFAULT_REGION": "eu-west-3"
+        }
+    },
+    "disabled": 0
+}

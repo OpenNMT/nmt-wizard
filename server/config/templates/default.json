@@ -1,0 +1,55 @@
+{
+    "docker": {
+        "registries": {
+            "aws": {
+                "type": "aws",
+                "credentials": {
+                  "AWS_ACCESS_KEY_ID": "XXXXX",
+                  "AWS_SECRET_ACCESS_KEY": "XXXXX"
+                },
+                "uri": "XXXXX.dkr.ecr.eu-west-3.amazonaws.com",
+                "region": "eu-west-3"
+            },
+            "dockerhub": {
+                "type": "dockerhub",
+                "uri": ""
+            },
+            "mydockerprivate": {
+                "type": "dockerprivate",
+                "uri": "",
+                "credentials": {
+                    "password": "XXXXX",
+                    "username": "XXXXX"
+                }
+            }
+        }
+    },
+    "storages" : {
+        "s3_models": {
+            "type": "s3",
+            "bucket": "model-catalog",
+            "aws_credentials": {
+                "access_key_id": "XXXXX",
+                "secret_access_key": "XXXXX",
+                "region_name": "eu-west-3"
+            }
+        },
+        "s3_test": {
+            "type": "s3",
+            "bucket": "pn9-testing",
+            "aws_credentials": {
+                "access_key_id": "XXXXX",
+                "secret_access_key": "XXXXX",
+                "region_name": "eu-west-3"
+            }
+        },
+        "myserver": {
+            "type": "ssh",
+            "server": "myserver_url",
+            "user": "XXXXX",
+            "password": "XXXXX"
+        }
+    },
+    "callback_url": "http://XXXXX:5000",
+    "callback_interval": 60
+}

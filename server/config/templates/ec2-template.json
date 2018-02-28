@@ -1,0 +1,29 @@
+{
+    "name": "ec2",
+    "description": "Instance on AWS EC2",
+    "module": "services.ec2",
+    "awsAccessKeyId": "XXXXX",
+    "awsSecretAccessKey": "XXXXX",
+    "awsRegion": "eu-west-3",
+    "privateKeysDirectory": "credentials",
+    "amiUsername": "ec2-user",
+    "logDir": "/home/ec2-user",
+    "sshConnectionDelay": 10,
+    "maxSshConnectionRetry": 3,
+    "maxInstancePerTemplate": 5,
+    "corpus": {
+        "bucket": "pn9-training",
+        "mount": "/home/ec2-user/corpus",
+        "credentials": {
+            "AWS_ACCESS_KEY_ID": "XXXXX",
+            "AWS_SECRET_ACCESS_KEY": "XXXXX"
+        },
+        "region": "eu-west-3"
+    },
+    "docker": {
+        "mount": [
+            "/home/ec2-user/corpus:/root/corpus"
+        ]
+    },
+    "disabled": 1
+}

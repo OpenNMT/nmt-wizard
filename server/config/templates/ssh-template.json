@@ -1,0 +1,25 @@
+{
+    "name": "ssaling04",
+    "description": "GPU training server",
+    "visibility": [ "JS" ],
+    "module": "services.ssh",
+    "variables": {
+        "server_pool": [
+            {
+                "host": "ssaling04",
+                "gpus": [1,2,3,4],
+                "login": "devling",
+                "log_dir": "inftraining_logs"
+            }
+        ]
+    },
+    "privateKey": "credentials/id_rsa",
+    "docker": {
+        "mount": [
+            "/mnt/nmt-corpus-pn9:/root/corpus"
+        ],
+        "envvar": {
+        }
+    },
+    "disabled": 1
+}
