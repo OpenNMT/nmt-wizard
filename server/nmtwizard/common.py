@@ -154,6 +154,9 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
         return "sleep 35"
     else:
         docker_cmd = 'docker' if gpu_id == 0 else 'nvidia-docker'
+        docker_path = docker_options.get('path')
+        if docker_path:
+            docker_cmd = docker_path +'/' + docker_cmd
 
         # launch the task
         cmd = '%s run -i --rm' % docker_cmd
@@ -174,6 +177,14 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
             v = v.replace("<TASK_ID>", task_id)
             v = v.replace("<CALLBACK_URL>", callback_url)
             cmd += ' -s \'%s\'' % v
+
+            # if model storage is not specified, check if there is a default
+            # model storage
+            if '-ms' not in docker_command:
+                for s in storages:
+                    if storages[s].get('default_ms'):
+                        docker_command = ['-ms', s + ':'] + docker_command
+                        break
 
         cmd += ' -g %s' % gpu_id
         cmd += ' -t %s' % task_id

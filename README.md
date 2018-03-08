@@ -54,7 +54,8 @@ The configuration file has the following structure:
             "/home/devling/models:/root/models"
         ],
         "envvar": {  // Environment variables to set when running the Docker image.
-        }
+        },
+        "path": "" // if provided, will be used to select default path for docker command on remote service.
     },
     "skey1": "svalue1",  // Service specific configurations.
     ...,
@@ -69,6 +70,9 @@ The configuration file has the following structure:
 where `variables` is a list of possible options for the service. The structure of these options is specific to each service. These options are transformed into simple key/LIST,FIELDS by the `describe` route to enable simple and generic UI selection of multiple variants.
 
 Template files are provided in `config/templates` and can be used as a basis for configuring services.
+
+**Note**:
+* it is possible to add a field `"default_ms":true` to one storage definition. If no model storage parameter (`-ms`) is provided to the docker, this storage will be used by default.  
 
 ## Server configuration
 
