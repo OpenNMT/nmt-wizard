@@ -221,7 +221,9 @@ $ cat body.json
   "trainer_id": "OpenNMT",
   "options": {
     "launchTemplateName": "SingleTrainingDev"
-  }
+  },
+  "name": 'TaskName', // optional
+  "iterations": 4     // number of training iterations, default 1
 }
 ```
 
@@ -244,11 +246,15 @@ $ curl -X POST -d content=@body.json -F input.txt=@input.txt 'http://127.0.0.1:5
 "SSJS_xxyy_GreenCat_01_085a8:60c06412a2b74"
 ```
 
-**Note**: the task identifier is structured, when possible, and contains the following 5 fields separated by `_`:
-* `TID` - trainer identifier provided through client application
-* `XXYY` - the language pair, found in the configuration file or from parent model name
-* `NN` - number showing the number of iterations
-* `UUID` or `PRID:UUID`, unique identifier (possibly prefixed by initial of parent UUID)
+**Notes**: 
+
+* the task identifier is structured, when possible, and contains the following 5 fields separated by `_`:
+  * `TID` - trainer identifier provided through client application
+  * `XXYY` - the language pair, found in the configuration file or from parent model
+  * `NAME` - model name: generated randomly, or set manually, or inherited from parent
+  * `NN` - number showing the number of iterations
+  * `UUID` or `UUID:PRID`, unique identifier (possibly suffixed by initial of parent UUID)
+* if a `iterations` value is passed to the launch service, several tasks will be created each one starting with previous generated one. The tasks are executed iteratively. It is also possible to use a non-yet generated model as a starting point to launch another task: in that case, the task will start only upon successful termination of the parent task.
 
 #### `GET /list_tasks/<pattern>`
 
@@ -443,7 +449,7 @@ The Redis database contains the following fields:
 | `lock:<resource...,task:…>` | value | Temporary lock on a resource or task |
 | `queued:<service>` | list | Tasks waiting for a resource |
 | `resource:<service>:<resourceid>` | list | Tasks using this resource |
-| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|running|updated|stopped)_time: time for each event</li></ul> |
+| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li></ul> |
 | `files:<task_id>` | dict | files associated to a task, "log" is generated when training is complete |
 | `queue:<task_id>` | str | expirable timestamp on the task - is used to regularily check status |
 | `work` | list | Tasks to process |

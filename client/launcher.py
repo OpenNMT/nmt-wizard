@@ -7,6 +7,7 @@ import os
 import logging
 import requests
 from datetime import datetime
+import math
 
 def getjson(config):
     if config is None:
@@ -88,6 +89,8 @@ parser_launch.add_argument('-n', '--name',
                            help='Friendly name for the model, for retraining, inherits from previous')
 parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
                            help='trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])')
+parser_launch.add_argument('-I', '--iterations', type=int, default=1,
+                           help='for training tasks, iterate several trainings in a row')
 parser_launch.add_argument('docker_command', type=str, nargs='*',
                            help='Docker command')
 parser_list_tasks = subparsers.add_parser('lt',
@@ -97,7 +100,7 @@ parser_list_tasks.add_argument('-p', '--prefix', default=os.getenv('LAUNCHER_TID
 parser_del_tasks = subparsers.add_parser('dt',
                                          help='delete tasks matching prefix pattern')
 parser_del_tasks.add_argument('-p', '--prefix', required=True,
-                               help='prefix for the tasks to delete')
+                              help='prefix for the tasks to delete')
 parser_status = subparsers.add_parser('status', help='get status of a task')
 parser_status.add_argument('-k', '--task_id',
                               help="task identifier", required=True)
@@ -140,11 +143,11 @@ elif args.cmd == "lt":
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print("%-4s\t%-42s\t%-20s\t%-16s\t%-10s\t%s" %
+        print("%-5s %-42s %-20s %-16s %-10s %s" %
               ("TYPE", "TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: int(k["queued_time"])):
-            date = datetime.fromtimestamp(int(k["queued_time"])).isoformat(' ')
-            print("%-4s\t%-42s\t%-20s\t%-16s\t%-10s\t%s" %
+        for k in sorted(result, key=lambda k: float(k["queued_time"])):
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
+            print("%-4s %-42s %-20s %-16s %-10s %s" %
                   (k["type"], k["task_id"], date, k["image"], k["status"], k.get("message")))
         sys.exit(0)
 elif args.cmd == "describe":
@@ -218,7 +221,8 @@ elif args.cmd == "launch":
         "wait_after_launch": args.wait_after_launch,
         "trainer_id": args.trainer_id,
         "options": getjson(args.options),
-        "name": args.name
+        "name": args.name,
+        "iterations": args.iterations
     }
 
     launch_url = os.path.join(args.url, "launch", args.service)
@@ -232,7 +236,10 @@ elif args.cmd == "launch":
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print(result)
+        if isinstance(result, list):
+            print("\n".join(result))
+        else:
+            print(result)
         sys.exit(0)
 elif args.cmd == "status":
     r = requests.get(os.path.join(args.url, "status", args.task_id))
@@ -247,16 +254,17 @@ elif args.cmd == "status":
         for k in result:
             if k.endswith('_time'):
                 times.append(k)
-        sorted_times = sorted(times, key=lambda k: int(result[k]))
+        sorted_times = sorted(times, key=lambda k: float(result[k]))
         last_update = ''
         if sorted_times:
             upd = current_time - int(result[sorted_times[-1]])
             last_update = " - updated %d seconds ago" % upd
-        print("TASK %s - status %s (%s)%s" % (
-            args.task_id, result.get('status'), result.get('message'), last_update))
+        print("TASK %s - TYPE %s - status %s (%s)%s" % (
+                args.task_id, result.get('type'),
+                result.get('status'), result.get('message'), last_update))
         if "service" in result:
             print("SERVICE %s - RESOURCE %s - CONTAINER %s" % (
-                result['service'], result.get('resource'), result.get('container_id')))
+                    result['service'], result.get('resource'), result.get('container_id')))
         print("ATTACHED FILES: %s" % ', '.join(result['files']))
         print("TIMELINE:")
         last = -1
@@ -289,8 +297,8 @@ elif args.cmd == "dt":
     if not args.json:
         print('Delete %d tasks:' % len(result))
         print("\t%-32s\t%-20s\t%-16s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: int(k["queued_time"])):
-            date = datetime.fromtimestamp(int(k["queued_time"])).isoformat(' ')
+        for k in sorted(result, key=lambda k: float(k["queued_time"])):
+            date = datetime.fromtimestamp(match.ceil(float(k["queued_time"])).isoformat(' '))
             print("\t%-32s\t%-20s\t%-16s\t%-10s\t%s" % (
                 k["task_id"], date, k["image"], k["status"], k.get("message")))
         if confirm():

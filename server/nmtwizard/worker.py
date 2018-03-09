@@ -69,6 +69,20 @@ class Worker(object):
 
             if status == 'queued':
                 resource = self._redis.hget(keyt, 'resource')
+                parent = self._redis.hget(keyt, 'parent')
+                if parent:
+                    keyp = 'task:%s' % parent
+                    status = self._redis.hget(keyp, 'status')
+                    # if the task is in the database, check for dependencies
+                    if status:
+                        if self._redis.hget(keyp, 'status') == 'stopped':
+                            if self._redis.hget(keyp, 'message') != 'completed':
+                                task.terminate(self._redis, task_id, phase='dependency_error')
+                                return
+                        else:
+                            self._logger.warning('%s: depending on other task, waiting', task_id)
+                            self._wait_for_resource(service, task_id)
+                            return
                 resource = self._allocate_resource(task_id, resource, service)
                 if resource is not None:
                     self._logger.info('%s: resource %s reserved', task_id, resource)

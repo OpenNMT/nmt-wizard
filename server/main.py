@@ -7,7 +7,7 @@ from six.moves import configparser
 
 from nmtwizard import common, config, task
 from nmtwizard.redis_database import RedisDatabase
-from nmtwizard.helper import build_task_id
+from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.ERROR)
@@ -82,7 +82,6 @@ def launch(service):
     service_module = _get_service(service)
     content["service"] = service
 
-    task_id = build_task_id(content)
     task_type = '????'
     if "train" in content["docker"]["command"]: task_type = "train"
     elif "trans" in content["docker"]["command"]: task_type = "trans"
@@ -94,8 +93,30 @@ def launch(service):
     if 'docker' not in content:
         flask.abort(flask.make_response(flask.jsonify(message="missing docker field"), 400))
     resource = service_module.get_resource_from_options(content["options"])
-    task.create(redis, task_id, task_type, resource, service, content, files)
-    return flask.jsonify(task_id)
+
+    iterations = 1
+    if "iterations" in content:
+        iterations = content["iterations"]
+        if (task_type != "train" and iterations != 1) or iterations < 1:
+            flask.abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
+
+    (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
+
+    task_ids = []
+
+    while iterations > 0:
+        task_id = build_task_id(content, xxyy, parent_task_id)
+        task.create(redis, task_id, task_type, parent_task_id, resource, service, content, files)
+        task_ids.append(task_id)
+        iterations -= 1
+        if iterations > 0:
+            parent_task_id = task_id
+            change_parent_task(content["docker"]["command"], parent_task_id)
+
+    if len(task_ids) == 1:
+        task_ids = task_ids[0]
+
+    return flask.jsonify(task_ids)
 
 @app.route("/status/<string:task_id>", methods=["GET"])
 def status(task_id):
@@ -117,7 +138,7 @@ def list_tasks(pattern):
     for task_key in task.scan_iter(redis, pattern):
         task_id = task.id(task_key)
         info = task.info(redis, task_id,
-                ["queued_time", "service", "content", "status", "message", "type"])
+                ["queued_time", "service", "content", "status", "message", "type", "iterations"])
         content = json.loads(info["content"])
         info["image"] = content['docker']['image']
         del info['content']

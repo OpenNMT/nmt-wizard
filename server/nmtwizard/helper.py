@@ -8,26 +8,36 @@ nouns = ['Dog', 'Cat', 'Mouse', 'Girafe', 'Squirrel']
 def _generate_name():
 	return random.choice(adjectives)+random.choice(nouns)
 
-def _shallow_command_analysis(command):
+def shallow_command_analysis(command):
     i = 0
     xx = 'xx'
     yy = 'yy'
-    parent_model = None
+    parent_task = None
     while i < len(command):
         if command[i] == '-m' and i+1 < len(command):
-            parent_model = command[i+1]
+            parent_task = command[i+1]
             i += 1
         elif command[i] == '-c' and i+1 < len(command):
             config = json.loads(command[i+1])
-            if not parent_model and "model" in config:
-                parent_model = config["model"]
+            if not parent_task and "model" in config:
+                parent_task = config["model"]
             if "source" in config:
                 xx = config["source"]
             if "target" in config:
                 yy = config["target"]
             i += 1
         i += 1
-    return (xx+yy, parent_model)
+    return (xx+yy, parent_task)
+
+def change_parent_task(command, task_id):
+    i = 0
+    while i < len(command):
+        if command[i] == '-m' and i+1 < len(command):
+            command[i+1] = task_id
+            return
+        i += 1
+    command.insert(0, task_id)
+    command.insert(0, '-m')
 
 def _model_name_analysis(model):
     if model:
@@ -45,11 +55,11 @@ def _model_name_analysis(model):
         struct["uuid"] = l.pop(0)
         usplit = struct["uuid"].split(':')
         if len(usplit) > 1:
-            struct["uuid"] = usplit[-1]
-            struct["parent_uuid"] = usplit[0]
+            struct["uuid"] = usplit[0]
+            struct["parent_uuid"] = usplit[-1]
         return struct
 
-def build_task_id(content):
+def build_task_id(content, xxyy, parent_task):
     # let us build a meaningful name for the task
     # name will be TRID_XXYY_NAME_NN_UUID(:UUID) with:
     # * TRID - the trainer ID
@@ -60,21 +70,20 @@ def build_task_id(content):
 
     # first find nature of the task - train or not
     is_train = "train" in content["docker"]["command"]
-    (xxyy, parent_model) = _shallow_command_analysis(content["docker"]["command"])
     trid = 'XXXX'
     if 'trainer_id' in content and content['trainer_id']:
         trid = content['trainer_id']
     nn = 0
-    name = content["name"]
+    name = content["name"] if "name" in content else None
     parent_uuid = ''
-    if parent_model is not None:
-        struct_name = _model_name_analysis(parent_model)
+    if parent_task is not None:
+        struct_name = _model_name_analysis(parent_task)
         if name is None and "name" in struct_name:
             name = struct_name["name"]
         if xxyy is None and "xxyy" in struct_name:
             xxyy = struct_name["xxyy"]
         if "uuid" in struct_name:
-            parent_uuid = struct_name["uuid"][0:5]+':'
+            parent_uuid = ':'+struct_name["uuid"][0:5]
         if "nn" in struct_name:
             nn = int(struct_name["nn"])
 
@@ -85,6 +94,6 @@ def build_task_id(content):
 
     the_uuid = str(uuid.uuid4()).replace("-","")
 
-    task_id = '%s_%s_%s_%02d_%s%s' % (trid, xxyy, name, nn, parent_uuid, the_uuid)
-    task_id = task_id[0:41]
+    task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
+    task_id = task_id[0:41-len(parent_uuid)] + parent_uuid
     return task_id

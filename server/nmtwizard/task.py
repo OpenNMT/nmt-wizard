@@ -4,16 +4,18 @@ import json
 def set_status(redis, keyt, status):
     """Sets the status and save the time of change."""
     redis.hset(keyt, "status", status)
-    redis.hset(keyt, status + "_time", int(time.time()))
+    redis.hset(keyt, status + "_time", time.time())
 
 def exists(redis, task_id):
     """Checks if a task exist."""
     return redis.exists("task:" + task_id)
 
-def create(redis, task_id, task_type, resource, service, content, files):
+def create(redis, task_id, task_type, parent_task, resource, service, content, files):
     """Creates a new task and enables it."""
     keyt = "task:" + task_id
     redis.hset(keyt, "type", task_type)
+    if parent_task:
+        redis.hset(keyt, "parent", parent_task)
     redis.hset(keyt, "resource", resource)
     redis.hset(keyt, "service", service)
     redis.hset(keyt, "content", json.dumps(content))
