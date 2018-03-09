@@ -162,6 +162,7 @@ def _model_name_analysis(model):
         struct["xxyy"] = l.pop(0)
         struct["name"] = l.pop(0)
         struct["nn"] = l.pop(0)
+        struct["uuid"] = l.pop(0)
         usplit = struct["uuid"].split('-')
         if len(usplit) > 1:
             struct["uuid"] = usplit[0]
