@@ -193,7 +193,7 @@ def build_task_id(content, xxyy, parent_task):
         if xxyy is None and "xxyy" in struct_name:
             xxyy = struct_name["xxyy"]
         if "uuid" in struct_name:
-            parent_uuid = ':'+struct_name["uuid"][0:5]
+            parent_uuid = '-'+struct_name["uuid"][0:5]
         if "nn" in struct_name:
             nn = int(struct_name["nn"])
 
