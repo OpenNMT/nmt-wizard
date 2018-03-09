@@ -162,8 +162,7 @@ def _model_name_analysis(model):
         struct["xxyy"] = l.pop(0)
         struct["name"] = l.pop(0)
         struct["nn"] = l.pop(0)
-        struct["uuid"] = l.pop(0)
-        usplit = struct["uuid"].split(':')
+        usplit = struct["uuid"].split('-')
         if len(usplit) > 1:
             struct["uuid"] = usplit[0]
             struct["parent_uuid"] = usplit[-1]
@@ -193,7 +192,7 @@ def build_task_id(content, xxyy, parent_task):
         if xxyy is None and "xxyy" in struct_name:
             xxyy = struct_name["xxyy"]
         if "uuid" in struct_name:
-            parent_uuid = ':'+struct_name["uuid"][0:5]
+            parent_uuid = '-'+struct_name["uuid"][0:5]
         if "nn" in struct_name:
             nn = int(struct_name["nn"])
 

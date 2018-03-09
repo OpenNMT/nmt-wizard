@@ -322,7 +322,7 @@ elif args.cmd == "file":
     if r.status_code != 200:
         logger.error('incorrect result from \'log\' service: %s', r.text)
         sys.exit(1)
-    print(r.text)
+    print(r.text.encode("utf-8"))
     sys.exit(0)
 
 print(json.dumps(result))
