@@ -115,7 +115,7 @@ nouns = ["Aardvark", "Aardwolf", "Albatross", "Alligator", "Alpaca", "Anaconda",
 def _generate_name():
     while True:
         name = random.choice(adjectives)+random.choice(nouns)
-        if len(name) < 12 :
+        if len(name) <= 14 :
             return name
 
 def shallow_command_analysis(command):
