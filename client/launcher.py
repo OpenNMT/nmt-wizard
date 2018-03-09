@@ -80,10 +80,12 @@ parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                                  'to check that launch is ok - by default wait for 2 seconds'))
 parser_launch.add_argument('-r', '--docker_registry', default='dockerhub',
                            help='docker registry (as configured on server side) - default is `dockerhub`')
-parser_launch.add_argument('-i', '--docker_image', required=True,
+parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
                            help='Docker image')
 parser_launch.add_argument('-t', '--docker_tag', default="latest",
                            help='Docker image tag (default is latest)')
+parser_launch.add_argument('-n', '--name',
+                           help='Friendly name for the model, for retraining, inherits from previous')
 parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
                            help='trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])')
 parser_launch.add_argument('docker_command', type=str, nargs='*',
@@ -138,11 +140,12 @@ elif args.cmd == "lt":
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print("%-32s\t%-20s\t%-16s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+        print("%-4s\t%-42s\t%-20s\t%-16s\t%-10s\t%s" %
+              ("TYPE", "TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: int(k["queued_time"])):
             date = datetime.fromtimestamp(int(k["queued_time"])).isoformat(' ')
-            print("%-32s\t%-20s\t%-16s\t%-10s\t%s" % (
-                k["task_id"], date, k["image"], k["status"], k.get("message")))
+            print("%-4s\t%-42s\t%-20s\t%-16s\t%-10s\t%s" %
+                  (k["type"], k["task_id"], date, k["image"], k["status"], k.get("message")))
         sys.exit(0)
 elif args.cmd == "describe":
     if args.service not in serviceList:
@@ -166,6 +169,13 @@ elif args.cmd == "check":
         print(result["message"])
         sys.exit(0)
 elif args.cmd == "launch":
+    if args.trainer_id is None:
+        logger.error('missing trainer_id (you can set LAUNCHER_TID)')
+        sys.exit(1)
+
+    if args.docker_image is None:
+        logger.error('missing docker image (you can set LAUNCHER_IMAGE)')
+        sys.exit(1)
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
@@ -207,13 +217,14 @@ elif args.cmd == "launch":
         },
         "wait_after_launch": args.wait_after_launch,
         "trainer_id": args.trainer_id,
-        "options": getjson(args.options)
+        "options": getjson(args.options),
+        "name": args.name
     }
 
     launch_url = os.path.join(args.url, "launch", args.service)
     r = None
     if len(files) > 0:
-        r = requests.post(launch_url, files=files, data = {'content': json.dumps(content)})
+        r = requests.post(launch_url, files=files, data = {'content': json.dumps(content) })
     else:
         r = requests.post(launch_url, json=content)
     if r.status_code != 200:

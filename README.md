@@ -239,10 +239,16 @@ $ curl -X POST -d @invalid_body.json -H "Content-Type: application/json" \
 }
 $ curl -X POST -d @body.json -H "Content-Type: application/json" \
     'http://127.0.0.1:5000/launch/ec2'
-"130d4400-9aad-4654-b124-d258cbe4b1e3"
+"SSJS_enyy_HelloWorld_01_0f32d3f6b84ab91d4"
 $ curl -X POST -d content=@body.json -F input.txt=@input.txt 'http://127.0.0.1:5000/launch/ec2'
-"1f877e53-5a25-44de-b115-7f6d3e386e70"
+"SSJS_xxyy_GreenCat_01_085a8:60c06412a2b74"
 ```
+
+**Note**: the task identifier is structured, when possible, and contains the following 5 fields separated by `_`:
+* `TID` - trainer identifier provided through client application
+* `XXYY` - the language pair, found in the configuration file or from parent model name
+* `NN` - number showing the number of iterations
+* `UUID` or `PRID:UUID`, unique identifier (possibly prefixed by initial of parent UUID)
 
 #### `GET /list_tasks/<pattern>`
 

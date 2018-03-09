@@ -10,9 +10,10 @@ def exists(redis, task_id):
     """Checks if a task exist."""
     return redis.exists("task:" + task_id)
 
-def create(redis, task_id, resource, service, content, files):
+def create(redis, task_id, task_type, resource, service, content, files):
     """Creates a new task and enables it."""
     keyt = "task:" + task_id
+    redis.hset(keyt, "type", task_type)
     redis.hset(keyt, "resource", resource)
     redis.hset(keyt, "service", service)
     redis.hset(keyt, "content", json.dumps(content))

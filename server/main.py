@@ -1,4 +1,3 @@
-import uuid
 import os
 import logging
 import flask
@@ -8,6 +7,7 @@ from six.moves import configparser
 
 from nmtwizard import common, config, task
 from nmtwizard.redis_database import RedisDatabase
+from nmtwizard.helper import build_task_id
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.ERROR)
@@ -38,7 +38,6 @@ def _get_service(service):
         response = flask.jsonify(message="invalid service name: %s" % service)
         flask.abort(flask.make_response(response, 404))
     return services[service]
-
 
 app = flask.Flask(__name__)
 
@@ -82,16 +81,20 @@ def launch(service):
         flask.abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
     service_module = _get_service(service)
     content["service"] = service
-    task_id = str(uuid.uuid4())
-    if 'trainer_id' in content and content['trainer_id']:
-        task_id = (content['trainer_id']+'_'+task_id)[0:35]
+
+    task_id = build_task_id(content)
+    task_type = '????'
+    if "train" in content["docker"]["command"]: task_type = "train"
+    elif "trans" in content["docker"]["command"]: task_type = "trans"
+    elif "preprocess" in content["docker"]["command"]: task_type = "prepr"
+
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
         flask.abort(flask.make_response(flask.jsonify(message="invalid options field"), 400))
     if 'docker' not in content:
         flask.abort(flask.make_response(flask.jsonify(message="missing docker field"), 400))
     resource = service_module.get_resource_from_options(content["options"])
-    task.create(redis, task_id, resource, service, content, files)
+    task.create(redis, task_id, task_type, resource, service, content, files)
     return flask.jsonify(task_id)
 
 @app.route("/status/<string:task_id>", methods=["GET"])
@@ -113,7 +116,8 @@ def list_tasks(pattern):
     ltask = []
     for task_key in task.scan_iter(redis, pattern):
         task_id = task.id(task_key)
-        info = task.info(redis, task_id, ["queued_time", "service", "content", "status", "message"])
+        info = task.info(redis, task_id,
+                ["queued_time", "service", "content", "status", "message", "type"])
         content = json.loads(info["content"])
         info["image"] = content['docker']['image']
         del info['content']
