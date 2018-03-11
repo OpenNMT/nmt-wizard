@@ -143,11 +143,11 @@ elif args.cmd == "lt":
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print("%-5s %-42s %-20s %-16s %-10s %s" %
+        print("%-5s %-42s %-20s %-30s %-10s %s" %
               ("TYPE", "TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: float(k["queued_time"])):
             date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
-            print("%-4s %-42s %-20s %-16s %-10s %s" %
+            print("%-4s %-42s %-20s %-30s %-10s %s" %
                   (k["type"], k["task_id"], date, k["image"], k["status"], k.get("message")))
         sys.exit(0)
 elif args.cmd == "describe":
@@ -271,7 +271,7 @@ elif args.cmd == "status":
         delay = []
         for k in sorted_times:
             if k != "updated_time":
-                current = int(result[k])
+                current = float(result[k])
                 delta = current-last if last != -1 else 0
                 delay.append("(%ds)" % delta)
                 last = current
@@ -279,8 +279,8 @@ elif args.cmd == "status":
         idx = 1
         for k in sorted_times:
             if k != "updated_time":
-                current = int(result[k])
-                date = datetime.fromtimestamp(current).isoformat(' ')
+                current = float(result[k])
+                date = datetime.fromtimestamp(math.ceil(current)).isoformat(' ')
                 print("\t%-12s\t%s\t%s" % (k[:-5], date, delay[idx]))
                 idx += 1
         content = result["content"]
@@ -296,10 +296,10 @@ elif args.cmd == "dt":
     result = r.json()
     if not args.json:
         print('Delete %d tasks:' % len(result))
-        print("\t%-32s\t%-20s\t%-16s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+        print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: float(k["queued_time"])):
-            date = datetime.fromtimestamp(match.ceil(float(k["queued_time"])).isoformat(' '))
-            print("\t%-32s\t%-20s\t%-16s\t%-10s\t%s" % (
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"])).isoformat(' '))
+            print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
                 k["task_id"], date, k["image"], k["status"], k.get("message")))
         if confirm():
             for k in result:
