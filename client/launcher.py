@@ -301,7 +301,7 @@ elif args.cmd == "dt":
         print('Delete %d tasks:' % len(result))
         print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: float(k["queued_time"])):
-            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"])).isoformat(' '))
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
             print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
                 k["task_id"], date, k["image"], k["status"], k.get("message")))
         if confirm():
