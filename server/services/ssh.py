@@ -95,7 +95,6 @@ class SSHService(Service):
         params = _get_params(self._config, options)
         client = paramiko.client.SSHClient()
         common.ssh_connect_with_retry(
-            client,
             params['server'],
             params['login'],
             self._config['privateKey'],
@@ -124,9 +123,7 @@ class SSHService(Service):
             options['server'] = resource
 
         params = _get_params(self._config, options)
-        client = paramiko.client.SSHClient()
-        common.ssh_connect_with_retry(
-            client,
+        client = common.ssh_connect_with_retry(
             params['server'],
             params['login'],
             self._config['privateKey'],
@@ -154,28 +151,34 @@ class SSHService(Service):
         return params
 
     def status(self, params):
-        client = paramiko.client.SSHClient()
-        client.load_system_host_keys()
-        client.connect(params['server'], username=params['login'])
-        _, stdout, _ = client.exec_command('kill -0 -%d ; echo $?' % params['pgid'])
-        outstatus = stdout.readline()
+        client = common.ssh_connect_with_retry(
+            params['server'],
+            params['login'],
+            self._config['privateKey'],
+            login_cmd=params['login_cmd'])
+        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
         client.close()
-        if outstatus.strip() != '0':
+        if exit_status != 0:
             return "dead"
         return "running"
 
     def terminate(self, params):
-        client = paramiko.client.SSHClient()
-        client.load_system_host_keys()
-        client.connect(params['server'], username=params['login'])
-        _, stdout, stderr = client.exec_command('kill -0 -%d ; echo $?' % params['pgid'])
-        outstatus = stdout.readline()
-        if outstatus.strip() != '0':
+        client = common.ssh_connect_with_retry(
+            params['server'],
+            params['login'],
+            self._config['privateKey'],
+            login_cmd=params['login_cmd'])
+        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+        if exit_status != 0:
+            logger.debug("exist_status %d: %s", exit_status, stderr.read())
             client.close()
             return
-        _, stdout, stderr = client.exec_command('kill -9 -%d' % params['pgid'])
-        outstatus = stdout.readline()
-        stderr = stderr.readline()
+        exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+        if exit_status != 0:
+            logger.debug("exist_status %d: %s", exit_status, stderr.read())
+            client.close()
+            return
+        logger.debug("successfully terminated")
         client.close()
 
 

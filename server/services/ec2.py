@@ -93,8 +93,7 @@ class EC2Service(Service):
             self._config["privateKeysDirectory"], "%s.pem" % instance.key_pair.name)
         client = paramiko.SSHClient()
         try:
-            common.ssh_connect_with_retry(
-                client,
+            client = common.ssh_connect_with_retry(
                 instance.public_dns_name,
                 self._config["amiUsername"],
                 key_path,
