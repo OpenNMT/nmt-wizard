@@ -8,10 +8,11 @@ from nmtwizard import task
 
 class Worker(object):
 
-    def __init__(self, redis, services, index=0):
+    def __init__(self, redis, services, refresh_counter, index=0):
         self._redis = redis
         self._services = services
         self._logger = logging.getLogger('worker%d' % index)
+        self._refresh_counter = refresh_counter
 
     def run(self):
         self._logger.info('Starting worker')
@@ -20,6 +21,7 @@ class Worker(object):
         pubsub = self._redis.pubsub()
         pubsub.psubscribe('__keyspace@0__:beat:*')
         pubsub.psubscribe('__keyspace@0__:queue:*')
+        counter = 0
 
         while True:
             message = pubsub.get_message()
@@ -48,7 +50,19 @@ class Worker(object):
                         self._logger.error('%s: %s', task_id, str(e))
                         with self._redis.acquire_lock(task_id):
                             task.terminate(self._redis, task_id, phase="launch_error")
-            time.sleep(0.1)
+                else:
+                    if counter > self.refresh_counter:
+                        # check if a resource is under-used and if so try pulling some
+                        # task for it
+                        for service in self._services:
+                            resources = self._services[service].list_resources()
+                            for resource in resources:
+                                keyr = 'resource:%s:%s' % (service, resource)
+                                if self._redis.llen(keyr) < resources[resource]:
+                                    self._release_resource(self._services[service], resource)
+                        counter = 0
+            counter += 1
+            time.sleep(0.01)
 
     def _advance_task(self, task_id):
         """Tries to advance the task to the next status. If it can, re-queue it immediately
@@ -72,10 +86,10 @@ class Worker(object):
                 parent = self._redis.hget(keyt, 'parent')
                 if parent:
                     keyp = 'task:%s' % parent
-                    status = self._redis.hget(keyp, 'status')
-                    # if the task is in the database, check for dependencies
-                    if status:
-                        if self._redis.hget(keyp, 'status') == 'stopped':
+                    # if the parent task is in the database, check for dependencies
+                    if self._redis.exists(keyp):
+                        status = self._redis.hget(keyp, 'status')
+                        if status == 'stopped':
                             if self._redis.hget(keyp, 'message') != 'completed':
                                 task.terminate(self._redis, task_id, phase='dependency_error')
                                 return
@@ -167,14 +181,34 @@ class Worker(object):
             else:
                 return False
 
-    def _release_resource(self, service, resource, task_id):
+    def _release_resource(self, service, resource, task_id=None):
+        """If task_id is not None - remove the task from resource queue
+           Push one task, if any from the queue and push it on the current processing queue
+        """
         keyr = 'resource:%s:%s' % (service.name, resource)
-        with self._redis.acquire_lock(keyr):
+        if task_id is not None:
             self._redis.lrem(keyr, task_id)
-        # Pop a task waiting for a resource on this service and queue it for a retry.
-        next_task = self._redis.rpop('queued:%s' % service.name)
-        if next_task is not None:
-            task.queue(self._redis, next_task)
+        queue = 'queued:%s' % service.name
+        count = self._redis.llen(queue)
+        # Pop a task waiting for a resource on this service, check if it can run (dependency)
+        # and queue it for a retry.
+        while count > 0:
+            next_task_id = self._redis.rpop(queue)
+            if next_task_id is not None:
+                next_keyt = 'task:%s' % next_task_id
+                parent = self._redis.hget(next_keyt, 'parent')
+                if parent:
+                    keyp = 'task:%s' % parent
+                    if self._redis.exists(keyp):
+                        # if the parent task is in the database, check for dependencies
+                        if self._redis.hget(keyp, 'status') != 'stopped':
+                            self._redis.lpush(queue, next_task_id)
+                            count -= 1
+                            next
+                task.queue(self._redis, next_task_id)
+            return
 
     def _wait_for_resource(self, service, task_id):
+        # can not have same task twice in a service queue
+        self._redis.lrem('queued:%s' % service.name, task_id)
         self._redis.lpush('queued:%s' % service.name, task_id)

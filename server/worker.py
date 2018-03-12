@@ -32,5 +32,5 @@ for task_id in task.list_active(redis):
     task.queue(redis, task_id)
 
 # TODO: start multiple workers here?
-worker = Worker(redis, services)
+worker = Worker(redis, services, cfg.get(MODE, 'refresh_counter'))
 worker.run()
