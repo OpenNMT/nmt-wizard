@@ -129,16 +129,30 @@ Lists available services.
 
 * **Arguments:** None
 * **Input:** None
-* **Output:** A dictionary of service name to description (JSON)
+* **Output:** A dictionary of service name to description (JSON), their usage and capacity
 * **Example:**
 
 ```
 $ curl -X GET 'http://127.0.0.1:5000/list_services'
 {
-  "demogpu02": "OVH extra training server",
-  "ec2": "Instance on AWS EC2",
-  "localhost": "test local environment",
-  "ssaling04": "GPU training server"
+    "demogpu02": {
+        "capacity": 1,
+        "name": "OVH-hosted extra training server",
+        "queued": 2,
+        "usage": 1
+    },
+    "localhost": {
+        "capacity": 2,
+        "name": "test local environment",
+        "queued": 0,
+        "usage": 0
+    },
+    "ec2": {
+        "capacity": 15,
+        "name": "Instance on AWS EC2",
+        "queued": 0,
+        "usage": 7
+    }
 }
 ```
 

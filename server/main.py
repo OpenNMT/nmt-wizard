@@ -39,11 +39,26 @@ def _get_service(service):
         flask.abort(flask.make_response(response, 404))
     return services[service]
 
+def _usagecapacity(service):
+    """calculate the current usage of the service."""
+    usage = 0
+    capacity = 0
+    for resource in service.list_resources():
+        capacity += service.list_resources()[resource]
+        usage += redis.llen("resource:%s:%s" % (service.name, resource))
+    queued = redis.llen("queued:"+service.name)
+    return usage, queued, capacity
+
 app = flask.Flask(__name__)
 
 @app.route("/list_services", methods=["GET"])
 def list_services():
-    return flask.jsonify({k: services[k].display_name for k in services})
+    res = {}
+    for k in services:
+        usage, queued, capacity = _usagecapacity(services[k])
+        res[k] = { 'name':services[k].display_name,
+                   'usage': usage, 'queued': queued, 'capacity': capacity }
+    return flask.jsonify(res)
 
 @app.route("/describe/<string:service>", methods=["GET"])
 def describe(service):

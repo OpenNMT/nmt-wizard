@@ -135,9 +135,14 @@ serviceList = r.json()
 if args.cmd == "ls":
     result = serviceList
     if not args.json:
-        print("%-20s\t%s" % ("SERVICE NAME", "DESCRIPTION"))
+        print("%-20s\t%10s\t%10s\t%10s\t%s" % ("SERVICE NAME", "USAGE", "QUEUED",
+                                               "CAPACITY", "DESCRIPTION"))
         for k in result:
-            print("%-20s\t%s" % (k, result[k]))
+            print("%-20s\t%10d\t%10d\t%10d\t%s" % (k,
+                                             result[k]['usage'],
+                                             result[k]['queued'],
+                                             result[k]['capacity'],
+                                             result[k]['name']))
         sys.exit(0)
 elif args.cmd == "lt":
     r = requests.get(os.path.join(args.url, "list_tasks", args.prefix + '*'))
