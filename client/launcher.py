@@ -257,7 +257,7 @@ elif args.cmd == "status":
         sorted_times = sorted(times, key=lambda k: float(result[k]))
         last_update = ''
         if sorted_times:
-            upd = current_time - int(result[sorted_times[-1]])
+            upd = current_time - int(float(result[sorted_times[-1]]))
             last_update = " - updated %d seconds ago" % upd
         print("TASK %s - TYPE %s - status %s (%s)%s" % (
                 args.task_id, result.get('type'),
