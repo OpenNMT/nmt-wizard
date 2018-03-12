@@ -56,10 +56,16 @@ class Worker(object):
                         # task for it
                         for service in self._services:
                             resources = self._services[service].list_resources()
+                            self._logger.debug('checking processes on : %s', service)
+                            availableResource = False
                             for resource in resources:
                                 keyr = 'resource:%s:%s' % (service, resource)
                                 if self._redis.llen(keyr) < resources[resource]:
-                                    self._release_resource(self._services[service], resource)
+                                    availableResource = True
+                                    break
+                            if availableResource:
+                                self._logger.debug('resources available on %s - trying dequeuing', service)
+                                self._release_resource(self._services[service], resource)
                         counter = 0
             counter += 1
             time.sleep(0.01)
@@ -185,8 +191,8 @@ class Worker(object):
         """If task_id is not None - remove the task from resource queue
            Push one task, if any from the queue and push it on the current processing queue
         """
-        keyr = 'resource:%s:%s' % (service.name, resource)
         if task_id is not None:
+            keyr = 'resource:%s:%s' % (service.name, resource)
             self._redis.lrem(keyr, task_id)
         queue = 'queued:%s' % service.name
         count = self._redis.llen(queue)
