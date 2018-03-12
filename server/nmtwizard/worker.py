@@ -51,7 +51,7 @@ class Worker(object):
                         with self._redis.acquire_lock(task_id):
                             task.terminate(self._redis, task_id, phase="launch_error")
                 else:
-                    if counter > self.refresh_counter:
+                    if counter > self._refresh_counter:
                         # check if a resource is under-used and if so try pulling some
                         # task for it
                         for service in self._services:
