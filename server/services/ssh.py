@@ -150,16 +150,26 @@ class SSHService(Service):
         params['pgid'] = task['pgid']
         return params
 
-    def status(self, params):
+    def status(self, task_id, params, get_log=True):
         client = common.ssh_connect_with_retry(
             params['server'],
             params['login'],
             self._config['privateKey'],
             login_cmd=params['login_cmd'])
-        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+
+        if 'container_id' in params:
+            exit_status, stdout, stderr = common.run_docker_command(client, 'inspect -f {{.State.Status}} %s' %
+                                                                    params['container_id'])
+        else:
+            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+
+        if get_log:
+            common.update_log(task_id, client, params['log_dir'], self._config.get('callback_url'))
+
         client.close()
         if exit_status != 0:
             return "dead"
+
         return "running"
 
     def terminate(self, params):

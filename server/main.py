@@ -172,17 +172,6 @@ def beat(task_id):
     task.beat(redis, task_id, duration, container_id)
     return flask.jsonify(200)
 
-@app.route("/log/<string:task_id>", methods=["GET"])
-def get_log(task_id):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-    content = task.get_log(redis, task_id)
-    if content is None:
-        flask.abort(flask.make_response(flask.jsonify(message="no logs for task %s" % task_id), 404))
-    response = flask.make_response(content)
-    response.mimetype = 'text/plain'
-    return response
-
 @app.route("/file/<string:task_id>/<string:filename>", methods=["GET"])
 def get_file(task_id, filename):
     if not task.exists(redis, task_id):
@@ -200,4 +189,31 @@ def post_file(task_id, filename):
         flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     content = flask.request.get_data()
     task.set_file(redis, task_id, content, filename)
+    return flask.jsonify(200)
+
+@app.route("/log/<string:task_id>", methods=["GET"])
+def get_log(task_id):
+    if not task.exists(redis, task_id):
+        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+    content = task.get_log(redis, task_id)
+    if content is None:
+        flask.abort(flask.make_response(
+            flask.jsonify(message="cannot find log for task %s" % task_id), 404))
+    response = flask.make_response(content)
+    return response
+
+@app.route("/log/<string:task_id>", methods=["APPEND"])
+def append_log(task_id):
+    if not task.exists(redis, task_id):
+        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+    content = flask.request.get_data()
+    task.append_log(redis, task_id, content)
+    return flask.jsonify(200)
+
+@app.route("/log/<string:task_id>", methods=["POST"])
+def post_log(task_id):
+    if not task.exists(redis, task_id):
+        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+    content = flask.request.get_data()
+    task.set_log(redis, task_id, content)
     return flask.jsonify(200)

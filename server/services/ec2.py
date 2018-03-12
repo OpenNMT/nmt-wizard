@@ -126,7 +126,7 @@ class EC2Service(Service):
         task["instance_id"] = instance.id
         return task
 
-    def status(self, params):
+    def status(self, task_id, params):
         instance_id = params["instance_id"] if isinstance(params, dict) else params
         ec2_client = self._session.client("ec2")
         status = ec2_client.describe_instance_status(

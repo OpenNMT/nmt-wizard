@@ -136,8 +136,9 @@ class Worker(object):
                 task.queue(self._redis, task_id, delay=service.is_notifying_activity and 120 or 30)
 
             elif status == 'running':
+                self._logger.debug('- checking activity of task: %s', task_id)
                 data = json.loads(self._redis.hget(keyt, 'job'))
-                status = service.status(data)
+                status = service.status(task_id, data)
                 if status == 'dead':
                     self._logger.info('%s: task no longer running on %s, request termination',
                                       task_id, service.name)

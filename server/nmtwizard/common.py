@@ -8,6 +8,81 @@ import paramiko
 
 logger = logging.getLogger(__name__)
 
+python_run = """
+import subprocess
+from threading import Thread, Lock
+import time
+
+task_id = "%s"
+cmd = \"\"\"
+%s
+\"\"\".strip().split("\\n")
+log_file = "%s"
+callback_url = "%s"
+
+f = open(log_file, "w")
+f.write("COMMAND: "+" ".join(cmd)+"\\n")
+
+p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+current_log = ""
+
+mutex = Lock()
+completed = False
+
+def _update_log_loop():
+    global current_log
+    while True:
+        for i in range(60):
+            time.sleep(1)
+            if completed:
+                return
+        mutex.acquire()
+        copy_log = current_log
+        current_log = ""
+        mutex.release()
+        if copy_log:
+            try:
+                p = subprocess.Popen(["curl", "-X", "APPEND", callback_url+"/log/"+task_id, "--data-binary", "@-"],
+                                    stdin=subprocess.PIPE)
+                p.communicate(copy_log)
+            except Exception:
+                pass
+
+if callback_url:
+    log_thread = Thread(target=_update_log_loop)
+    log_thread.daemon = True
+    log_thread.start()
+
+while p1.poll() is None:
+    l = p1.stdout.readline()
+    f.write(l)
+    f.flush()
+    mutex.acquire()
+    current_log += l
+    mutex.release()
+
+completed=True
+
+l = p1.stdout.read()
+f.write(l)
+f.flush()
+
+if p1.returncode == 0:
+    phase = "completed"
+else:
+    phase = "error"
+
+f.close()
+
+if callback_url:
+    mutex.acquire()
+    current_log=""
+    mutex.release()
+    subprocess.call(["curl", "-X", "POST", callback_url+"/log/"+task_id, "--data-binary", "@"+log_file])
+    subprocess.call(["curl", "-X", "GET", callback_url+"/terminate/"+task_id+"?phase=" + phase])
+"""
+
 def add_log_handler(fh):
     logger.addHandler(fh)
 
@@ -148,14 +223,11 @@ def cmd_docker_pull(image_ref, docker_path=None):
         path = docker_path + "/"
     return '%sdocker pull %s' % (path, image_ref)
 
-def _protect_arg(arg):
-    return "'" + re.sub(r"(')", r"\\\1", arg.strip()) + "'"
-
 def cmd_docker_run(gpu_id, docker_options, task_id,
                    image_ref, callback_url, callback_interval,
-                   storages, docker_command, log_dir=None):
+                   storages, docker_command, log_dir=None, sep=" "):
     if docker_options.get('dev') == 1:
-        return "sleep 35"
+        return "sleep%s35" % sep
     else:
         docker_cmd = 'docker' if gpu_id == 0 else 'nvidia-docker'
         docker_path = docker_options.get('path')
@@ -163,24 +235,24 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
             docker_cmd = docker_path +'/' + docker_cmd
 
         # launch the task
-        cmd = '%s run -i --rm' % docker_cmd
+        cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
         if 'mount' in docker_options:
             for k in docker_options['mount']:
-                cmd += ' -v %s' % k
+                cmd += '_o_-v_o_%s' % k
         if 'envvar' in docker_options:
             for k in docker_options['envvar']:
-                cmd += ' -e %s=%s' % (k, docker_options['envvar'][k])
+                cmd += '_o_-e_o_%s=%s' % (k, docker_options['envvar'][k])
 
         # mount TMP_DIR used to store potential transfered files
-        cmd += ' -e TMP_DIR=/root/tmp/%s' % task_id
+        cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id
 
-        cmd += ' %s' % image_ref
+        cmd += '_o_%s' % image_ref
 
         if storages is not None and storages != {}:
             v = json.dumps(storages)
             v = v.replace("<TASK_ID>", task_id)
             v = v.replace("<CALLBACK_URL>", callback_url)
-            cmd += ' -s \'%s\'' % v
+            cmd += '_o_-s_o_%s' % v
 
             # if model storage is not specified, check if there is a default
             # model storage
@@ -190,24 +262,30 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
                         docker_command = ['-ms', s + ':'] + docker_command
                         break
 
-        cmd += ' -g %s' % gpu_id
-        cmd += ' -t %s' % task_id
+        cmd += '_o_-g_o_%s' % gpu_id
+        cmd += '_o_-t_o_%s' % task_id
         if callback_url is not None and callback_url != '':
-            cmd += ' -b \'%s\'' % callback_url
+            cmd += '_o_-b_o_%s' % callback_url
             if callback_interval is not None:
-                cmd += ' -bi %d' % callback_interval
+                cmd += '_o_-bi_o_%d' % callback_interval
 
-        cmd += ' -i %s' % image_ref
+        cmd += '_o_-i_o_%s' % image_ref
 
         for arg in docker_command:
             if arg.startswith('${TMP_DIR}'):
                 arg = '/root/tmp/%s%s' % (task_id, arg[10:])
-            cmd += ' ' + _protect_arg(arg)
+            cmd += '_o_' + arg
 
-        if log_dir is not None:
-            cmd += ' > %s/\"%s.log\" 2>&1' % (log_dir, task_id)
+        return cmd.replace("_o_","\n")
 
-        return cmd
+def update_log(task_id,
+               client,
+               log_dir,
+               callback_url):
+    log_file = "%s/%s.log" % (log_dir, task_id)
+    cmd = 'curl -X POST "%s/file/%s/log" --data-binary "@%s"' % (
+                callback_url, task_id, log_file)
+    _, stdout, stderr = run_command(client, cmd)
 
 def launch_task(task_id,
                 client,
@@ -288,21 +366,10 @@ def launch_task(task_id,
             if exit_status != 0:
                 raise RuntimeError("error retrieving files: %s, %s" % (cmd_get_files, stderr.read()))
 
-    cmd = 'nohup ' + cmd_docker_run(gpu_id, docker_options, task_id,
-                                    image_ref, callback_url, callback_interval,
-                                    storages, docker_command, log_dir)
-    log_file = "%s/%s.log" % (log_dir, task_id)
-    if callback_url is not None:
-        cmd = '(%s ; status=$?' % cmd
-        if log_dir is not None and log_dir != '':
-            cmd = '%s ; curl -X POST "%s/file/%s/log" --data-binary "@%s"' % (
-                cmd,
-                callback_url,
-                task_id,
-                log_file)
-        cmd =  ('%s ; if [[ $status = 0 ]]; then curl -X GET "%s/terminate/%s?phase=completed";' +
-                ' else curl -X GET "%s/terminate/%s?phase=error"; fi )') % (
-            cmd, callback_url, task_id, callback_url, task_id)
+    cmd = cmd_docker_run(gpu_id, docker_options, task_id,
+                         image_ref, callback_url, callback_interval,
+                         storages, docker_command, log_dir)
+    cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id), callback_url or '') + "'"
 
     # get the process group id
     cmd += ' & ps -o pgid -p $!'

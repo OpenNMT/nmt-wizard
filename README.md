@@ -409,7 +409,7 @@ Registers a file for a task - typically used for log, or posting translation out
 
 #### `GET /file/<task_id>/<filename>`
 
-Retrieves file attached to a tasK
+Retrieves file attached to a task
 
 * **Arguments**
   * `task_id`: the task identifier returned by `/launch/<service_name>`
@@ -419,6 +419,10 @@ Retrieves file attached to a tasK
   * On invalid `task_id`, a HTTP 404 code with an error message (JSON)
   * On missing files, a HTTP 404 code with an error message (JSON)
   * On success, the actual file
+
+#### `GET/POST/APPEND /log/<task_id>`
+
+Gets/Posts/Append log attached to a task. Logs are saved in a special `log:<task_id>` key in the redis table allowing for fast implementation of append operation.
 
 ### Launcher
 

@@ -179,7 +179,7 @@ class TorqueService(Service):
         params['qsub_id'] = stdout.read().strip()
         return params
 
-    def status(self, params):
+    def status(self, task_id, params):
         logger.info("Check status of process with qsub id %s.", params['qsub_id'])
 
         client = paramiko.client.SSHClient()

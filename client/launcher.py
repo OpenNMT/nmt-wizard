@@ -107,6 +107,9 @@ parser_status.add_argument('-k', '--task_id',
 parser_terminate = subparsers.add_parser('terminate', help='terminate a task')
 parser_terminate.add_argument('-k', '--task_id',
                               help="task identifier", required=True)
+parser_log = subparsers.add_parser('log', help='get log associated to a task')
+parser_log.add_argument('-k', '--task_id',
+                              help="task identifier", required=True)
 parser_file = subparsers.add_parser('file', help='get file associated to a task')
 parser_file.add_argument('-k', '--task_id',
                               help="task identifier", required=True)
@@ -249,7 +252,7 @@ elif args.cmd == "status":
     result = r.json()
     if not args.json:
         times = []
-        current_time = int(result["current_time"])
+        current_time = float(result["current_time"])
         result.pop("current_time", None)
         for k in result:
             if k.endswith('_time'):
@@ -257,7 +260,7 @@ elif args.cmd == "status":
         sorted_times = sorted(times, key=lambda k: float(result[k]))
         last_update = ''
         if sorted_times:
-            upd = current_time - int(result[sorted_times[-1]])
+            upd = current_time - float(result[sorted_times[-1]])
             last_update = " - updated %d seconds ago" % upd
         print("TASK %s - TYPE %s - status %s (%s)%s" % (
                 args.task_id, result.get('type'),
@@ -316,9 +319,16 @@ elif args.cmd == "terminate":
     result = r.json()
     if not args.json:
         print(result["message"])
-        sys.exit(0)     
+        sys.exit(0)
 elif args.cmd == "file":
     r = requests.get(os.path.join(args.url, "file", args.task_id, args.filename))
+    if r.status_code != 200:
+        logger.error('incorrect result from \'file\' service: %s', r.text)
+        sys.exit(1)
+    print(r.text.encode("utf-8"))
+    sys.exit(0)
+elif args.cmd == "log":
+    r = requests.get(os.path.join(args.url, "log", args.task_id))
     if r.status_code != 200:
         logger.error('incorrect result from \'log\' service: %s', r.text)
         sys.exit(1)

@@ -104,6 +104,7 @@ def delete(redis, task_id):
         redis.delete(keyt)
         redis.delete("queue:" + task_id)
         redis.delete("files:" + task_id)
+        redis.delete("log:" + task_id)
     return True
 
 # TODO: create iterator returning directly task_id
@@ -146,4 +147,13 @@ def get_file(redis, task_id, filename):
     return redis.hget(keyf, filename)
 
 def get_log(redis, task_id):
-    return get_file(redis, task_id, "log")
+    keyf = "log:" + task_id
+    return redis.get(keyf)
+
+def append_log(redis, task_id, content):
+    keyf = "log:" + task_id
+    redis.append(keyf, content)
+
+def set_log(redis, task_id, content):
+    keyf = "log:" + task_id
+    redis.set(keyf, content)
