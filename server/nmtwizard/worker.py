@@ -55,17 +55,18 @@ class Worker(object):
                         # check if a resource is under-used and if so try pulling some
                         # task for it
                         for service in self._services:
-                            resources = self._services[service].list_resources()
-                            self._logger.debug('checking processes on : %s', service)
-                            availableResource = False
-                            for resource in resources:
-                                keyr = 'resource:%s:%s' % (service, resource)
-                                if self._redis.llen(keyr) < resources[resource]:
-                                    availableResource = True
-                                    break
-                            if availableResource:
-                                self._logger.debug('resources available on %s - trying dequeuing', service)
-                                self._release_resource(self._services[service], resource)
+                            if self._redis.exists('queued:%s' % service):
+                                resources = self._services[service].list_resources()
+                                self._logger.debug('checking processes on : %s', service)
+                                availableResource = False
+                                for resource in resources:
+                                    keyr = 'resource:%s:%s' % (service, resource)
+                                    if self._redis.llen(keyr) < resources[resource]:
+                                        availableResource = True
+                                        break
+                                if availableResource:
+                                    self._logger.debug('resources available on %s - trying dequeuing', service)
+                                    self._release_resource(self._services[service], resource)
                         counter = 0
             counter += 1
             time.sleep(0.01)
