@@ -158,7 +158,7 @@ $ curl -X GET 'http://127.0.0.1:5000/list_services'
 
 #### `GET /describe/<service_name>`
 
-Returns possible options for a service as a [JSON Form](https://github.com/joshfire/jsonform). This can be used to easily implement a GUI to select options the target service.
+Returns possible options for a service as a [JSON Form](https://github.com/joshfire/jsonform). This can be used to easily implement a GUI to select options for the target service.
 
 * **Arguments:**
   * `service_name`: the service name
