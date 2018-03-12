@@ -22,6 +22,10 @@ def run_command(client, cmd, stdin_content=None, sudo=False):
     exit_status = stdout.channel.recv_exit_status()
     return exit_status, stdout, stderr
 
+def run_docker_command(client, cmd):
+    docker_cmd = 'docker %s' % cmd
+    return run_command(client, docker_cmd)
+
 def run_and_check_command(client, cmd, stdin_content=None, sudo=False):
     exit_status, _, _ = run_command(
         client, cmd, stdin_content=stdin_content, sudo=sudo)

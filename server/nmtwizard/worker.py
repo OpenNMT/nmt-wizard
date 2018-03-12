@@ -147,9 +147,11 @@ class Worker(object):
 
             elif status == 'terminating':
                 data = self._redis.hget(keyt, 'job')
+                container_id = self._redis.hget(keyt, 'container_id')
                 if data is not None:
                     data = json.loads(data)
-                    self._logger.info('%s: terminating task', task_id)
+                    data['container_id'] = container_id
+                    self._logger.info('%s: terminating task (%s)', task_id, json.dumps(data))
                     try:
                         service.terminate(data)
                         self._logger.info('%s: terminated', task_id)

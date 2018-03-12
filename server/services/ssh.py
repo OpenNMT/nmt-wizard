@@ -168,16 +168,19 @@ class SSHService(Service):
             params['login'],
             self._config['privateKey'],
             login_cmd=params['login_cmd'])
-        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
-        if exit_status != 0:
-            logger.debug("exist_status %d: %s", exit_status, stderr.read())
-            client.close()
-            return
-        exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
-        if exit_status != 0:
-            logger.debug("exist_status %d: %s", exit_status, stderr.read())
-            client.close()
-            return
+        if 'container_id' in params:
+            common.run_docker_command(client, 'rm --force %s' % params['container_id'])
+        else:
+            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+            if exit_status != 0:
+                logger.debug("exist_status %d: %s", exit_status, stderr.read())
+                client.close()
+                return
+            exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+            if exit_status != 0:
+                logger.debug("exist_status %d: %s", exit_status, stderr.read())
+                client.close()
+                return
         logger.debug("successfully terminated")
         client.close()
 
