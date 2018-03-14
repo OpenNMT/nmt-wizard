@@ -51,6 +51,13 @@ def _usagecapacity(service):
 
 app = flask.Flask(__name__)
 
+def task_request(func):
+    def func_wrapper(*args, **kwargs):
+        if not task.exists(redis, args[0]):
+            flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % args[0]), 404))
+        return func(*args, **kwargs)
+    return func_wrapper
+
 @app.route("/list_services", methods=["GET"])
 def list_services():
     res = {}
@@ -135,13 +142,13 @@ def launch(service):
 
     return flask.jsonify(task_ids)
 
+@task_request
 @app.route("/status/<string:task_id>", methods=["GET"])
 def status(task_id):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     response = task.info(redis, task_id, [])
     return flask.jsonify(response)
 
+@task_request
 @app.route("/del/<string:task_id>", methods=["GET"])
 def del_task(task_id):
     response = task.delete(redis, task_id)
@@ -163,6 +170,7 @@ def list_tasks(pattern):
         ltask.append(info)
     return flask.jsonify(ltask)
 
+@task_request
 @app.route("/terminate/<string:task_id>", methods=["GET"])
 def terminate(task_id):
     with redis.acquire_lock(task_id):
@@ -175,6 +183,7 @@ def terminate(task_id):
         task.terminate(redis, task_id, phase=phase)
     return flask.jsonify(message="terminating %s" % task_id)
 
+@task_request
 @app.route("/beat/<string:task_id>", methods=["GET"])
 def beat(task_id):
     duration = flask.request.args.get('duration')
@@ -184,15 +193,12 @@ def beat(task_id):
     except ValueError:
         flask.abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
     container_id = flask.request.args.get('container_id')
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     task.beat(redis, task_id, duration, container_id)
     return flask.jsonify(200)
 
+@task_request
 @app.route("/file/<string:task_id>/<string:filename>", methods=["GET"])
 def get_file(task_id, filename):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     content = task.get_file(redis, task_id, filename)
     if content is None:
         flask.abort(flask.make_response(
@@ -200,18 +206,16 @@ def get_file(task_id, filename):
     response = flask.make_response(content)
     return response
 
+@task_request
 @app.route("/file/<string:task_id>/<string:filename>", methods=["POST"])
 def post_file(task_id, filename):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     content = flask.request.get_data()
     task.set_file(redis, task_id, content, filename)
     return flask.jsonify(200)
 
+@task_request
 @app.route("/log/<string:task_id>", methods=["GET"])
 def get_log(task_id):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     content = task.get_log(redis, task_id)
     if content is None:
         flask.abort(flask.make_response(
@@ -219,18 +223,16 @@ def get_log(task_id):
     response = flask.make_response(content)
     return response
 
+@task_request
 @app.route("/log/<string:task_id>", methods=["APPEND"])
 def append_log(task_id):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     content = flask.request.get_data()
     task.append_log(redis, task_id, content)
     return flask.jsonify(200)
 
+@task_request
 @app.route("/log/<string:task_id>", methods=["POST"])
 def post_log(task_id):
-    if not task.exists(redis, task_id):
-        flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     content = flask.request.get_data()
     task.set_log(redis, task_id, content)
     return flask.jsonify(200)
