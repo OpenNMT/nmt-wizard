@@ -86,11 +86,13 @@ parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_I
 parser_launch.add_argument('-t', '--docker_tag', default="latest",
                            help='Docker image tag (default is latest)')
 parser_launch.add_argument('-n', '--name',
-                           help='Friendly name for the model, for retraining, inherits from previous')
+                           help='Friendly name for the model, for subsequent tasks, inherits from previous')
 parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
                            help='trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])')
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
-                           help='for training tasks, iterate several trainings in a row')
+                           help='for training tasks, iterate several tasks in a row')
+parser_launch.add_argument('-p', '--priority', type=int, default=0,
+                           help='task priority - highest better')
 parser_launch.add_argument('docker_command', type=str, nargs='*',
                            help='Docker command')
 parser_list_tasks = subparsers.add_parser('lt',
@@ -151,12 +153,13 @@ elif args.cmd == "lt":
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print("%-5s %-42s %-20s %-30s %-10s %s" %
-              ("TYPE", "TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+        print("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s" %
+              ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: float(k["queued_time"])):
             date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
-            print("%-4s %-42s %-20s %-30s %-10s %s" %
-                  (k["type"], k["task_id"], date, k["image"], k["status"], k.get("message")))
+            print("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s" %
+                  (k["type"], k["task_id"], k["resource"], int(k["priority"]), 
+                   date, k["image"], k["status"], k.get("message")))
         sys.exit(0)
 elif args.cmd == "describe":
     if args.service not in serviceList:
@@ -228,10 +231,15 @@ elif args.cmd == "launch":
         },
         "wait_after_launch": args.wait_after_launch,
         "trainer_id": args.trainer_id,
-        "options": getjson(args.options),
-        "name": args.name,
-        "iterations": args.iterations
+        "options": getjson(args.options)
     }
+
+    if args.name:
+        content["name"] = args.name
+    if args.iterations:
+        content["iterations"] = args.iterations
+    if args.priority:
+        content["priority"] = args.priority
 
     launch_url = os.path.join(args.url, "launch", args.service)
     r = None
