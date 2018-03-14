@@ -393,6 +393,7 @@ def launch_task(task_id,
         logger.info("Wait for %d seconds and check process status.", wait_for_immediate_failure)
         time.sleep(wait_for_immediate_failure)
         if not run_and_check_command(client, 'kill -0 -%d' % pgid):
+            log_file = "%s/%s.log" % (log_dir, task_id)
             _, stdout, stderr = run_command(client, 'cat %s' % log_file)
             raise RuntimeError("process exited early: %s" % stdout.read())
 
