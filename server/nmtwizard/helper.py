@@ -190,7 +190,7 @@ def build_task_id(content, xxyy, parent_task):
         struct_name = _model_name_analysis(parent_task)
         if name is None and "name" in struct_name:
             name = struct_name["name"]
-        if xxyy is None and "xxyy" in struct_name:
+        if (xxyy is None or xxyy == 'xxyy') and "xxyy" in struct_name:
             xxyy = struct_name["xxyy"]
         if "uuid" in struct_name:
             parent_uuid = '-'+struct_name["uuid"][0:5]
