@@ -24,6 +24,8 @@ redis = RedisDatabase(cfg.get(MODE, 'redis_host'),
                       cfg.get(MODE, 'redis_db'),
                       redis_password)
 
+# make sure notify events are set
+redis.config_set('notify-keyspace-events', 'Klgx')
 
 services = config.load_services(cfg.get(MODE, 'config_dir'))
 
