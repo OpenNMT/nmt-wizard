@@ -10,7 +10,7 @@ import regex as re
 from datetime import datetime
 import math
 
-reimage = re.compile(r"(\w+:|)(\w+/\w+)(:(\w|\.)+|)$")
+reimage = re.compile(r"([-A-Za-z_.]+:|)([-A-Za-z_.]+/[-A-Za-z_.]+)(:[-A-Za-z_.]+|)$")
 
 def getjson(config):
     if config is None:

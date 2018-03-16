@@ -121,6 +121,8 @@ def ssh_connect_with_retry(hostname,
     """Wrap the SSH connect method with a delay and retry mechanism. This is
     useful when connecting to an instance that was freshly started.
     """
+    logger.info("Connecting to %s via SSH...", hostname)
+    start = time.time()
     client = paramiko.client.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     while True:
@@ -128,12 +130,12 @@ def ssh_connect_with_retry(hostname,
             time.sleep(delay)
         try:
             client.load_system_host_keys()
-            logger.info("Connecting to %s via SSH...", hostname)
             client.connect(
                 hostname,
                 username=username,
                 key_filename=key_path,
                 look_for_keys=False)
+            logger.info("Connection to %s successful (%f)", hostname, time.time()-start)
             if login_cmd is not None:
                 if not run_and_check_command(client, login_cmd):
                     raise RuntimeError("failed to run login command")
@@ -315,6 +317,7 @@ def launch_task(task_id,
         * `callback_url`: server to callback for beat of activity
         * `callback_interval`: time between 2 beats
     """
+    logger.info("launching task - %s", task_id)
     image_ref = ""
     if docker_options.get('dev') != 1:
         docker_registry = docker_options['registries'][the_docker_registry]
