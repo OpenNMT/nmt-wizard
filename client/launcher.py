@@ -10,7 +10,7 @@ import regex as re
 from datetime import datetime
 import math
 
-reimage = re.compile(r"([-A-Za-z_.]+:|)([-A-Za-z_.]+/[-A-Za-z_.]+)(:[-A-Za-z_.]+|)$")
+reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:([-A-Za-z_.0-9]+)|)$")
 
 def getjson(config):
     if config is None:
@@ -199,12 +199,12 @@ elif args.cmd == "launch":
                      args.docker_image)
         sys.exit(1)
 
-    if m.group(1):
-        args.docker_registry = m.group(1)
-    if m.group(3):
-        args.docker_tag = m.group(3)
-    args.docker_image = m.group(2)
-
+    if m.group(2):
+        args.docker_registry = m.group(2)
+    if m.group(5):
+        args.docker_tag = m.group(5)
+    args.docker_image = m.group(3)
+    print(args)
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
@@ -256,6 +256,8 @@ elif args.cmd == "launch":
         content["iterations"] = args.iterations
     if args.priority:
         content["priority"] = args.priority
+
+    logger.debug("sending request: %s", json.dumps(content))
 
     launch_url = os.path.join(args.url, "launch", args.service)
     r = None
