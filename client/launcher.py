@@ -259,7 +259,7 @@ elif args.cmd == "launch":
 
     logger.debug("sending request: %s", json.dumps(content))
 
-    launch_url = os.path.join(args.url, "launch", args.service)
+    launch_url = os.path.join(args.url, "task/launch", args.service)
     r = None
     if len(files) > 0:
         r = requests.post(launch_url, files=files, data = {'content': json.dumps(content) })
