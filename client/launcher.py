@@ -129,9 +129,9 @@ if args.url is None:
         logger.error('missing launcher_url')
         sys.exit(1)
 
-r = requests.get(os.path.join(args.url, "list_services"))
+r = requests.get(os.path.join(args.url, "service/list"))
 if r.status_code != 200:
-    logger.error('incorrect result from \'list_services\' service: %s', r.text)
+    logger.error('incorrect result from \'service/list\' service: %s', r.text)
 serviceList = r.json()
 
 if args.cmd == "ls":
@@ -147,9 +147,9 @@ if args.cmd == "ls":
                                              result[k]['name']))
         sys.exit(0)
 elif args.cmd == "lt":
-    r = requests.get(os.path.join(args.url, "list_tasks", args.prefix + '*'))
+    r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'))
     if r.status_code != 200:
-        logger.error('incorrect result from \'list_tasks\' service: %s', r.text)
+        logger.error('incorrect result from \'task/list\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
@@ -165,18 +165,18 @@ elif args.cmd == "describe":
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
-    r = requests.get(os.path.join(args.url, "describe", args.service))
+    r = requests.get(os.path.join(args.url, "service/describe", args.service))
     if r.status_code != 200:
-        logger.error('incorrect result from \'describe\' service: %s', r.text)
+        logger.error('incorrect result from \'service/describe\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
 elif args.cmd == "check":
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
-    r = requests.get(os.path.join(args.url, "check", args.service), json=getjson(args.options))
+    r = requests.get(os.path.join(args.url, "service/check", args.service), json=getjson(args.options))
     if r.status_code != 200:
-        logger.error('incorrect result from \'check\' service: %s', r.text)
+        logger.error('incorrect result from \'service/check\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
@@ -241,14 +241,14 @@ elif args.cmd == "launch":
     if args.priority:
         content["priority"] = args.priority
 
-    launch_url = os.path.join(args.url, "launch", args.service)
+    launch_url = os.path.join(args.url, "task/launch", args.service)
     r = None
     if len(files) > 0:
         r = requests.post(launch_url, files=files, data = {'content': json.dumps(content) })
     else:
         r = requests.post(launch_url, json=content)
     if r.status_code != 200:
-        logger.error('incorrect result from \'launch\' service: %s', r.text)
+        logger.error('incorrect result from \'task/launch\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
@@ -258,9 +258,9 @@ elif args.cmd == "launch":
             print(result)
         sys.exit(0)
 elif args.cmd == "status":
-    r = requests.get(os.path.join(args.url, "status", args.task_id))
+    r = requests.get(os.path.join(args.url, "task/status", args.task_id))
     if r.status_code != 200:
-        logger.error('incorrect result from \'status\' service: %s', r.text)
+        logger.error('incorrect result from \'task/status\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
@@ -305,9 +305,9 @@ elif args.cmd == "status":
         print(json.dumps(content, indent=True))
         sys.exit(0)
 elif args.cmd == "dt":
-    r = requests.get(os.path.join(args.url, "list_tasks", args.prefix + '*'))
+    r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'))
     if r.status_code != 200:
-        logger.error('incorrect result from \'list_tasks\' service: %s', r.text)
+        logger.error('incorrect result from \'task/list\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
@@ -319,31 +319,31 @@ elif args.cmd == "dt":
                 k["task_id"], date, k["image"], k["status"], k.get("message")))
         if confirm():
             for k in result:
-                r = requests.get(os.path.join(args.url, "del", k["task_id"]))
+                r = requests.delete(os.path.join(args.url, "task", k["task_id"]))
                 if r.status_code != 200:
                     logger.error('incorrect result from \'delete_task\' service: %s', r.text)
                     sys.exit(1)
         sys.exit(0)
 elif args.cmd == "terminate":
-    r = requests.get(os.path.join(args.url, "terminate", args.task_id))
+    r = requests.get(os.path.join(args.url, "task/terminate", args.task_id))
     if r.status_code != 200:
-        logger.error('incorrect result from \'terminate\' service: %s', r.text)
+        logger.error('incorrect result from \'task/terminate\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
         print(result["message"])
         sys.exit(0)
 elif args.cmd == "file":
-    r = requests.get(os.path.join(args.url, "file", args.task_id, args.filename))
+    r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename))
     if r.status_code != 200:
-        logger.error('incorrect result from \'file\' service: %s', r.text)
+        logger.error('incorrect result from \'task/file\' service: %s', r.text)
         sys.exit(1)
     print(r.text.encode("utf-8"))
     sys.exit(0)
 elif args.cmd == "log":
-    r = requests.get(os.path.join(args.url, "log", args.task_id))
+    r = requests.get(os.path.join(args.url, "task/log", args.task_id))
     if r.status_code != 200:
-        logger.error('incorrect result from \'log\' service: %s', r.text)
+        logger.error('incorrect result from \'task/log\' service: %s', r.text)
         sys.exit(1)
     print(r.text.encode("utf-8"))
     sys.exit(0)

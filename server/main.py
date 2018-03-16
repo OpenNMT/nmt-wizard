@@ -58,7 +58,7 @@ def task_request(func):
         return func(*args, **kwargs)
     return func_wrapper
 
-@app.route("/list_services", methods=["GET"])
+@app.route("/service/list", methods=["GET"])
 def list_services():
     res = {}
     for k in services:
@@ -67,12 +67,12 @@ def list_services():
                    'usage': usage, 'queued': queued, 'capacity': capacity }
     return flask.jsonify(res)
 
-@app.route("/describe/<string:service>", methods=["GET"])
+@app.route("/service/describe/<string:service>", methods=["GET"])
 def describe(service):
     service_module = _get_service(service)
     return flask.jsonify(service_module.describe())
 
-@app.route("/check/<string:service>", methods=["GET"])
+@app.route("/service/check/<string:service>", methods=["GET"])
 def check(service):
     service_options = flask.request.get_json() if flask.request.is_json else None
     if service_options is None:
@@ -87,7 +87,7 @@ def check(service):
     else:
         return flask.jsonify(message=details)
 
-@app.route("/launch/<string:service>", methods=["POST"])
+@app.route("/task/launch/<string:service>", methods=["POST"])
 def launch(service):
     content = None
     files = {}
@@ -143,20 +143,20 @@ def launch(service):
     return flask.jsonify(task_ids)
 
 @task_request
-@app.route("/status/<string:task_id>", methods=["GET"])
+@app.route("/task/status/<string:task_id>", methods=["GET"])
 def status(task_id):
     response = task.info(redis, task_id, [])
     return flask.jsonify(response)
 
 @task_request
-@app.route("/del/<string:task_id>", methods=["GET"])
+@app.route("/task/<string:task_id>", methods=["DELETE"])
 def del_task(task_id):
     response = task.delete(redis, task_id)
     if isinstance(response, list) and not response[0]:
         flask.abort(flask.make_response(flask.jsonify(message=response[1]), 400))        
     return flask.jsonify(message="deleted %s" % task_id)
 
-@app.route("/list_tasks/<string:pattern>", methods=["GET"])
+@app.route("/task/list/<string:pattern>", methods=["GET"])
 def list_tasks(pattern):
     ltask = []
     for task_key in task.scan_iter(redis, pattern):
@@ -171,7 +171,7 @@ def list_tasks(pattern):
     return flask.jsonify(ltask)
 
 @task_request
-@app.route("/terminate/<string:task_id>", methods=["GET"])
+@app.route("/task/terminate/<string:task_id>", methods=["GET"])
 def terminate(task_id):
     with redis.acquire_lock(task_id):
         current_status = task.info(redis, task_id, "status")
@@ -184,7 +184,7 @@ def terminate(task_id):
     return flask.jsonify(message="terminating %s" % task_id)
 
 @task_request
-@app.route("/beat/<string:task_id>", methods=["GET"])
+@app.route("/task/beat/<string:task_id>", methods=["PUT"])
 def beat(task_id):
     duration = flask.request.args.get('duration')
     try:
@@ -197,7 +197,7 @@ def beat(task_id):
     return flask.jsonify(200)
 
 @task_request
-@app.route("/file/<string:task_id>/<string:filename>", methods=["GET"])
+@app.route("/task/file/<string:task_id>/<string:filename>", methods=["GET"])
 def get_file(task_id, filename):
     content = task.get_file(redis, task_id, filename)
     if content is None:
@@ -207,16 +207,17 @@ def get_file(task_id, filename):
     return response
 
 @task_request
-@app.route("/file/<string:task_id>/<string:filename>", methods=["POST"])
+@app.route("/task/file/<string:task_id>/<string:filename>", methods=["POST"])
 def post_file(task_id, filename):
     content = flask.request.get_data()
     task.set_file(redis, task_id, content, filename)
     return flask.jsonify(200)
 
 @task_request
-@app.route("/log/<string:task_id>", methods=["GET"])
+@app.route("/task/log/<string:task_id>", methods=["GET"])
 def get_log(task_id):
     content = task.get_log(redis, task_id)
+    print("content:",content)
     if content is None:
         flask.abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))
@@ -224,14 +225,14 @@ def get_log(task_id):
     return response
 
 @task_request
-@app.route("/log/<string:task_id>", methods=["APPEND"])
+@app.route("/task/log/<string:task_id>", methods=["PATCH"])
 def append_log(task_id):
     content = flask.request.get_data()
     task.append_log(redis, task_id, content)
     return flask.jsonify(200)
 
 @task_request
-@app.route("/log/<string:task_id>", methods=["POST"])
+@app.route("/task/log/<string:task_id>", methods=["POST"])
 def post_log(task_id):
     content = flask.request.get_data()
     task.set_log(redis, task_id, content)

@@ -43,7 +43,7 @@ def _update_log_loop():
         mutex.release()
         if copy_log:
             try:
-                p = subprocess.Popen(["curl", "-X", "APPEND", callback_url+"/log/"+task_id, "--data-binary", "@-"],
+                p = subprocess.Popen(["curl", "-X", "APPEND", callback_url+"/task/log/"+task_id, "--data-binary", "@-"],
                                     stdin=subprocess.PIPE)
                 p.communicate(copy_log)
             except Exception:
@@ -79,8 +79,8 @@ if callback_url:
     mutex.acquire()
     current_log=""
     mutex.release()
-    subprocess.call(["curl", "-X", "POST", callback_url+"/log/"+task_id, "--data-binary", "@"+log_file])
-    subprocess.call(["curl", "-X", "GET", callback_url+"/terminate/"+task_id+"?phase=" + phase])
+    subprocess.call(["curl", "-X", "POST", callback_url+"/task/log/"+task_id, "--data-binary", "@"+log_file])
+    subprocess.call(["curl", "-X", "GET", callback_url+"/task/terminate/"+task_id+"?phase=" + phase])
 """
 
 def add_log_handler(fh):
@@ -283,7 +283,7 @@ def update_log(task_id,
                log_dir,
                callback_url):
     log_file = "%s/%s.log" % (log_dir, task_id)
-    cmd = 'curl -X POST "%s/file/%s/log" --data-binary "@%s"' % (
+    cmd = 'curl -X POST "%s/task/log/%s" --data-binary "@%s"' % (
                 callback_url, task_id, log_file)
     _, stdout, stderr = run_command(client, cmd)
 
