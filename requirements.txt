@@ -4,4 +4,3 @@ flask
 ovh
 paramiko
 redis
-requests

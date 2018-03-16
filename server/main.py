@@ -114,6 +114,13 @@ def launch(service):
         flask.abort(flask.make_response(flask.jsonify(message="invalid options field"), 400))
     if 'docker' not in content:
         flask.abort(flask.make_response(flask.jsonify(message="missing docker field"), 400))
+    if ('image' not in content['docker']
+        or 'registry' not in content['docker']
+        or 'tag' not in content['docker']
+        or 'command' not in content['docker']):
+        flask.abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
+    if content['docker']['registry'] not in service_module._config['docker']['registries']:
+        flask.abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
     resource = service_module.get_resource_from_options(content["options"])
 
     iterations = 1

@@ -6,8 +6,11 @@ import sys
 import os
 import logging
 import requests
+import regex as re
 from datetime import datetime
 import math
+
+reimage = re.compile(r"(\w+:|)(\w+/\w+)(:(\w|\.)+|)$")
 
 def getjson(config):
     if config is None:
@@ -82,7 +85,7 @@ parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
 parser_launch.add_argument('-r', '--docker_registry', default='dockerhub',
                            help='docker registry (as configured on server side) - default is `dockerhub`')
 parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
-                           help='Docker image')
+                           help='Docker image (can be prefixed by docker_registry:)')
 parser_launch.add_argument('-t', '--docker_tag', default="latest",
                            help='Docker image tag (default is latest)')
 parser_launch.add_argument('-n', '--name',
@@ -190,9 +193,22 @@ elif args.cmd == "launch":
     if args.docker_image is None:
         logger.error('missing docker image (you can set LAUNCHER_IMAGE)')
         sys.exit(1)
+    m = reimage.match(args.docker_image)
+    if not m:
+        logger.error('incorrect docker image syntax (%s) - should be [registry:]organization/image[:tag]',
+                     args.docker_image)
+        sys.exit(1)
+
+    if m.group(1):
+        args.docker_registry = m.group(1)
+    if m.group(3):
+        args.docker_tag = m.group(3)
+    args.docker_image = m.group(2)
+
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
+
 
     # for multi-part file sending
     files = {}
