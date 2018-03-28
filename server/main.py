@@ -237,7 +237,6 @@ def post_file(task_id, filename):
 @app.route("/task/log/<string:task_id>", methods=["GET"])
 def get_log(task_id):
     content = task.get_log(redis, task_id)
-    print("content:",content)
     if content is None:
         flask.abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))

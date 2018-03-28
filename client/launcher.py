@@ -204,7 +204,7 @@ elif args.cmd == "launch":
     if m.group(5):
         args.docker_tag = m.group(5)
     args.docker_image = m.group(3)
-    print(args)
+
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)

@@ -43,7 +43,7 @@ def _update_log_loop():
         mutex.release()
         if copy_log:
             try:
-                p = subprocess.Popen(["curl", "-X", "APPEND", callback_url+"/task/log/"+task_id, "--data-binary", "@-"],
+                p = subprocess.Popen(["curl", "-X", "PATCH", callback_url+"/task/log/"+task_id, "--data-binary", "@-"],
                                     stdin=subprocess.PIPE)
                 p.communicate(copy_log)
             except Exception:
