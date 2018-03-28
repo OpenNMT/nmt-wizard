@@ -4,23 +4,27 @@ import json
 def set_status(redis, keyt, status):
     """Sets the status and save the time of change."""
     redis.hset(keyt, "status", status)
-    redis.hset(keyt, status + "_time", int(time.time()))
+    redis.hset(keyt, status + "_time", time.time())
 
 def exists(redis, task_id):
     """Checks if a task exist."""
     return redis.exists("task:" + task_id)
 
-def create(redis, task_id, resource, service, content, files):
+def create(redis, task_id, task_type, parent_task, resource, service, content, files, priority=0):
     """Creates a new task and enables it."""
     keyt = "task:" + task_id
+    redis.hset(keyt, "type", task_type)
+    if parent_task:
+        redis.hset(keyt, "parent", parent_task)
     redis.hset(keyt, "resource", resource)
     redis.hset(keyt, "service", service)
     redis.hset(keyt, "content", json.dumps(content))
-    set_status(redis, keyt, "queued")
+    redis.hset(keyt, "priority", priority)
     for k in files:
         redis.hset("files:" + task_id, k, files[k])
+    set_status(redis, keyt, "queued")
     enable(redis, task_id)
-    queue(redis, task_id)
+    service_queue(redis, task_id, service)
 
 def terminate(redis, task_id, phase):
     """Requests task termination (assume it is locked)."""
@@ -31,9 +35,9 @@ def terminate(redis, task_id, phase):
         return
     redis.hset(keyt, "message", phase)
     set_status(redis, keyt, "terminating")
-    queue(redis, task_id)
+    work_queue(redis, task_id)
 
-def queue(redis, task_id, delay=0):
+def work_queue(redis, task_id, delay=0):
     """Queues the task in the work queue with a delay."""
     if delay == 0:
         redis.lpush('work', task_id)
@@ -42,9 +46,16 @@ def queue(redis, task_id, delay=0):
         redis.set('queue:'+task_id, delay)
         redis.expire('queue:'+task_id, int(delay))
 
-def unqueue(redis):
+def work_unqueue(redis):
     """Pop a task from the work queue."""
     return redis.rpop('work')
+
+def service_queue(redis, task_id, service):
+    """Queue the task on the service queue."""
+    with redis.acquire_lock('service:'+service):
+        redis.lrem('queued:'+service, task_id)
+        redis.lpush('queued:'+service, task_id)
+        redis.delete('queue:'+task_id)
 
 def enable(redis, task_id):
     """Marks a task as enabled."""
@@ -101,6 +112,7 @@ def delete(redis, task_id):
         redis.delete(keyt)
         redis.delete("queue:" + task_id)
         redis.delete("files:" + task_id)
+        redis.delete("log:" + task_id)
     return True
 
 # TODO: create iterator returning directly task_id
@@ -143,4 +155,13 @@ def get_file(redis, task_id, filename):
     return redis.hget(keyf, filename)
 
 def get_log(redis, task_id):
-    return get_file(redis, task_id, "log")
+    keyf = "log:" + task_id
+    return redis.get(keyf)
+
+def append_log(redis, task_id, content):
+    keyf = "log:" + task_id
+    redis.append(keyf, content)
+
+def set_log(redis, task_id, content):
+    keyf = "log:" + task_id
+    redis.set(keyf, content)

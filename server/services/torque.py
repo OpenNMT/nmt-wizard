@@ -67,10 +67,8 @@ class TorqueService(Service):
 
     def check(self, options):
         params = _get_params(self._config, options)
-        client = paramiko.client.SSHClient()
 
-        common.ssh_connect_with_retry(
-            client,
+        client = common.ssh_connect_with_retry(
             params['master_node'],
             params['login'],
             self._config['privateKey'])
@@ -99,10 +97,8 @@ class TorqueService(Service):
                docker_files,
                wait_after_launch):
         params = _get_params(self._config, options)
-        client = paramiko.client.SSHClient()
 
-        common.ssh_connect_with_retry(
-            client,
+        client = common.ssh_connect_with_retry(
             params['master_node'],
             params['login'],
             self._config['privateKey'])
@@ -183,7 +179,7 @@ class TorqueService(Service):
         params['qsub_id'] = stdout.read().strip()
         return params
 
-    def status(self, params):
+    def status(self, task_id, params):
         logger.info("Check status of process with qsub id %s.", params['qsub_id'])
 
         client = paramiko.client.SSHClient()

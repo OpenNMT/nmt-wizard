@@ -54,7 +54,8 @@ The configuration file has the following structure:
             "/home/devling/models:/root/models"
         ],
         "envvar": {  // Environment variables to set when running the Docker image.
-        }
+        },
+        "path": "" // if provided, will be used to select default path for docker command on remote service.
     },
     "skey1": "svalue1",  // Service specific configurations.
     ...,
@@ -70,13 +71,10 @@ where `variables` is a list of possible options for the service. The structure o
 
 Template files are provided in `config/templates` and can be used as a basis for configuring services.
 
+**Note**:
+* it is possible to add a field `"default_ms":true` to one storage definition. If no model storage parameter (`-ms`) is provided to the docker, this storage will be used by default.  
+
 ## Server configuration
-
-* The Redis database must be configured to enable keyspace event as followed:
-
-```bash
-redis-cli config set notify-keyspace-events Klgx
-```
 
 * The REST server and worker are configured by `settings.ini`. The `LAUNCHER_MODE` environment variable (defaulting to `Production`) can be set to select different set of options in development or production.
 
@@ -100,16 +98,19 @@ For performance, multiple workers might be running simultaneously. In that case,
 
 The server has the following HTTP routes:
 
-* `list_services`: returns available services
-* `describe`: returns user selectable options for the service
-* `check`: checks availability of a given service with provided user options
-* `launch`: launches a task on a given service with provided user options
-* `status`: checks the status of a task
-* `list_tasks`: returns the list of tasks in the database
-* `del`: delete a task from the database
-* `terminate`: terminates the process and/or instance associated with a task
-* `beat`: provides a `beat` back to the launcher to notify the task activity and announce the next beat to expect
-* `file`: sets or returns a file associated to a task
+| METHOD    | ROUTE | PARAAM | Description |
+| ---       | --- | --- |
+| `GET`     | `service/list` | | Returns available services |
+| `GET`     | `service/describe/{service_id}` | | Returns user selectable options for a specified service |
+| `GET`     | `service/check/{service_id}` | | Checks availability of a given service with provided user options |
+| `POST`    | `task/launch` | |  Launches a task on a given service with provided user options
+| `GET`     | `task/status/{task_id}` | |  Checks the status of a task |
+| `GET`     | `task/list` | prefix | Returns the list of tasks in the database |
+| `GET`     | `task/terminate/{task_id}` | |  Terminates a task, the process and/or instance associated with a task |
+| `DELETE`  | `task/{task_id}` | | Delete a task from the database |
+| `PUT`     | `task/beat/{task_id}` | | Provides a `beat` back to the launcher to notify the task activity and announce the next beat to expect |
+| `GET`<br>`POST` | `task/file/{task_id}` | | Gets or set a file associated to a task |
+| `GET`<br>`PATCH`<br>`POST` | `task/log/{task_id}` | | Gets, appends or sets the log associated to a task |
 
 The server uses Flask. See the [Flask documentation](http://flask.pocoo.org/docs/0.12/deploying/) to deploy it for production. For development, it can be run as follows (single thread):
 
@@ -119,28 +120,42 @@ cd app && FLASK_APP=main.py flask run [--host=0.0.0.0]
 
 Here are the are the available routes. Also see the next section
 
-#### `GET /list_services`
+#### `GET /service/list`
 
 Lists available services.
 
 * **Arguments:** None
 * **Input:** None
-* **Output:** A dictionary of service name to description (JSON)
+* **Output:** A dictionary of service name to description (JSON), their usage and capacity
 * **Example:**
 
 ```
-$ curl -X GET 'http://127.0.0.1:5000/list_services'
+$ curl -X GET 'http://127.0.0.1:5000/service/list'
 {
-  "demogpu02": "OVH extra training server",
-  "ec2": "Instance on AWS EC2",
-  "localhost": "test local environment",
-  "ssaling04": "GPU training server"
+    "demogpu02": {
+        "capacity": 1,
+        "name": "OVH-hosted extra training server",
+        "queued": 2,
+        "usage": 1
+    },
+    "localhost": {
+        "capacity": 2,
+        "name": "test local environment",
+        "queued": 0,
+        "usage": 0
+    },
+    "ec2": {
+        "capacity": 15,
+        "name": "Instance on AWS EC2",
+        "queued": 0,
+        "usage": 7
+    }
 }
 ```
 
-#### `GET /describe/<service_name>`
+#### `GET /service/describe/<service_name>`
 
-Returns possible options for a service as a [JSON Form](https://github.com/joshfire/jsonform). This can be used to easily implement a GUI to select options the target service.
+Returns possible options for a service as a [JSON Form](https://github.com/joshfire/jsonform). This can be used to easily implement a GUI to select options for the target service.
 
 * **Arguments:**
   * `service_name`: the service name
@@ -149,7 +164,7 @@ Returns possible options for a service as a [JSON Form](https://github.com/joshf
 * **Example:**
 
 ```
-$ curl -X GET 'http://127.0.0.1:5000/describe/ec2'
+$ curl -X GET 'http://127.0.0.1:5000/service/describe/ec2'
 {
   "launchTemplate": {
     "description": "The name of the EC2 launch template to use",
@@ -162,13 +177,13 @@ $ curl -X GET 'http://127.0.0.1:5000/describe/ec2'
 }
 ```
 
-#### `GET /check/<service_name>`
+#### `GET /service/check/<service_name>`
 
 Checks if the service is available and can be used with the provided options. In case of success, it returns information about the service and the corresponding resource.
 
 * **Arguments:**
   * `service_name`: the service name
-* **Input:** The selected service options (see `describe/<service_name>`) (JSON)
+* **Input:** The selected service options (see `service/describe/<service_name>`) (JSON)
 * **Output:**
   * On invalid option, a HTTP 400 code with the error message (JSON)
   * On server error, a HTTP 500 code with the error message (JSON)
@@ -176,23 +191,23 @@ Checks if the service is available and can be used with the provided options. In
 * **Example:**
 
 ```
-$ curl -X GET http://127.0.0.1:5000/check/ec2
+$ curl -X GET http://127.0.0.1:5000/service/check/ec2
 {
   "message": "missing launchTemplateName option",
 }
 $ curl -X GET -d '{"launchTemplateName": "InvalidLaunchTemplate"}' \
-    -H "Content-Type: application/json" 'http://127.0.0.1:5000/check/ec2'
+    -H "Content-Type: application/json" 'http://127.0.0.1:5000/service/check/ec2'
 {
   "message": "An error occurred (InvalidLaunchTemplateId.NotFound) when calling the RunInstances operation: LaunchTemplate null not found"
 }
 $ curl -X GET -d '{"launchTemplateName": "SingleTrainingDev"}' \
-    -H "Content-Type: application/json" 'http://127.0.0.1:5000/check/ec2'
+    -H "Content-Type: application/json" 'http://127.0.0.1:5000/service/check/ec2'
 {
   "message": ""
 }
 ```
 
-#### `POST /launch/<service_name>`
+#### `POST /task/launch/<service_name>`
 
 Launches a Docker-based task on the specified service. In case of success, it returns a task identifier that can be used to monitor the task using the `status` or `terminate` routes.
 
@@ -217,7 +232,10 @@ $ cat body.json
   "trainer_id": "OpenNMT",
   "options": {
     "launchTemplateName": "SingleTrainingDev"
-  }
+  },
+  "name": 'TaskName', // optional
+  "iterations": 4,    // number of training iterations, default 1
+  "priority": 100     // task priority
 }
 ```
 
@@ -229,18 +247,28 @@ $ cat body.json
 
 ```
 $ curl -X POST -d @invalid_body.json -H "Content-Type: application/json" \
-    http://127.0.0.1:5000/launch/ec2
+    http://127.0.0.1:5000/task/launch/ec2
 {
   "message": "missing trainer_id field"
 }
 $ curl -X POST -d @body.json -H "Content-Type: application/json" \
-    'http://127.0.0.1:5000/launch/ec2'
-"130d4400-9aad-4654-b124-d258cbe4b1e3"
-$ curl -X POST -d content=@body.json -F input.txt=@input.txt 'http://127.0.0.1:5000/launch/ec2'
-"1f877e53-5a25-44de-b115-7f6d3e386e70"
+    'http://127.0.0.1:5000/task/launch/ec2'
+"SSJS_enyy_HelloWorld_01_0f32d3f6b84ab91d4"
+$ curl -X POST -d content=@body.json -F input.txt=@input.txt 'http://127.0.0.1:5000/task/launch/ec2'
+"SSJS_xxyy_GreenCat_01_085a8:60c06412a2b74"
 ```
 
-#### `GET /list_tasks/<pattern>`
+**Notes**: 
+
+* the task identifier is structured, when possible, and contains the following 5 fields separated by `_`:
+  * `TID` - trainer identifier provided through client application
+  * `XXYY` - the language pair, found in the configuration file or from parent model
+  * `NAME` - model name: generated randomly, or set manually, or inherited from parent
+  * `NN` - number showing the number of iterations
+  * `UUID` or `UUID:PRID`, unique identifier (possibly suffixed by initial of parent UUID)
+* if a `iterations` value is passed to the launch service, several tasks will be created each one starting with previous generated one. The tasks are executed iteratively. It is also possible to use a non-yet generated model as a starting point to launch another task: in that case, the task will start only upon successful termination of the parent task.
+
+#### `GET /task/list/<pattern>`
 
 Lists available services.
 
@@ -251,7 +279,7 @@ Lists available services.
 * **Example:**
 
 ```
-$ curl -X GET 'http://127.0.0.1:5000/list_tasks/jean_*'
+$ curl -X GET 'http://127.0.0.1:5000/task/list/jean_*'
 [
   {
     "message": "completed", 
@@ -270,7 +298,7 @@ $ curl -X GET 'http://127.0.0.1:5000/list_tasks/jean_*'
 ]
 ```
 
-#### `GET /del_tasks/<pattern>`
+#### `DELETE /task/<pattern>`
 
 Lists available services.
 
@@ -281,19 +309,19 @@ Lists available services.
 * **Example:**
 
 ```
-$ curl -X GET 'http://127.0.0.1:5000/del_tasks/jean_*'
+$ curl -X DELETE 'http://127.0.0.1:5000/task/jean_*'
 [
   "jean_5af69495-3304-4118-bd6c-37d0e6",
   "jean_99b822bc-51ac-4049-ba39-980541"
 ]
 ```
 
-#### `GET /status/<task_id>`
+#### `GET /task/status/<task_id>`
 
 Returns the status of a task.
 
 * **Arguments:**
-  * `task_id`: the task ID returned by `/launch/<service_name>`
+  * `task_id`: the task ID returned by `/task/launch/<service_name>`
 * **Input:** None
 * **Output:**
   * On invalid `task_id`, a HTTP 404 code dictionary with an error message (JSON)
@@ -301,11 +329,11 @@ Returns the status of a task.
 * **Example:**
 
 ```
-curl -X GET http://127.0.0.1:5000/status/unknwon-task-id
+curl -X GET http://127.0.0.1:5000/task/status/unknwon-task-id
 {
   "message": "task unknwon-task-id unknown"
 }
-curl -X GET http://127.0.0.1:5000/status/130d4400-9aad-4654-b124-d258cbe4b1e3
+curl -X GET http://127.0.0.1:5000/task/status/130d4400-9aad-4654-b124-d258cbe4b1e3
 {
   "allocated_time": "1519148201.9924579",
   "content": "{\"docker\": {\"command\": [], \"registry\": \"dockerhub\", \"image\": \"opennmt/opennmt-lua\", \"tag\": \"latest\"}, \"service\": \"ec2\", \"wait_after_launch\": 2, \"trainer_id\": \"OpenNMT\", \"options\": {\"launchTemplateName\": \"SingleTrainingDev\"}}", 
@@ -335,12 +363,12 @@ The main fields are:
 * `update_time`: if the task is sending beat requests;
 * `ttl` if a time to live was passed in the beat request.
 
-#### `GET /terminate/<task_id>(?phase=status)`
+#### `GET /task/terminate/<task_id>(?phase=status)`
 
 Terminates a task. If the task is already stopped, it does nothing. Otherwise, it changes the status of the task to `terminating` (actual termination is asynchronous) and returns a success message.
 
 * **Arguments:**
-  * `task_id`: the task identifier returned by `/launch/<service_name>`
+  * `task_id`: the task identifier returned by `/task/launch/<service_name>`
   * (optionnal) `phase`: indicate if the termination command is corresponding to an error or natural completion (`completed`)
 * **Input**: None
 * **Output**:
@@ -348,29 +376,29 @@ Terminates a task. If the task is already stopped, it does nothing. Otherwise, i
   * On success, a HTTP 200 code with a message (JSON)
 
 ```
-curl -X GET http://127.0.0.1:5000/terminate/130d4400-9aad-4654-b124-d258cbe4b1e3
+curl -X GET http://127.0.0.1:5000/task/terminate/130d4400-9aad-4654-b124-d258cbe4b1e3
 {
   "message": "130d4400-9aad-4654-b124-d258cbe4b1e3 already stopped"
 }
 ```
 
-#### `GET /del/<task_id>`
+#### `DELETE /task/<task_id>`
 
 Deletes a task. If the task is not stopped, it does nothing.
 
 * **Arguments:**
-  * `task_id`: the task identifier returned by `/launch/<service_name>`
+  * `task_id`: the task identifier returned by `/task/launch/<service_name>`
 * **Input**: None
 * **Output**:
   * On invalid `task_id`, a HTTP 404 code with an error message (JSON)
   * On success, a HTTP 200 code with a message (JSON)
 
-#### `GET /beat/<task_id>(?duration=XXX&container_id=CID)`
+#### `PUT /task/beat/<task_id>(?duration=XXX&container_id=CID)`
 
 Notifies a *beat* back to the launcher. Tasks should invoke this route wih a specific interval to notify that they are still alive and working. This makes it easier for the launcher to identify and handle dead tasks.
 
 * **Arguments**
-  * `task_id`: the task identifier returned by `/launch/<service_name>`
+  * `task_id`: the task identifier returned by `/task/launch/<service_name>`
   * (optional) `duration`: if no beat is received for this task after this duration the task is assumed to be dead
   * (optional) `container_id`: the ID of the Docker container
 * **Input:** None
@@ -379,30 +407,34 @@ Notifies a *beat* back to the launcher. Tasks should invoke this route wih a spe
   * On invalid `task_id`, a HTTP 404 code with an error message (JSON)
   * On success, a HTTP 200 code
 
-#### `POST /file/<task_id>/<filename>`
+#### `POST /task/file/<task_id>/<filename>`
 
 Registers a file for a task - typically used for log, or posting translation output using http storage.
 
 * **Arguments**
-  * `task_id`: the task identifier returned by `/launch/<service_name>`
+  * `task_id`: the task identifier returned by `/task/launch/<service_name>`
   * `filename`: a filename
 * **Input:** None
 * **Output:**
   * On invalid `task_id`, a HTTP 404 code with an error message (JSON)
   * On success, a HTTP 200 code
 
-#### `GET /file/<task_id>/<filename>`
+#### `GET /task/file/<task_id>/<filename>`
 
-Retrieves file attached to a tasK
+Retrieves file attached to a task
 
 * **Arguments**
-  * `task_id`: the task identifier returned by `/launch/<service_name>`
+  * `task_id`: the task identifier returned by `/task/launch/<service_name>`
   * `filename`: a filename
 * **Input:** None
 * **Output:**
   * On invalid `task_id`, a HTTP 404 code with an error message (JSON)
   * On missing files, a HTTP 404 code with an error message (JSON)
   * On success, the actual file
+
+#### `GET/POST/PATCH /task/log/<task_id>`
+
+Gets/Posts/Append log attached to a task. Logs are saved in a special `log:<task_id>` key in the redis table allowing for fast implementation of append operation.
 
 ### Launcher
 
@@ -433,7 +465,7 @@ The Redis database contains the following fields:
 | `lock:<resource...,task:…>` | value | Temporary lock on a resource or task |
 | `queued:<service>` | list | Tasks waiting for a resource |
 | `resource:<service>:<resourceid>` | list | Tasks using this resource |
-| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|running|updated|stopped)_time: time for each event</li></ul> |
+| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li><li>priority: task priority (higher better)</li></ul> |
 | `files:<task_id>` | dict | files associated to a task, "log" is generated when training is complete |
 | `queue:<task_id>` | str | expirable timestamp on the task - is used to regularily check status |
 | `work` | list | Tasks to process |

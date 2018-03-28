@@ -93,8 +93,7 @@ class EC2Service(Service):
             self._config["privateKeysDirectory"], "%s.pem" % instance.key_pair.name)
         client = paramiko.SSHClient()
         try:
-            common.ssh_connect_with_retry(
-                client,
+            client = common.ssh_connect_with_retry(
                 instance.public_dns_name,
                 self._config["amiUsername"],
                 key_path,
@@ -127,7 +126,7 @@ class EC2Service(Service):
         task["instance_id"] = instance.id
         return task
 
-    def status(self, params):
+    def status(self, task_id, params):
         instance_id = params["instance_id"] if isinstance(params, dict) else params
         ec2_client = self._session.client("ec2")
         status = ec2_client.describe_instance_status(

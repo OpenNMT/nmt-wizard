@@ -63,6 +63,8 @@ class SSHService(Service):
     def get_resource_from_options(self, options):
         if len(self._resources) == 1:
             return self._resources[0]
+        elif "server" not in options:
+            return "auto"
         else:
             return options["server"]
 
@@ -93,7 +95,6 @@ class SSHService(Service):
         params = _get_params(self._config, options)
         client = paramiko.client.SSHClient()
         common.ssh_connect_with_retry(
-            client,
             params['server'],
             params['login'],
             self._config['privateKey'],
@@ -122,9 +123,7 @@ class SSHService(Service):
             options['server'] = resource
 
         params = _get_params(self._config, options)
-        client = paramiko.client.SSHClient()
-        common.ssh_connect_with_retry(
-            client,
+        client = common.ssh_connect_with_retry(
             params['server'],
             params['login'],
             self._config['privateKey'],
@@ -151,29 +150,48 @@ class SSHService(Service):
         params['pgid'] = task['pgid']
         return params
 
-    def status(self, params):
-        client = paramiko.client.SSHClient()
-        client.load_system_host_keys()
-        client.connect(params['server'], username=params['login'])
-        _, stdout, _ = client.exec_command('kill -0 -%d ; echo $?' % params['pgid'])
-        outstatus = stdout.readline()
+    def status(self, task_id, params, get_log=True):
+        client = common.ssh_connect_with_retry(
+            params['server'],
+            params['login'],
+            self._config['privateKey'],
+            login_cmd=params['login_cmd'])
+
+        if 'container_id' in params:
+            exit_status, stdout, stderr = common.run_docker_command(client, 'inspect -f {{.State.Status}} %s' %
+                                                                    params['container_id'])
+        else:
+            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+
+        if get_log:
+            common.update_log(task_id, client, params['log_dir'], self._config.get('callback_url'))
+
         client.close()
-        if outstatus.strip() != '0':
+        if exit_status != 0:
             return "dead"
+
         return "running"
 
     def terminate(self, params):
-        client = paramiko.client.SSHClient()
-        client.load_system_host_keys()
-        client.connect(params['server'], username=params['login'])
-        _, stdout, stderr = client.exec_command('kill -0 -%d ; echo $?' % params['pgid'])
-        outstatus = stdout.readline()
-        if outstatus.strip() != '0':
-            client.close()
-            return
-        _, stdout, stderr = client.exec_command('kill -9 -%d' % params['pgid'])
-        outstatus = stdout.readline()
-        stderr = stderr.readline()
+        client = common.ssh_connect_with_retry(
+            params['server'],
+            params['login'],
+            self._config['privateKey'],
+            login_cmd=params['login_cmd'])
+        if 'container_id' in params:
+            common.run_docker_command(client, 'rm --force %s' % params['container_id'])
+        else:
+            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+            if exit_status != 0:
+                logger.debug("exist_status %d: %s", exit_status, stderr.read())
+                client.close()
+                return
+            exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+            if exit_status != 0:
+                logger.debug("exist_status %d: %s", exit_status, stderr.read())
+                client.close()
+                return
+        logger.debug("successfully terminated")
         client.close()
 
 

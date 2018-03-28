@@ -32,7 +32,8 @@
                 "access_key_id": "XXXXX",
                 "secret_access_key": "XXXXX",
                 "region_name": "eu-west-3"
-            }
+            },
+            "default_ms": true
         },
         "s3_test": {
             "type": "s3",

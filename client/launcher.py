@@ -6,7 +6,11 @@ import sys
 import os
 import logging
 import requests
+import regex as re
 from datetime import datetime
+import math
+
+reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:([-A-Za-z_.0-9]+)|)$")
 
 def getjson(config):
     if config is None:
@@ -80,12 +84,18 @@ parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                                  'to check that launch is ok - by default wait for 2 seconds'))
 parser_launch.add_argument('-r', '--docker_registry', default='dockerhub',
                            help='docker registry (as configured on server side) - default is `dockerhub`')
-parser_launch.add_argument('-i', '--docker_image', required=True,
-                           help='Docker image')
+parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
+                           help='Docker image (can be prefixed by docker_registry:)')
 parser_launch.add_argument('-t', '--docker_tag', default="latest",
                            help='Docker image tag (default is latest)')
+parser_launch.add_argument('-n', '--name',
+                           help='Friendly name for the model, for subsequent tasks, inherits from previous')
 parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
                            help='trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])')
+parser_launch.add_argument('-I', '--iterations', type=int, default=1,
+                           help='for training tasks, iterate several tasks in a row')
+parser_launch.add_argument('-p', '--priority', type=int, default=0,
+                           help='task priority - highest better')
 parser_launch.add_argument('docker_command', type=str, nargs='*',
                            help='Docker command')
 parser_list_tasks = subparsers.add_parser('lt',
@@ -95,12 +105,15 @@ parser_list_tasks.add_argument('-p', '--prefix', default=os.getenv('LAUNCHER_TID
 parser_del_tasks = subparsers.add_parser('dt',
                                          help='delete tasks matching prefix pattern')
 parser_del_tasks.add_argument('-p', '--prefix', required=True,
-                               help='prefix for the tasks to delete')
+                              help='prefix for the tasks to delete')
 parser_status = subparsers.add_parser('status', help='get status of a task')
 parser_status.add_argument('-k', '--task_id',
                               help="task identifier", required=True)
 parser_terminate = subparsers.add_parser('terminate', help='terminate a task')
 parser_terminate.add_argument('-k', '--task_id',
+                              help="task identifier", required=True)
+parser_log = subparsers.add_parser('log', help='get log associated to a task')
+parser_log.add_argument('-k', '--task_id',
                               help="task identifier", required=True)
 parser_file = subparsers.add_parser('file', help='get file associated to a task')
 parser_file.add_argument('-k', '--task_id',
@@ -119,56 +132,83 @@ if args.url is None:
         logger.error('missing launcher_url')
         sys.exit(1)
 
-r = requests.get(os.path.join(args.url, "list_services"))
+r = requests.get(os.path.join(args.url, "service/list"))
 if r.status_code != 200:
-    logger.error('incorrect result from \'list_services\' service: %s', r.text)
+    logger.error('incorrect result from \'service/list\' service: %s', r.text)
 serviceList = r.json()
 
 if args.cmd == "ls":
     result = serviceList
     if not args.json:
-        print("%-20s\t%s" % ("SERVICE NAME", "DESCRIPTION"))
+        print("%-20s\t%10s\t%10s\t%10s\t%s" % ("SERVICE NAME", "USAGE", "QUEUED",
+                                               "CAPACITY", "DESCRIPTION"))
         for k in result:
-            print("%-20s\t%s" % (k, result[k]))
+            print("%-20s\t%10d\t%10d\t%10d\t%s" % (k,
+                                             result[k]['usage'],
+                                             result[k]['queued'],
+                                             result[k]['capacity'],
+                                             result[k]['name']))
         sys.exit(0)
 elif args.cmd == "lt":
-    r = requests.get(os.path.join(args.url, "list_tasks", args.prefix + '*'))
+    r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'))
     if r.status_code != 200:
-        logger.error('incorrect result from \'list_tasks\' service: %s', r.text)
+        logger.error('incorrect result from \'task/list\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print("%-32s\t%-20s\t%-16s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: int(k["queued_time"])):
-            date = datetime.fromtimestamp(int(k["queued_time"])).isoformat(' ')
-            print("%-32s\t%-20s\t%-16s\t%-10s\t%s" % (
-                k["task_id"], date, k["image"], k["status"], k.get("message")))
+        print("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s" %
+              ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+        for k in sorted(result, key=lambda k: float(k["queued_time"])):
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
+            print("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s" %
+                  (k["type"], k["task_id"], k["resource"], int(k["priority"]), 
+                   date, k["image"], k["status"], k.get("message")))
         sys.exit(0)
 elif args.cmd == "describe":
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
-    r = requests.get(os.path.join(args.url, "describe", args.service))
+    r = requests.get(os.path.join(args.url, "service/describe", args.service))
     if r.status_code != 200:
-        logger.error('incorrect result from \'describe\' service: %s', r.text)
+        logger.error('incorrect result from \'service/describe\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
 elif args.cmd == "check":
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
-    r = requests.get(os.path.join(args.url, "check", args.service), json=getjson(args.options))
+    r = requests.get(os.path.join(args.url, "service/check", args.service), json=getjson(args.options))
     if r.status_code != 200:
-        logger.error('incorrect result from \'check\' service: %s', r.text)
+        logger.error('incorrect result from \'service/check\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
         print(result["message"])
         sys.exit(0)
 elif args.cmd == "launch":
+    if args.trainer_id is None:
+        logger.error('missing trainer_id (you can set LAUNCHER_TID)')
+        sys.exit(1)
+
+    if args.docker_image is None:
+        logger.error('missing docker image (you can set LAUNCHER_IMAGE)')
+        sys.exit(1)
+    m = reimage.match(args.docker_image)
+    if not m:
+        logger.error('incorrect docker image syntax (%s) - should be [registry:]organization/image[:tag]',
+                     args.docker_image)
+        sys.exit(1)
+
+    if m.group(2):
+        args.docker_registry = m.group(2)
+    if m.group(5):
+        args.docker_tag = m.group(5)
+    args.docker_image = m.group(3)
+    print(args)
     if args.service not in serviceList:
         logger.fatal("ERROR: service '%s' not defined", args.service)
         sys.exit(1)
+
 
     # for multi-part file sending
     files = {}
@@ -210,49 +250,62 @@ elif args.cmd == "launch":
         "options": getjson(args.options)
     }
 
-    launch_url = os.path.join(args.url, "launch", args.service)
+    if args.name:
+        content["name"] = args.name
+    if args.iterations:
+        content["iterations"] = args.iterations
+    if args.priority:
+        content["priority"] = args.priority
+
+    logger.debug("sending request: %s", json.dumps(content))
+
+    launch_url = os.path.join(args.url, "task/launch", args.service)
     r = None
     if len(files) > 0:
-        r = requests.post(launch_url, files=files, data = {'content': json.dumps(content)})
+        r = requests.post(launch_url, files=files, data = {'content': json.dumps(content) })
     else:
         r = requests.post(launch_url, json=content)
     if r.status_code != 200:
-        logger.error('incorrect result from \'launch\' service: %s', r.text)
+        logger.error('incorrect result from \'task/launch\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
-        print(result)
+        if isinstance(result, list):
+            print("\n".join(result))
+        else:
+            print(result)
         sys.exit(0)
 elif args.cmd == "status":
-    r = requests.get(os.path.join(args.url, "status", args.task_id))
+    r = requests.get(os.path.join(args.url, "task/status", args.task_id))
     if r.status_code != 200:
-        logger.error('incorrect result from \'status\' service: %s', r.text)
+        logger.error('incorrect result from \'task/status\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
         times = []
-        current_time = int(result["current_time"])
+        current_time = float(result["current_time"])
         result.pop("current_time", None)
         for k in result:
             if k.endswith('_time'):
                 times.append(k)
-        sorted_times = sorted(times, key=lambda k: int(result[k]))
+        sorted_times = sorted(times, key=lambda k: float(result[k]))
         last_update = ''
         if sorted_times:
-            upd = current_time - int(result[sorted_times[-1]])
+            upd = current_time - float(result[sorted_times[-1]])
             last_update = " - updated %d seconds ago" % upd
-        print("TASK %s - status %s (%s)%s" % (
-            args.task_id, result.get('status'), result.get('message'), last_update))
+        print("TASK %s - TYPE %s - status %s (%s)%s" % (
+                args.task_id, result.get('type'),
+                result.get('status'), result.get('message'), last_update))
         if "service" in result:
             print("SERVICE %s - RESOURCE %s - CONTAINER %s" % (
-                result['service'], result.get('resource'), result.get('container_id')))
+                    result['service'], result.get('resource'), result.get('container_id')))
         print("ATTACHED FILES: %s" % ', '.join(result['files']))
         print("TIMELINE:")
         last = -1
         delay = []
         for k in sorted_times:
             if k != "updated_time":
-                current = int(result[k])
+                current = float(result[k])
                 delta = current-last if last != -1 else 0
                 delay.append("(%ds)" % delta)
                 last = current
@@ -260,8 +313,8 @@ elif args.cmd == "status":
         idx = 1
         for k in sorted_times:
             if k != "updated_time":
-                current = int(result[k])
-                date = datetime.fromtimestamp(current).isoformat(' ')
+                current = float(result[k])
+                date = datetime.fromtimestamp(math.ceil(current)).isoformat(' ')
                 print("\t%-12s\t%s\t%s" % (k[:-5], date, delay[idx]))
                 idx += 1
         content = result["content"]
@@ -270,40 +323,47 @@ elif args.cmd == "status":
         print(json.dumps(content, indent=True))
         sys.exit(0)
 elif args.cmd == "dt":
-    r = requests.get(os.path.join(args.url, "list_tasks", args.prefix + '*'))
+    r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'))
     if r.status_code != 200:
-        logger.error('incorrect result from \'list_tasks\' service: %s', r.text)
+        logger.error('incorrect result from \'task/list\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
         print('Delete %d tasks:' % len(result))
-        print("\t%-32s\t%-20s\t%-16s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: int(k["queued_time"])):
-            date = datetime.fromtimestamp(int(k["queued_time"])).isoformat(' ')
-            print("\t%-32s\t%-20s\t%-16s\t%-10s\t%s" % (
+        print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+        for k in sorted(result, key=lambda k: float(k["queued_time"])):
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
+            print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
                 k["task_id"], date, k["image"], k["status"], k.get("message")))
         if confirm():
             for k in result:
-                r = requests.get(os.path.join(args.url, "del", k["task_id"]))
+                r = requests.delete(os.path.join(args.url, "task", k["task_id"]))
                 if r.status_code != 200:
                     logger.error('incorrect result from \'delete_task\' service: %s', r.text)
                     sys.exit(1)
         sys.exit(0)
 elif args.cmd == "terminate":
-    r = requests.get(os.path.join(args.url, "terminate", args.task_id))
+    r = requests.get(os.path.join(args.url, "task/terminate", args.task_id))
     if r.status_code != 200:
-        logger.error('incorrect result from \'terminate\' service: %s', r.text)
+        logger.error('incorrect result from \'task/terminate\' service: %s', r.text)
         sys.exit(1)
     result = r.json()
     if not args.json:
         print(result["message"])
-        sys.exit(0)     
+        sys.exit(0)
 elif args.cmd == "file":
-    r = requests.get(os.path.join(args.url, "file", args.task_id, args.filename))
+    r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename))
     if r.status_code != 200:
-        logger.error('incorrect result from \'log\' service: %s', r.text)
+        logger.error('incorrect result from \'task/file\' service: %s', r.text)
         sys.exit(1)
-    print(r.text)
+    print(r.text.encode("utf-8"))
+    sys.exit(0)
+elif args.cmd == "log":
+    r = requests.get(os.path.join(args.url, "task/log", args.task_id))
+    if r.status_code != 200:
+        logger.error('incorrect result from \'task/log\' service: %s', r.text)
+        sys.exit(1)
+    print(r.text.encode("utf-8"))
     sys.exit(0)
 
 print(json.dumps(result))
