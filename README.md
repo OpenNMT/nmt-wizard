@@ -98,16 +98,19 @@ For performance, multiple workers might be running simultaneously. In that case,
 
 The server has the following HTTP routes:
 
-* `service/list`: returns available services
-* `describe`: returns user selectable options for the service
-* `check`: checks availability of a given service with provided user options
-* `launch`: launches a task on a given service with provided user options
-* `status`: checks the status of a task
-* `task/list`: returns the list of tasks in the database
-* `del`: delete a task from the database
-* `terminate`: terminates the process and/or instance associated with a task
-* `beat`: provides a `beat` back to the launcher to notify the task activity and announce the next beat to expect
-* `file`: sets or returns a file associated to a task
+| METHOD    | ROUTE | PARAAM | Description |
+| ---       | --- | --- |
+| `GET`     | `service/list` | | Returns available services |
+| `GET`     | `service/describe/{service_id}` | | Returns user selectable options for a specified service |
+| `GET`     | `service/check/{service_id}` | | Checks availability of a given service with provided user options |
+| `POST`    | `task/launch` | |  Launches a task on a given service with provided user options
+| `GET`     | `task/status/{task_id}` | |  Checks the status of a task |
+| `GET`     | `task/list` | prefix | Returns the list of tasks in the database |
+| `GET`     | `task/terminate/{task_id}` | |  Terminates a task, the process and/or instance associated with a task |
+| `DELETE`  | `task/{task_id}` | | Delete a task from the database |
+| `PUT`     | `task/beat/{task_id}` | | Provides a `beat` back to the launcher to notify the task activity and announce the next beat to expect |
+| `GET`<br>`POST` | `task/file/{task_id}` | | Gets or set a file associated to a task |
+| `GET`<br>`PATCH`<br>`POST` | `task/log/{task_id}` | | Gets, appends or sets the log associated to a task |
 
 The server uses Flask. See the [Flask documentation](http://flask.pocoo.org/docs/0.12/deploying/) to deploy it for production. For development, it can be run as follows (single thread):
 
