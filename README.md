@@ -99,7 +99,7 @@ For performance, multiple workers might be running simultaneously. In that case,
 The server has the following HTTP routes:
 
 | METHOD    | ROUTE | PARAAM | Description |
-| ---       | --- | --- |
+| ---       | --- | --- | --- |
 | `GET`     | `service/list` | | Returns available services |
 | `GET`     | `service/describe/{service_id}` | | Returns user selectable options for a specified service |
 | `GET`     | `service/check/{service_id}` | | Checks availability of a given service with provided user options |
