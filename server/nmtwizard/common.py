@@ -358,7 +358,7 @@ def launch_task(task_id,
             raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, stderr.read()))
         for f in docker_files:
             logger.info("retrieve file %s -> %s/%s", f, mount_tmpdir, task_id)
-            cmd_get_files = 'curl "%s/file/%s/%s" > %s/%s/%s' % (
+            cmd_get_files = 'curl "%s/task/file/%s/%s" > %s/%s/%s' % (
                 callback_url,
                 task_id,
                 f,
