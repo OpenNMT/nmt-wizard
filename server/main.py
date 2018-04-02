@@ -205,16 +205,8 @@ def task_beat(task_id):
 
 @task_request
 @app.route("/beat/<string:task_id>", methods=["GET"])
-def task_beat(task_id):
-    duration = flask.request.args.get('duration')
-    try:
-        if duration is not None:
-            duration = int(duration)
-    except ValueError:
-        flask.abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
-    container_id = flask.request.args.get('container_id')
-    task.beat(redis, task_id, duration, container_id)
-    return flask.jsonify(200)
+def task_beat_old(task_id):
+    task_beat(task_id)
 
 @task_request
 @app.route("/task/file/<string:task_id>/<string:filename>", methods=["GET"])
