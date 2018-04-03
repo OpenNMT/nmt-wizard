@@ -171,6 +171,7 @@ def list_tasks(pattern):
         info = task.info(redis, task_id,
                 ["queued_time", "resource", "content", "status", "message", "type", "iterations", "priority"])
         if info["content"] is not None and info["content"] != "":
+            content = info["content"]
             info["image"] = content['docker']['image']
             del info['content']
         else:
