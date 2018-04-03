@@ -158,7 +158,7 @@ elif args.cmd == "lt":
     if not args.json:
         print("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s" %
               ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: float(k["queued_time"])):
+        for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
             date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
             print("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s" %
                   (k["type"], k["task_id"], k["resource"], int(k["priority"]), 
