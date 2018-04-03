@@ -170,7 +170,10 @@ def list_tasks(pattern):
         task_id = task.id(task_key)
         info = task.info(redis, task_id,
                 ["queued_time", "resource", "content", "status", "message", "type", "iterations", "priority"])
-        content = json.loads(info["content"])
+        try:
+            content = json.loads(info["content"])
+        except Exception:
+            app.logger.error('cannot decode content: %s', content)
         info["image"] = content['docker']['image']
         del info['content']
         info['task_id'] = task_id
