@@ -159,9 +159,9 @@ elif args.cmd == "lt":
         print("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s" %
               ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
-            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
             print("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s" %
-                  (k["type"], k["task_id"], k["resource"], int(k["priority"]), 
+                  (k["type"], k["task_id"], k["resource"], int(k["priority"] or 0), 
                    date, k["image"], k["status"], k.get("message")))
         sys.exit(0)
 elif args.cmd == "describe":
@@ -332,7 +332,7 @@ elif args.cmd == "dt":
         print('Delete %d tasks:' % len(result))
         print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
         for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
-            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"]))).isoformat(' ')
+            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
             print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
                 k["task_id"], date, k["image"], k["status"], k.get("message")))
         if confirm():
