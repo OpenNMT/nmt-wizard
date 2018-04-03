@@ -173,7 +173,7 @@ def list_tasks(pattern):
         try:
             content = json.loads(info["content"])
         except Exception:
-            app.logger.error('cannot decode content: %s', content)
+            app.logger.error('%s cannot decode content: %s', task_id, info["content"])
         info["image"] = content['docker']['image']
         del info['content']
         info['task_id'] = task_id
