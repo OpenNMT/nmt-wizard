@@ -170,12 +170,11 @@ def list_tasks(pattern):
         task_id = task.id(task_key)
         info = task.info(redis, task_id,
                 ["queued_time", "resource", "content", "status", "message", "type", "iterations", "priority"])
-        try:
-            content = json.loads(info["content"])
-        except Exception:
-            app.logger.error('%s cannot decode content: %s', task_id, info["content"])
-        info["image"] = content['docker']['image']
-        del info['content']
+        if info["content"] is not None and info["content"] != "":
+            info["image"] = content['docker']['image']
+            del info['content']
+        else:
+            info["image"] = '-'
         info['task_id'] = task_id
         ltask.append(info)
     return flask.jsonify(ltask)
