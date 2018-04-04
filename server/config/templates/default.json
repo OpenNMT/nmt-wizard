@@ -51,7 +51,13 @@
             "server": "myserver_url",
             "user": "XXXXX",
             "password": "XXXXX"
+        },
+        "launcher": {
+            "type": "http",
+            "get_pattern": "<CALLBACK_URL>/task/file/<TASK_ID>/%s",
+            "post_pattern": "<CALLBACK_URL>/task/file/<TASK_ID>/%s"
         }
+
     },
     "callback_url": "http://XXXXX:5000",
     "callback_interval": 60
