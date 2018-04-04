@@ -1,5 +1,5 @@
 from flask import Flask
-from six.moves import configparser
+from flask_ini import FlaskIni
 import os
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import config, common
@@ -15,16 +15,14 @@ ch.setFormatter(formatter)
 config.add_log_handler(ch)
 common.add_log_handler(ch)
 
-app.config.from_envvar('LAUNCHER_CONFIG')
+app.iniconfig = FlaskIni()
+with app.app_context():
+    app.iniconfig.read(os.getenv('LAUNCHER_CONFIG'))
 
-redis_password = None
-if 'redis_password' in app.config:
-    redis_password = app.config['REDIS_PASSWORD']
-
-redis = RedisDatabase(app.config['REDIS_HOST'],
-                      app.config['REDIS_PORT'],
-                      app.config['REDIS_DB'],
-                      redis_password)
-services = config.load_services(app.config['CONFIG_DIR'])
+redis = RedisDatabase(app.iniconfig.get('redis','host'),
+                      app.iniconfig.get('redis','port',fallback=6379),
+                      app.iniconfig.get('redis','db',fallback=0),
+                      app.iniconfig.get('redis', 'password',fallback=None))
+services = config.load_services(app.iniconfig.get('default','config_dir'))
 
 from app import routes
