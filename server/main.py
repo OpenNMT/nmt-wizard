@@ -125,14 +125,16 @@ def launch(service):
         if p == -1:
             flask.abort(flask.make_response(flask.jsonify(message="image should be repository/name"), 400))
         repository = repository[:p]
+        registry = None
         for r in service_module._config['docker']['registries']:
             v = service_module._config['docker']['registries'][r]
             if "default_for" in v and repository in v['default_for']:
                 registry = r
                 break
-        if registry == "auto":
+        if registry is None:
             flask.abort(flask.make_response(
                 flask.jsonify(message="cannot find registry for repository %s" % repository), 400))
+        content['docker']['registry'] = registry
     elif content['docker']['registry'] not in service_module._config['docker']['registries']:
         flask.abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
     resource = service_module.get_resource_from_options(content["options"])
