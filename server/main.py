@@ -119,7 +119,21 @@ def launch(service):
         or 'tag' not in content['docker']
         or 'command' not in content['docker']):
         flask.abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
-    if content['docker']['registry'] not in service_module._config['docker']['registries']:
+    if content['docker']['registry'] == 'auto':
+        repository = content['docker']['image']
+        p = repository.find("/")
+        if p == -1:
+            flask.abort(flask.make_response(flask.jsonify(message="image should be repository/name"), 400))
+        repository = repository[:p]
+        for r in service_module._config['docker']['registries']:
+            v = service_module._config['docker']['registries'][r]
+            if "default_for" in v and repository in v['default_for']:
+                registry = r
+                break
+        if registry == "auto":
+            flask.abort(flask.make_response(
+                flask.jsonify(message="cannot find registry for repository %s" % repository), 400))
+    elif content['docker']['registry'] not in service_module._config['docker']['registries']:
         flask.abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
     resource = service_module.get_resource_from_options(content["options"])
 

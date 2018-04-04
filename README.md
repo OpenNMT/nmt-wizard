@@ -38,7 +38,8 @@ The configuration file has the following structure:
             },
             "dockerhub": {
                 "type": "dockerhub",
-                "uri": ""
+                "uri": "",
+                "default_for": [ "nmtwizard" ]
             },
             "mydockerprivate": {
                 "type": "dockerprivate",
@@ -46,7 +47,8 @@ The configuration file has the following structure:
                 "credentials": {
                     "password": "XXXXX",
                     "username": "XXXXX"
-                }
+                },
+                "default_for": [ "systran" ]
             }
         },
         "mount": [  // Volumes to mount when running the Docker image.

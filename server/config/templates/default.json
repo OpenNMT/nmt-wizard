@@ -12,7 +12,8 @@
             },
             "dockerhub": {
                 "type": "dockerhub",
-                "uri": ""
+                "uri": "",
+                "default_for": [ "nmtwizard" ]
             },
             "mydockerprivate": {
                 "type": "dockerprivate",
@@ -20,7 +21,8 @@
                 "credentials": {
                     "password": "XXXXX",
                     "username": "XXXXX"
-                }
+                },
+                "default_for": [ "myrepo" ]
             }
         }
     },

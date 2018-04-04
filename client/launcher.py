@@ -82,8 +82,8 @@ parser_launch.add_argument('-o', '--options', default='{}',
 parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                            help=('if not 0, wait for this number of seconds after launch '
                                  'to check that launch is ok - by default wait for 2 seconds'))
-parser_launch.add_argument('-r', '--docker_registry', default='dockerhub',
-                           help='docker registry (as configured on server side) - default is `dockerhub`')
+parser_launch.add_argument('-r', '--docker_registry', default='auto',
+                           help='docker registry (as configured on server side) - default is `auto`')
 parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
                            help='Docker image (can be prefixed by docker_registry:)')
 parser_launch.add_argument('-t', '--docker_tag', default="latest",
