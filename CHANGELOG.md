@@ -5,6 +5,7 @@
 
 ### New features
 
+* launch error now reports error message in task log
 * define `auto` registry - resolved by launcher checking at `default_for` in registry definition
 * add friendly name to tasks, and differentiate task type
 * add task chaining feature - it is possible to launch sequence of tasks

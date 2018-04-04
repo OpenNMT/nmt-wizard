@@ -50,6 +50,7 @@ class Worker(object):
                     except Exception as e:
                         self._logger.error('%s: %s', task_id, str(e))
                         with self._redis.acquire_lock(task_id):
+                            task.set_log(self._redis, task_id, str(e))
                             task.terminate(self._redis, task_id, phase="launch_error")
                 else:
                     if counter > self._refresh_counter:
