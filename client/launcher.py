@@ -4,13 +4,13 @@ import argparse
 import json
 import sys
 import os
-import logging
 import requests
 import regex as re
 from datetime import datetime
 import math
 
 reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:([-A-Za-z_.0-9]+)|)$")
+logger = None
 
 def getjson(config):
     if config is None:
@@ -121,8 +121,9 @@ parser_file.add_argument('-k', '--task_id',
 parser_file.add_argument('-f', '--filename',
                               help="filename to retrieve - for instance log", required=True)
 
-def process_request(cmd, json, args, auth=None):
+def process_request(serviceList, cmd, json, args, auth=None):
     res = None
+    result = None
     if cmd == "ls":
         result = serviceList
         if not json:
@@ -137,8 +138,7 @@ def process_request(cmd, json, args, auth=None):
     elif cmd == "lt":
         r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/list\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
         if not json:
             res = ("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s\n" %
@@ -150,38 +150,31 @@ def process_request(cmd, json, args, auth=None):
                            date, k["image"], k["status"], k.get("message")))
     elif cmd == "describe":
         if args.service not in serviceList:
-            logger.fatal("ERROR: service '%s' not defined", args.service)
-            sys.exit(1)
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
         r = requests.get(os.path.join(args.url, "service/describe", args.service), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'service/describe\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'service/describe\' service: %s' % r.text)
         result = r.json()
     elif cmd == "check":
         if args.service not in serviceList:
-            logger.fatal("ERROR: service '%s' not defined", args.service)
-            sys.exit(1)
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
         r = requests.get(os.path.join(args.url, "service/check", args.service),
                          json=getjson(args.options), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'service/check\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         result = r.json()
         if not json:
             res = result["message"]
     elif cmd == "launch":
         if args.trainer_id is None:
-            logger.error('missing trainer_id (you can set LAUNCHER_TID)')
-            sys.exit(1)
+            raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')
 
         if args.docker_image is None:
-            logger.error('missing docker image (you can set LAUNCHER_IMAGE)')
-            sys.exit(1)
+            raise RuntimeError('missing docker image (you can set LAUNCHER_IMAGE)')
         m = reimage.match(args.docker_image)
         if not m:
-            logger.error('incorrect docker image syntax (%s) - should be [registry:]organization/image[:tag]',
-                         args.docker_image)
-            sys.exit(1)
+            raise ValueError('incorrect docker image syntax (%s) - should be [registry:]organization/image[:tag]' %
+                             args.docker_image)
 
         if m.group(2):
             args.docker_registry = m.group(2)
@@ -190,9 +183,7 @@ def process_request(cmd, json, args, auth=None):
         args.docker_image = m.group(3)
 
         if args.service not in serviceList:
-            logger.fatal("ERROR: service '%s' not defined", args.service)
-            sys.exit(1)
-
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
 
         # for multi-part file sending
         files = {}
@@ -209,18 +200,13 @@ def process_request(cmd, json, args, auth=None):
                 c = "${TMP_DIR}/%s" % basename
             # if json, explore for values to check local path values
             if c.startswith('{'):
-                try:
-                    cjson = json.loads(c)
-                except ValueError as err:
-                    logger.fatal("Invalid JSON parameter in %s: %s", orgc, str(err))
-                    sys.exit(1)
+                cjson = json.loads(c)
                 find_files_parameters(cjson, files)
                 c = json.dumps(cjson)
             docker_command.append(c)
 
         if args.service not in serviceList:
-            logger.fatal("ERROR: service '%s' not defined", args.service)
-            sys.exit(1)
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
 
         content = {
             "docker": {
@@ -251,8 +237,7 @@ def process_request(cmd, json, args, auth=None):
         else:
             r = requests.post(launch_url, json=content, auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/launch\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/launch\' service: %s' % r.text)
         result = r.json()
         if not json:
             if isinstance(result, list):
@@ -262,8 +247,7 @@ def process_request(cmd, json, args, auth=None):
     elif cmd == "status":
         r = requests.get(os.path.join(args.url, "task/status", args.task_id), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/status\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/status\' service: %s' % r.text)
         result = r.json()
         if not json:
             times = []
@@ -308,8 +292,7 @@ def process_request(cmd, json, args, auth=None):
     elif cmd == "dt":
         r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/list\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
         if not json:
             print('Delete %d tasks:' % len(result))
@@ -322,28 +305,23 @@ def process_request(cmd, json, args, auth=None):
                 for k in result:
                     r = requests.delete(os.path.join(args.url, "task", k["task_id"]), auth=auth)
                     if r.status_code != 200:
-                        logger.error('incorrect result from \'delete_task\' service: %s', r.text)
-                        sys.exit(1)
-            sys.exit(0)
+                        raise RuntimeError('incorrect result from \'delete_task\' service: %s' % r.text)
     elif cmd == "terminate":
         r = requests.get(os.path.join(args.url, "task/terminate", args.task_id), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/terminate\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/terminate\' service: %s' % r.text)
         result = r.json()
         if not json:
             res = result["message"]
     elif cmd == "file":
         r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/file\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/file\' service: %s' % r.text)
         res = r.text.encode("utf-8")
     elif cmd == "log":
         r = requests.get(os.path.join(args.url, "task/log", args.task_id), auth=auth)
         if r.status_code != 200:
-            logger.error('incorrect result from \'task/log\' service: %s', r.text)
-            sys.exit(1)
+            raise RuntimeError('incorrect result from \'task/log\' service: %s' % r.text)
         res = r.text.encode("utf-8")
     if res is not None:
         return res
@@ -351,6 +329,8 @@ def process_request(cmd, json, args, auth=None):
         return result
 
 if __name__ == "__main__":
+    import logging
+
     args = parser.parse_args()
 
     logging.basicConfig(stream=sys.stdout, level=args.log_level)
@@ -365,9 +345,19 @@ if __name__ == "__main__":
     r = requests.get(os.path.join(args.url, "service/list"))
     if r.status_code != 200:
         logger.error('incorrect result from \'service/list\' service: %s', r.text)
+        sys.exit(1)
+
     serviceList = r.json()
 
-    res = process_request(args.cmd, args.json, args)
+    try:
+        res = process_request(serviceList, args.cmd, args.json, args)
+    except RuntimeError as err:
+        logger.error(err.str)
+        sys.exit(1)
+    except ValueError as err:
+        logger.error(err.str)
+        sys.exit(1)
+
     if args.json:
         print(json.dumps(res))
     else:
