@@ -13,6 +13,10 @@
             }
         ]
     },
+    "requirements": {
+        "free_disk_space": 5000,
+        "free_gpu_memory": 8000
+    },
     "privateKey": "credentials/id_rsa",
     "docker": {
         "mount": [

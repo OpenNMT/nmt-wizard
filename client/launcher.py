@@ -121,32 +121,40 @@ parser_file.add_argument('-k', '--task_id',
 parser_file.add_argument('-f', '--filename',
                               help="filename to retrieve - for instance log", required=True)
 
-def process_request(serviceList, cmd, json, args, auth=None):
+def process_request(serviceList, cmd, is_json, args, auth=None):
     res = None
     result = None
     if cmd == "ls":
         result = serviceList
-        if not json:
-            res = "%-20s\t%10s\t%10s\t%10s\t%s\n" % ("SERVICE NAME", "USAGE", "QUEUED",
-                                                   "CAPACITY", "DESCRIPTION")
+        if not is_json:
+            busymsg = []
+            res = "%-20s\t%10s\t%10s\t%10s\t%10s\t%s\n" % ("SERVICE NAME", "USAGE", "QUEUED",
+                                                   "CAPACITY", "BUSY", "DESCRIPTION")
             for k in result:
-                res += ("%-20s\t%10d\t%10d\t%10d\t%s\n" % (k,
+                res += ("%-20s\t%10d\t%10d\t%10d\t%10d\t%s\n" % (k,
                                                  result[k]['usage'],
                                                  result[k]['queued'],
                                                  result[k]['capacity'],
+                                                 len(result[k]['busy']),
                                                  result[k]['name']))
+                if len(result[k]['busy']):
+                    for r in result[k]['busy']:
+                        busymsg.append("%-20s\t%s" % (r, result[k]['busy'][r]))
+
+            if len(busymsg):
+                res += "\n" + "\n".join(busymsg)
     elif cmd == "lt":
         r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
-        if not json:
+        if not is_json:
             res = ("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s\n" %
                     ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
             for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
                 date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
                 res += ("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s\n" %
-                          (k["type"], k["task_id"], k["resource"], int(k["priority"] or 0), 
+                          (k["type"], k["task_id"], k["alloc_resource"] or k["resource"], int(k["priority"] or 0), 
                            date, k["image"], k["status"], k.get("message")))
     elif cmd == "describe":
         if args.service not in serviceList:
@@ -163,7 +171,7 @@ def process_request(serviceList, cmd, json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         result = r.json()
-        if not json:
+        if not is_json:
             res = result["message"]
     elif cmd == "launch":
         if args.trainer_id is None:
@@ -239,7 +247,7 @@ def process_request(serviceList, cmd, json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/launch\' service: %s' % r.text)
         result = r.json()
-        if not json:
+        if not is_json:
             if isinstance(result, list):
                 res=("\n".join(result))
             else:
@@ -249,7 +257,7 @@ def process_request(serviceList, cmd, json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/status\' service: %s' % r.text)
         result = r.json()
-        if not json:
+        if not is_json:
             times = []
             current_time = float(result["current_time"])
             result.pop("current_time", None)
@@ -294,7 +302,7 @@ def process_request(serviceList, cmd, json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
-        if not json:
+        if not is_json:
             print('Delete %d tasks:' % len(result))
             print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
             for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
@@ -311,7 +319,7 @@ def process_request(serviceList, cmd, json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/terminate\' service: %s' % r.text)
         result = r.json()
-        if not json:
+        if not is_json:
             res = result["message"]
     elif cmd == "file":
         r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename), auth=auth)
@@ -352,10 +360,10 @@ if __name__ == "__main__":
     try:
         res = process_request(serviceList, args.cmd, args.json, args)
     except RuntimeError as err:
-        logger.error(err.str)
+        logger.error(err)
         sys.exit(1)
     except ValueError as err:
-        logger.error(err.str)
+        logger.error(err)
         sys.exit(1)
 
     if args.json:

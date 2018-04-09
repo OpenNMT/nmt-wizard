@@ -16,11 +16,15 @@ def _usagecapacity(service):
     """calculate the current usage of the service."""
     usage = 0
     capacity = 0
+    busy = {}
     for resource in service.list_resources():
         capacity += service.list_resources()[resource]
         usage += redis.llen("resource:%s:%s" % (service.name, resource))
+        err = redis.get("busy:%s:%s" % (service.name, resource))
+        if err:
+            busy["%s %s" % (service.name, resource)] = err
     queued = redis.llen("queued:"+service.name)
-    return usage, queued, capacity
+    return usage, queued, capacity, busy
 
 def task_request(func):
     """minimal check on the request to check that tasks exists"""
@@ -49,9 +53,10 @@ def filter_request(route):
 def list_services():
     res = {}
     for k in services:
-        usage, queued, capacity = _usagecapacity(services[k])
+        usage, queued, capacity, busy = _usagecapacity(services[k])
         res[k] = { 'name':services[k].display_name,
-                   'usage': usage, 'queued': queued, 'capacity': capacity }
+                   'usage': usage, 'queued': queued,
+                   'capacity': capacity, 'busy': busy }
     return flask.jsonify(res)
 
 @app.route("/service/describe/<string:service>", methods=["GET"])
@@ -178,7 +183,7 @@ def list_tasks(pattern):
     for task_key in task.scan_iter(redis, pattern):
         task_id = task.id(task_key)
         info = task.info(redis, task_id,
-                ["queued_time", "resource", "content", "status", "message", "type", "iterations", "priority"])
+                ["queued_time", "alloc_resource", "resource", "content", "status", "message", "type", "iterations", "priority"])
         if info["content"] is not None and info["content"] != "":
             content = json.loads(info["content"])
             info["image"] = content['docker']['image']

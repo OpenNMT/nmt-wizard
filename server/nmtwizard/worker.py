@@ -8,11 +8,12 @@ from nmtwizard import task
 
 class Worker(object):
 
-    def __init__(self, redis, services, refresh_counter, index=0):
+    def __init__(self, redis, services, refresh_counter, quarantine_time, index=0):
         self._redis = redis
         self._services = services
         self._logger = logging.getLogger('worker%d' % index)
         self._refresh_counter = refresh_counter
+        self._quarantine_time = quarantine_time
 
     def run(self):
         self._logger.info('Starting worker')
@@ -109,7 +110,7 @@ class Worker(object):
                 resource = self._allocate_resource(task_id, resource, service)
                 if resource is not None:
                     self._logger.info('%s: resource %s reserved', task_id, resource)
-                    self._redis.hset(keyt, 'resource', resource)
+                    self._redis.hset(keyt, 'alloc_resource', resource)
                     task.set_status(self._redis, keyt, 'allocated')
                     task.work_queue(self._redis, task_id)
                 else:
@@ -118,18 +119,29 @@ class Worker(object):
 
             elif status == 'allocated':
                 content = json.loads(self._redis.hget(keyt, 'content'))
-                resource = self._redis.hget(keyt, 'resource')
+                resource = self._redis.hget(keyt, 'alloc_resource')
                 self._logger.info('%s: launching on %s', task_id, service.name)
-                data = service.launch(
-                    task_id,
-                    content['options'],
-                    resource,
-                    content['docker']['registry'],
-                    content['docker']['image'],
-                    content['docker']['tag'],
-                    content['docker']['command'],
-                    task.file_list(self._redis, task_id),
-                    content['wait_after_launch'])
+                try:
+                    data = service.launch(
+                        task_id,
+                        content['options'],
+                        resource,
+                        content['docker']['registry'],
+                        content['docker']['image'],
+                        content['docker']['tag'],
+                        content['docker']['command'],
+                        task.file_list(self._redis, task_id),
+                        content['wait_after_launch'])
+                except Exception as e:
+                    # the resource is not available and will be set busy
+                    self._block_resource(resource, service, str(e))
+                    # set the task as queued again
+                    self._redis.hdel(keyt, 'alloc_resource')
+                    self._release_resource(service, resource, task_id)
+                    task.set_status(self._redis, keyt, 'queued')
+                    task.service_queue(self._redis, task_id, service.name)
+                    self._logger.info('could not launch %s on %s: blocking resource', task_id, resource)
+                    return
                 self._logger.info('%s: task started on %s', task_id, service.name)
                 self._redis.hset(keyt, 'job', json.dumps(data))
                 task.set_status(self._redis, keyt, 'running')
@@ -160,10 +172,17 @@ class Worker(object):
                         self._logger.info('%s: terminated', task_id)
                     except Exception:
                         self._logger.warning('%s: failed to terminate', task_id)
-                resource = self._redis.hget(keyt, 'resource')
+                resource = self._redis.hget(keyt, 'alloc_resource')
                 self._release_resource(service, resource, task_id)
                 task.set_status(self._redis, keyt, 'stopped')
                 task.disable(self._redis, task_id)
+
+    def _block_resource(self, resource, service, err):
+        """Block a resource on which we could not launch a task
+        """
+        keyb = 'busy:%s:%s' % (service.name, resource)
+        self._redis.set(keyb, err)
+        self._redis.expire(keyb, self._quarantine_time)
 
     def _allocate_resource(self, task_id, resource, service):
         """Allocates a resource for task_id and returns the name of the resource
@@ -185,7 +204,10 @@ class Worker(object):
         while we try to reserve it.
         """
         keyr = 'resource:%s:%s' % (service.name, resource)
+        keyb = 'busy:%s:%s' % (service.name, resource)
         with self._redis.acquire_lock(keyr):
+            if self._redis.get(keyb) is not None:
+                return False
             current_usage = self._redis.llen(keyr)
             if current_usage < capacity:
                 self._redis.rpush(keyr, task_id)

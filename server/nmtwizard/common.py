@@ -171,7 +171,7 @@ def fuse_s3_bucket(client, corpus):
     if status != 0:
         raise RuntimeError('failed to fuse S3 bucket: %s' % stderr.read())
 
-def check_environment(client, gpu_id, log_dir, docker_registries):
+def check_environment(client, gpu_id, log_dir, docker_registries, requirements):
     """Check that the environment contains all the tools necessary to launch a task
     """
     for registry in six.itervalues(docker_registries):
@@ -180,7 +180,7 @@ def check_environment(client, gpu_id, log_dir, docker_registries):
 
     # check log_dir
     if not run_and_check_command(client, "test -d '%s'" % log_dir):
-        raise EnvironmentError("incorrect log directory: %s" % log_dir)
+        raise EnvironmentError("missing log directory: %s" % log_dir)
 
     if gpu_id == 0:
         if not program_exists(client, "docker"):
@@ -193,7 +193,7 @@ def check_environment(client, gpu_id, log_dir, docker_registries):
         exit_status, stdout, stderr = run_command(
             client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
         if exit_status != 0:
-            raise EnvironmentError("nvidia-smi exited with status %d: %s" % (
+            raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
                 exit_status, stderr.read()))
 
         out = stdout.read()
@@ -202,9 +202,14 @@ def check_environment(client, gpu_id, log_dir, docker_registries):
         m = re.search(b'Gpu *: (.*) *\n', out)
         if m:
             gpu = m.group(1).decode('utf-8')
-        m = re.search(b'Free *: (.*) *\n', out)
+        m = re.search(b'Free *: (.*) MiB*\n', out)
         if m:
-            mem = m.group(1).decode('utf-8')
+            mem = int(m.group(1).decode('utf-8'))
+
+        if requirements and "free_gpu_memory" in requirements:
+            if mem < requirements["free_gpu_memory"]:
+                raise EnvironmentError("not enough gpu memory available %d/%d"
+                                       % (mem, requirements["free_gpu_memory"]))
 
         return 'gpu usage: %s, free mem: %s' % (gpu, mem)
 
@@ -228,6 +233,7 @@ def cmd_docker_pull(image_ref, docker_path=None):
 def cmd_docker_run(gpu_id, docker_options, task_id,
                    image_ref, callback_url, callback_interval,
                    storages, docker_command, log_dir=None, sep=" "):
+
     if docker_options.get('dev') == 1:
         return "sleep%s35" % sep
     else:
@@ -302,7 +308,8 @@ def launch_task(task_id,
                 wait_for_immediate_failure=2,
                 storages=None,
                 callback_url=None,
-                callback_interval=None):
+                callback_interval=None,
+                requirements=None):
     """Launch a task:
         * `task_id`: assigned id for the task and used for logging
         * `client`: ssh client
@@ -318,6 +325,13 @@ def launch_task(task_id,
         * `callback_interval`: time between 2 beats
     """
     logger.info("launching task - %s", task_id)
+
+    logger.debug("check environment for task %s", task_id)
+    check_environment(client, gpu_id, log_dir,
+                      {the_docker_registry:
+                              docker_options['registries'][the_docker_registry]},
+                       requirements)
+
     image_ref = ""
     if docker_options.get('dev') != 1:
         docker_registry = docker_options['registries'][the_docker_registry]
