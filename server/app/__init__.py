@@ -15,9 +15,12 @@ ch.setFormatter(formatter)
 config.add_log_handler(ch)
 common.add_log_handler(ch)
 
+config_file = os.getenv('LAUNCHER_CONFIG')
+assert config_file is not None and os.path.isfile(config_file), "invalid LAUNCHER_CONFIG"
+
 app.iniconfig = FlaskIni()
 with app.app_context():
-    app.iniconfig.read(os.getenv('LAUNCHER_CONFIG'))
+    app.iniconfig.read(config_file)
 
 redis = RedisDatabase(app.iniconfig.get('redis','host'),
                       app.iniconfig.get('redis','port',fallback=6379),
