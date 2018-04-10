@@ -214,7 +214,7 @@ def check_environment(client, gpu_id, log_dir, docker_registries, requirements):
                 for path, space_G in six.iteritems(requirements["free_disk_space"]):
                     exit_status, stdout, stderr = run_command(
                         client,
-                        "df --output=avail -BG $(df -PT %s | tail -1 | awk '{print $1}') | tail -1" % path)
+                        "df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
 
                     if exit_status != 0:
                         raise EnvironmentError("missing directory %s" % (path))
