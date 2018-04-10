@@ -28,6 +28,10 @@ redis.config_set('notify-keyspace-events', 'Klgx')
 
 services = config.load_services(cfg.get('default', 'config_dir'))
 
+# remove busy state from resources
+for key in redis.keys('busy:*'):
+    redis.delete(key)
+
 # On startup, add all active tasks in the work queue.
 for task_id in task.list_active(redis):
     with redis.acquire_lock(task_id):

@@ -206,10 +206,23 @@ def check_environment(client, gpu_id, log_dir, docker_registries, requirements):
         if m:
             mem = int(m.group(1).decode('utf-8'))
 
-        if requirements and "free_gpu_memory" in requirements:
-            if mem < requirements["free_gpu_memory"]:
+        if requirements:
+            if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
                 raise EnvironmentError("not enough gpu memory available %d/%d"
                                        % (mem, requirements["free_gpu_memory"]))
+            if "free_disk_space" in requirements:    
+                for path, space_G in six.iteritems(requirements["free_disk_space"]):
+                    exit_status, stdout, stderr = run_command(
+                        client,
+                        "df --output=avail -BG $(df -PT %s | tail -1 | awk '{print $1}') | tail -1" % path)
+
+                    if exit_status != 0:
+                        raise EnvironmentError("missing directory %s" % (path))
+                    out = stdout.read().strip()
+                    m = re.search(b'([0-9]+)G', out)
+                    if m is None or int(m.group(1).decode('utf-8')) < space_G:
+                        raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
+                                       % (path, out, space_G))
 
         return 'gpu usage: %s, free mem: %s' % (gpu, mem)
 
