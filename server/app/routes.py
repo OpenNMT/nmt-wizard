@@ -84,16 +84,13 @@ def check(service):
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch")
 def launch(service):
-    content = None
+    content = flask.request.form.get('content')
+    print(content)
     files = {}
-    if flask.request.is_json:
-        content = flask.request.get_json()
-    else:
-        content = flask.request.form.get('content')
-        if content is not None:
-            content = json.loads(content)
-        for k in flask.request.files:
-            files[k] = flask.request.files[k].read()
+    if content is not None:
+        content = json.loads(content)
+    for k in flask.request.files:
+        files[k] = flask.request.files[k].read()
     if content is None:
         flask.abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
     service_module = _get_service(service)
