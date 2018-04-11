@@ -85,14 +85,15 @@ def check(service):
 @filter_request("POST/task/launch")
 def launch(service):
     content = flask.request.form.get('content')
-    print(content)
-    files = {}
     if content is not None:
         content = json.loads(content)
+    else:
+        flask.abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+
+    files = {}
     for k in flask.request.files:
         files[k] = flask.request.files[k].read()
-    if content is None:
-        flask.abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+
     service_module = _get_service(service)
     content["service"] = service
 
@@ -100,6 +101,9 @@ def launch(service):
     if "train" in content["docker"]["command"]: task_type = "train"
     elif "trans" in content["docker"]["command"]: task_type = "trans"
     elif "preprocess" in content["docker"]["command"]: task_type = "prepr"
+
+    if task_type == '????':
+        flask.abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
