@@ -11,6 +11,7 @@
 * add task chaining feature - it is possible to launch sequence of tasks
 * `list_services` displays usage and capacity of the different services
 * add priority field to prioritise tasks, and make queuing system more robust
+* detect busy resources and put them in quarantine mode
 
 ### Fixes and improvements
 

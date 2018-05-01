@@ -105,7 +105,7 @@ def delete(redis, task_id):
     keyt = "task:" + task_id
     status = redis.hget(keyt, "status")
     if status is None:
-        return (False, "task does not exists")
+        return (False, "task does not exist")
     if status != "stopped":
         return (False, "status is not stopped")
     with redis.acquire_lock(keyt):

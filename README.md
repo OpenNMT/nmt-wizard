@@ -78,7 +78,7 @@ Template files are provided in `config/templates` and can be used as a basis for
 
 ## Server configuration
 
-* The REST server and worker are configured by `settings.ini`. The `LAUNCHER_MODE` environment variable (defaulting to `Production`) can be set to select different set of options in development or production.
+* The REST server and worker are configured by `settings.ini`.
 
 ## Using the launcher
 
@@ -100,7 +100,7 @@ For performance, multiple workers might be running simultaneously. In that case,
 
 The server has the following HTTP routes:
 
-| METHOD    | ROUTE | PARAAM | Description |
+| METHOD    | ROUTE | PARAM | Description |
 | ---       | --- | --- | --- |
 | `GET`     | `service/list` | | Returns available services |
 | `GET`     | `service/describe/{service_id}` | | Returns user selectable options for a specified service |
@@ -464,9 +464,10 @@ The Redis database contains the following fields:
 | --- | --- | --- |
 | `active` | list | Active tasks |
 | `beat:<task_id>` | int | Specific ttl-key for a given task |
-| `lock:<resource...,task:…>` | value | Temporary lock on a resource or task |
+| `lock:<resource...,task:...>` | value | Temporary lock on a resource or task |
 | `queued:<service>` | list | Tasks waiting for a resource |
 | `resource:<service>:<resourceid>` | list | Tasks using this resource |
+| `busy:<service>:<resourceid>` | string | expirable timestamp on a resource indicating that the resource has been seen unavailable |
 | `task:<taskid>` | dict | <ul><li>status: [queued, allocated, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li><li>priority: task priority (higher better)</li></ul> |
 | `files:<task_id>` | dict | files associated to a task, "log" is generated when training is complete |
 | `queue:<task_id>` | str | expirable timestamp on the task - is used to regularily check status |

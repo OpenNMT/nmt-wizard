@@ -4,13 +4,13 @@ import argparse
 import json
 import sys
 import os
-import logging
 import requests
 import regex as re
 from datetime import datetime
 import math
 
 reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:([-A-Za-z_.0-9]+)|)$")
+logger = None
 
 def getjson(config):
     if config is None:
@@ -121,249 +121,250 @@ parser_file.add_argument('-k', '--task_id',
 parser_file.add_argument('-f', '--filename',
                               help="filename to retrieve - for instance log", required=True)
 
-args = parser.parse_args()
-
-logging.basicConfig(stream=sys.stdout, level=args.log_level)
-logger = logging.getLogger()
-
-if args.url is None:
-    args.url = os.getenv('LAUNCHER_URL')
-    if args.url is None:
-        logger.error('missing launcher_url')
-        sys.exit(1)
-
-r = requests.get(os.path.join(args.url, "service/list"))
-if r.status_code != 200:
-    logger.error('incorrect result from \'service/list\' service: %s', r.text)
-serviceList = r.json()
-
-if args.cmd == "ls":
-    result = serviceList
-    if not args.json:
-        print("%-20s\t%10s\t%10s\t%10s\t%s" % ("SERVICE NAME", "USAGE", "QUEUED",
-                                               "CAPACITY", "DESCRIPTION"))
-        for k in result:
-            print("%-20s\t%10d\t%10d\t%10d\t%s" % (k,
-                                             result[k]['usage'],
-                                             result[k]['queued'],
-                                             result[k]['capacity'],
-                                             result[k]['name']))
-        sys.exit(0)
-elif args.cmd == "lt":
-    r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/list\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-    if not args.json:
-        print("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s" %
-              ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
-            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
-            print("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s" %
-                  (k["type"], k["task_id"], k["resource"], int(k["priority"] or 0), 
-                   date, k["image"], k["status"], k.get("message")))
-        sys.exit(0)
-elif args.cmd == "describe":
-    if args.service not in serviceList:
-        logger.fatal("ERROR: service '%s' not defined", args.service)
-        sys.exit(1)
-    r = requests.get(os.path.join(args.url, "service/describe", args.service))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'service/describe\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-elif args.cmd == "check":
-    if args.service not in serviceList:
-        logger.fatal("ERROR: service '%s' not defined", args.service)
-        sys.exit(1)
-    r = requests.get(os.path.join(args.url, "service/check", args.service), json=getjson(args.options))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'service/check\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-    if not args.json:
-        print(result["message"])
-        sys.exit(0)
-elif args.cmd == "launch":
-    if args.trainer_id is None:
-        logger.error('missing trainer_id (you can set LAUNCHER_TID)')
-        sys.exit(1)
-
-    if args.docker_image is None:
-        logger.error('missing docker image (you can set LAUNCHER_IMAGE)')
-        sys.exit(1)
-    m = reimage.match(args.docker_image)
-    if not m:
-        logger.error('incorrect docker image syntax (%s) - should be [registry:]organization/image[:tag]',
-                     args.docker_image)
-        sys.exit(1)
-
-    if m.group(2):
-        args.docker_registry = m.group(2)
-    if m.group(5):
-        args.docker_tag = m.group(5)
-    args.docker_image = m.group(3)
-
-    if args.service not in serviceList:
-        logger.fatal("ERROR: service '%s' not defined", args.service)
-        sys.exit(1)
-
-
-    # for multi-part file sending
-    files = {}
-    docker_command = []
-
-    for c in args.docker_command:
-        orgc = c
-        if c.startswith("@"):
-            with open(c[1:], "rt") as f:
-                c = f.read()
-        if os.path.exists(c):
-            basename = os.path.basename(c)
-            files[basename] = (basename, open(c, 'rb'))
-            c = "${TMP_DIR}/%s" % basename
-        # if json, explore for values to check local path values
-        if c.startswith('{'):
-            try:
-                cjson = json.loads(c)
-            except ValueError as err:
-                logger.fatal("Invalid JSON parameter in %s: %s", orgc, str(err))
-                sys.exit(1)
-            find_files_parameters(cjson, files)
-            c = json.dumps(cjson)
-        docker_command.append(c)
-
-    if args.service not in serviceList:
-        logger.fatal("ERROR: service '%s' not defined", args.service)
-        sys.exit(1)
-
-    content = {
-        "docker": {
-            "registry": args.docker_registry,
-            "image": args.docker_image,
-            "tag": args.docker_tag,
-            "command": docker_command
-        },
-        "wait_after_launch": args.wait_after_launch,
-        "trainer_id": args.trainer_id,
-        "options": getjson(args.options)
-    }
-
-    if args.name:
-        content["name"] = args.name
-    if args.iterations:
-        content["iterations"] = args.iterations
-    if args.priority:
-        content["priority"] = args.priority
-
-    logger.debug("sending request: %s", json.dumps(content))
-
-    launch_url = os.path.join(args.url, "task/launch", args.service)
-    r = None
-    if len(files) > 0:
-        r = requests.post(launch_url, files=files, data = {'content': json.dumps(content) })
-    else:
-        r = requests.post(launch_url, json=content)
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/launch\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-    if not args.json:
-        if isinstance(result, list):
-            print("\n".join(result))
-        else:
-            print(result)
-        sys.exit(0)
-elif args.cmd == "status":
-    r = requests.get(os.path.join(args.url, "task/status", args.task_id))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/status\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-    if not args.json:
-        times = []
-        current_time = float(result["current_time"])
-        result.pop("current_time", None)
-        for k in result:
-            if k.endswith('_time'):
-                times.append(k)
-        sorted_times = sorted(times, key=lambda k: float(result[k]))
-        last_update = ''
-        if sorted_times:
-            upd = current_time - float(result[sorted_times[-1]])
-            last_update = " - updated %d seconds ago" % upd
-        print("TASK %s - TYPE %s - status %s (%s)%s" % (
-                args.task_id, result.get('type'),
-                result.get('status'), result.get('message'), last_update))
-        if "service" in result:
-            print("SERVICE %s - RESOURCE %s - CONTAINER %s" % (
-                    result['service'], result.get('resource'), result.get('container_id')))
-        print("ATTACHED FILES: %s" % ', '.join(result['files']))
-        print("TIMELINE:")
-        last = -1
-        delay = []
-        for k in sorted_times:
-            if k != "updated_time":
-                current = float(result[k])
-                delta = current-last if last != -1 else 0
-                delay.append("(%ds)" % delta)
-                last = current
-        delay.append('')
-        idx = 1
-        for k in sorted_times:
-            if k != "updated_time":
-                current = float(result[k])
-                date = datetime.fromtimestamp(math.ceil(current)).isoformat(' ')
-                print("\t%-12s\t%s\t%s" % (k[:-5], date, delay[idx]))
-                idx += 1
-        content = result["content"]
-        content = json.loads(content)
-        print("CONTENT")
-        print(json.dumps(content, indent=True))
-        sys.exit(0)
-elif args.cmd == "dt":
-    r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/list\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-    if not args.json:
-        print('Delete %d tasks:' % len(result))
-        print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-        for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
-            date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
-            print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
-                k["task_id"], date, k["image"], k["status"], k.get("message")))
-        if confirm():
+def process_request(serviceList, cmd, is_json, args, auth=None):
+    res = None
+    result = None
+    if cmd == "ls":
+        result = serviceList
+        if not is_json:
+            busymsg = []
+            res = "%-20s\t%10s\t%10s\t%10s\t%10s\t%s\n" % ("SERVICE NAME", "USAGE", "QUEUED",
+                                                   "CAPACITY", "BUSY", "DESCRIPTION")
             for k in result:
-                r = requests.delete(os.path.join(args.url, "task", k["task_id"]))
-                if r.status_code != 200:
-                    logger.error('incorrect result from \'delete_task\' service: %s', r.text)
-                    sys.exit(1)
-        sys.exit(0)
-elif args.cmd == "terminate":
-    r = requests.get(os.path.join(args.url, "task/terminate", args.task_id))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/terminate\' service: %s', r.text)
-        sys.exit(1)
-    result = r.json()
-    if not args.json:
-        print(result["message"])
-        sys.exit(0)
-elif args.cmd == "file":
-    r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/file\' service: %s', r.text)
-        sys.exit(1)
-    print(r.text.encode("utf-8"))
-    sys.exit(0)
-elif args.cmd == "log":
-    r = requests.get(os.path.join(args.url, "task/log", args.task_id))
-    if r.status_code != 200:
-        logger.error('incorrect result from \'task/log\' service: %s', r.text)
-        sys.exit(1)
-    print(r.text.encode("utf-8"))
-    sys.exit(0)
+                res += ("%-20s\t%10d\t%10d\t%10d\t%10d\t%s\n" % (k,
+                                                 result[k]['usage'],
+                                                 result[k]['queued'],
+                                                 result[k]['capacity'],
+                                                 len(result[k]['busy']),
+                                                 result[k]['name']))
+                if len(result[k]['busy']):
+                    for r in result[k]['busy']:
+                        busymsg.append("%-20s\t%s" % (r, result[k]['busy'][r]))
 
-print(json.dumps(result))
+            if len(busymsg):
+                res += "\n" + "\n".join(busymsg)
+    elif cmd == "lt":
+        r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
+        result = r.json()
+        if not is_json:
+            res = ("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s\n" %
+                    ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+            for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
+                date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
+                res += ("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s\n" %
+                          (k["type"], k["task_id"], k["alloc_resource"] or k["resource"], int(k["priority"] or 0), 
+                           date, k["image"], k["status"], k.get("message")))
+    elif cmd == "describe":
+        if args.service not in serviceList:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
+        r = requests.get(os.path.join(args.url, "service/describe", args.service), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'service/describe\' service: %s' % r.text)
+        result = r.json()
+    elif cmd == "check":
+        if args.service not in serviceList:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
+        r = requests.get(os.path.join(args.url, "service/check", args.service),
+                         json=getjson(args.options), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
+        result = r.json()
+        if not is_json:
+            res = result["message"]
+    elif cmd == "launch":
+        if args.trainer_id is None:
+            raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')
+
+        if args.docker_image is None:
+            raise RuntimeError('missing docker image (you can set LAUNCHER_IMAGE)')
+        m = reimage.match(args.docker_image)
+        if not m:
+            raise ValueError('incorrect docker image syntax (%s) - should be [registry:]organization/image[:tag]' %
+                             args.docker_image)
+
+        if m.group(2):
+            args.docker_registry = m.group(2)
+        if m.group(5):
+            args.docker_tag = m.group(5)
+        args.docker_image = m.group(3)
+
+        if args.service not in serviceList:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
+
+        # for multi-part file sending
+        files = {}
+        docker_command = []
+
+        for c in args.docker_command:
+            orgc = c
+            if c.startswith("@"):
+                with open(c[1:], "rt") as f:
+                    c = f.read()
+            if os.path.exists(c):
+                basename = os.path.basename(c)
+                files[basename] = (basename, open(c, 'rb'))
+                c = "${TMP_DIR}/%s" % basename
+            # if json, explore for values to check local path values
+            if c.startswith('{'):
+                cjson = json.loads(c)
+                find_files_parameters(cjson, files)
+                c = json.dumps(cjson)
+            docker_command.append(c)
+
+        if args.service not in serviceList:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
+
+        content = {
+            "docker": {
+                "registry": args.docker_registry,
+                "image": args.docker_image,
+                "tag": args.docker_tag,
+                "command": docker_command
+            },
+            "wait_after_launch": args.wait_after_launch,
+            "trainer_id": args.trainer_id,
+            "options": getjson(args.options)
+        }
+
+        if args.name:
+            content["name"] = args.name
+        if args.iterations:
+            content["iterations"] = args.iterations
+        if args.priority:
+            content["priority"] = args.priority
+
+        logger.debug("sending request: %s", json.dumps(content))
+
+        launch_url = os.path.join(args.url, "task/launch", args.service)
+        r = requests.post(launch_url,
+                          files=files,
+                          data = {'content': json.dumps(content) },
+                          auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/launch\' service: %s' % r.text)
+        result = r.json()
+        if not is_json:
+            if isinstance(result, list):
+                res=("\n".join(result))
+            else:
+                res=result
+    elif cmd == "status":
+        r = requests.get(os.path.join(args.url, "task/status", args.task_id), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/status\' service: %s' % r.text)
+        result = r.json()
+        if not is_json:
+            times = []
+            current_time = float(result["current_time"])
+            result.pop("current_time", None)
+            for k in result:
+                if k.endswith('_time'):
+                    times.append(k)
+            sorted_times = sorted(times, key=lambda k: float(result[k]))
+            last_update = ''
+            if sorted_times:
+                upd = current_time - float(result[sorted_times[-1]])
+                last_update = " - updated %d seconds ago" % upd
+            res = ("TASK %s - TYPE %s - status %s (%s)%s\n" % (
+                       args.task_id, result.get('type'),
+                       result.get('status'), result.get('message'), last_update))
+            if "service" in result:
+                res += ("SERVICE %s - RESOURCE %s - CONTAINER %s\n" % (
+                            result['service'], result.get('resource'), result.get('container_id')))
+            res += "ATTACHED FILES: %s\n" % ', '.join(result['files'])
+            res =+ "TIMELINE:\n"
+            last = -1
+            delay = []
+            for k in sorted_times:
+                if k != "updated_time":
+                    current = float(result[k])
+                    delta = current-last if last != -1 else 0
+                    delay.append("(%ds)" % delta)
+                    last = current
+            delay.append('')
+            idx = 1
+            for k in sorted_times:
+                if k != "updated_time":
+                    current = float(result[k])
+                    date = datetime.fromtimestamp(math.ceil(current)).isoformat(' ')
+                    res += "\t%-12s\t%s\t%s\n" % (k[:-5], date, delay[idx])
+                    idx += 1
+            content = result["content"]
+            content = json.loads(content)
+            res += "CONTENT"
+            res += json.dumps(content, indent=True)+"\n"
+    elif cmd == "dt":
+        r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
+        result = r.json()
+        if not is_json:
+            print('Delete %d tasks:' % len(result))
+            print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+            for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
+                date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
+                print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
+                    k["task_id"], date, k["image"], k["status"], k.get("message")))
+            if confirm():
+                for k in result:
+                    r = requests.delete(os.path.join(args.url, "task", k["task_id"]), auth=auth)
+                    if r.status_code != 200:
+                        raise RuntimeError('incorrect result from \'delete_task\' service: %s' % r.text)
+    elif cmd == "terminate":
+        r = requests.get(os.path.join(args.url, "task/terminate", args.task_id), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/terminate\' service: %s' % r.text)
+        result = r.json()
+        if not is_json:
+            res = result["message"]
+    elif cmd == "file":
+        r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/file\' service: %s' % r.text)
+        res = r.text.encode("utf-8")
+    elif cmd == "log":
+        r = requests.get(os.path.join(args.url, "task/log", args.task_id), auth=auth)
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'task/log\' service: %s' % r.text)
+        res = r.text.encode("utf-8")
+    if res is not None:
+        return res
+    else:
+        return result
+
+if __name__ == "__main__":
+    import logging
+
+    args = parser.parse_args()
+
+    logging.basicConfig(stream=sys.stdout, level=args.log_level)
+    logger = logging.getLogger()
+
+    if args.url is None:
+        args.url = os.getenv('LAUNCHER_URL')
+        if args.url is None:
+            logger.error('missing launcher_url')
+            sys.exit(1)
+
+    r = requests.get(os.path.join(args.url, "service/list"))
+    if r.status_code != 200:
+        logger.error('incorrect result from \'service/list\' service: %s', r.text)
+        sys.exit(1)
+
+    serviceList = r.json()
+
+    try:
+        res = process_request(serviceList, args.cmd, args.json, args)
+    except RuntimeError as err:
+        logger.error(err)
+        sys.exit(1)
+    except ValueError as err:
+        logger.error(err)
+        sys.exit(1)
+
+    if args.json:
+        print(json.dumps(res))
+    else:
+        print(res.strip())

@@ -4,3 +4,4 @@ flask
 ovh
 paramiko
 redis
+flask_ini

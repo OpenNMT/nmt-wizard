@@ -93,8 +93,7 @@ class SSHService(Service):
 
     def check(self, options):
         params = _get_params(self._config, options)
-        client = paramiko.client.SSHClient()
-        common.ssh_connect_with_retry(
+        client = common.ssh_connect_with_retry(
             params['server'],
             params['login'],
             self._config['privateKey'],
@@ -104,7 +103,8 @@ class SSHService(Service):
                 client,
                 params['gpu'],
                 params['log_dir'],
-                self._config['docker']['registries'])
+                self._config['docker']['registries'],
+                self._config.get('requirements'))
         finally:
             client.close()
         return details
@@ -122,7 +122,7 @@ class SSHService(Service):
         if len(self._resources) > 1:
             options['server'] = resource
 
-        params = _get_params(self._config, options)
+        params = _get_params(self._config, options) 
         client = common.ssh_connect_with_retry(
             params['server'],
             params['login'],
@@ -143,7 +143,8 @@ class SSHService(Service):
                 wait_after_launch,
                 self._config.get('storages'),
                 self._config.get('callback_url'),
-                self._config.get('callback_interval'))
+                self._config.get('callback_interval'),
+                requirements=self._config.get("requirements"))
         finally:
             client.close()
         params['model'] = task['model']
