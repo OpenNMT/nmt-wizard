@@ -43,7 +43,7 @@ def filter_request(route):
         def func_wrapper(*args, **kwargs):
             if len(filter_routes):
                 return filter_routes[0](route, func, *args, **kwargs)
-            # if not filter defined, just pass through
+            # if no filter defined, just pass through
             return func(*args, **kwargs)
         return func_wrapper
     return wrapper

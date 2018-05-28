@@ -114,10 +114,11 @@ The server has the following HTTP routes:
 | `GET`<br>`POST` | `task/file/{task_id}` | | Gets or set a file associated to a task |
 | `GET`<br>`PATCH`<br>`POST` | `task/log/{task_id}` | | Gets, appends or sets the log associated to a task |
 
-The server uses Flask. See the [Flask documentation](http://flask.pocoo.org/docs/0.12/deploying/) to deploy it for production. For development, it can be run as follows (single thread):
+The server uses Flask. See the [Flask documentation](http://flask.pocoo.org/docs/0.12/deploying/) to deploy it for production. For development purpose, it can be run as follows (single thread):
 
 ```bash
-cd app && FLASK_APP=main.py flask run [--host=0.0.0.0]
+export LAUNCHER_CONFIG=${PWD}/settings.ini
+FLASK_APP=main.py flask run [--host=0.0.0.0]
 ```
 
 Here are the are the available routes. Also see the next section
