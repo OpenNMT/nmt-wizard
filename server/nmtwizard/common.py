@@ -397,7 +397,7 @@ def launch_task(task_id,
                 raise RuntimeError("error retrieving files: %s, %s" % (cmd_get_files, stderr.read()))
 
     if callback_url is not None:
-        exit_status, stdout, stderr = run_command(client, "curl -X PUT '%s/task/beat/%s' -m 5" %
+        exit_status, stdout, stderr = run_command(client, "curl -m 5 -s '%s/task/log/%s'" %
                                                     (callback_url, task_id))
         if exit_status != 0:
             raise RuntimeError("cannot send beat back (%s) - aborting" % stderr)
