@@ -2,6 +2,7 @@
 
 ### Breaking changes
 * redefine more consistent routes
+* change `task_id` as positional argument for simpler client commands
 
 ### New features
 

@@ -107,17 +107,17 @@ parser_del_tasks = subparsers.add_parser('dt',
 parser_del_tasks.add_argument('-p', '--prefix', required=True,
                               help='prefix for the tasks to delete')
 parser_status = subparsers.add_parser('status', help='get status of a task')
-parser_status.add_argument('-k', '--task_id',
-                              help="task identifier", required=True)
+parser_status.add_argument('task_id',
+                              help="task identifier")
 parser_terminate = subparsers.add_parser('terminate', help='terminate a task')
-parser_terminate.add_argument('-k', '--task_id',
-                              help="task identifier", required=True)
+parser_terminate.add_argument('task_id',
+                              help="task identifier")
 parser_log = subparsers.add_parser('log', help='get log associated to a task')
-parser_log.add_argument('-k', '--task_id',
-                              help="task identifier", required=True)
+parser_log.add_argument('task_id',
+                              help="task identifier")
 parser_file = subparsers.add_parser('file', help='get file associated to a task')
-parser_file.add_argument('-k', '--task_id',
-                              help="task identifier", required=True)
+parser_file.add_argument('task_id',
+                              help="task identifier")
 parser_file.add_argument('-f', '--filename',
                               help="filename to retrieve - for instance log", required=True)
 
