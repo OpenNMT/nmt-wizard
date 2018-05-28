@@ -396,6 +396,12 @@ def launch_task(task_id,
             if exit_status != 0:
                 raise RuntimeError("error retrieving files: %s, %s" % (cmd_get_files, stderr.read()))
 
+    if callback_url is not None:
+        exit_status, stdout, stderr = run_command(client, "curl -X PUT '%s/task/beat/%s' -m 5" %
+                                                    (callback_url, task_id))
+        if exit_status != 0:
+            raise RuntimeError("cannot send beat back (%s) - aborting" % stderr)
+
     cmd = cmd_docker_run(gpu_id, docker_options, task_id,
                          image_ref, callback_url, callback_interval,
                          storages, docker_command, log_dir)
