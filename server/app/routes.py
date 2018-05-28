@@ -30,8 +30,9 @@ def task_request(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
     def func_wrapper(*args, **kwargs):
-        if not task.exists(redis, args[0]):
-            flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % args[0]), 404))
+        print(func)
+        if not task.exists(redis, kwargs['task_id']):
+            flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % kwargs['task_id']), 404))
         return func(*args, **kwargs)
     return func_wrapper
 
