@@ -66,6 +66,8 @@ parser.add_argument('-j', '--json', action='store_true',
 subparsers = parser.add_subparsers(help='command help', dest='cmd')
 parser_list_services = subparsers.add_parser('ls',
                                              help='list available services')
+parser_list_services.add_argument('-v', '--verbose', help='detail resource name, and running tasks',
+                                  action='store_true')
 parser_describe = subparsers.add_parser('describe',
                                         help='list available options for the service')
 parser_describe.add_argument('-s', '--service', help="service name")
@@ -79,6 +81,7 @@ parser_launch = subparsers.add_parser('launch',
 parser_launch.add_argument('-s', '--service', help="service name")
 parser_launch.add_argument('-o', '--options', default='{}',
                            help="options selected to run the service")
+parser_launch.add_argument('-g', '--gpus', help="number of gpus", type=int, default=1)
 parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                            help=('if not 0, wait for this number of seconds after launch '
                                  'to check that launch is ok - by default wait for 2 seconds'))
@@ -137,10 +140,14 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                                                  result[k]['capacity'],
                                                  len(result[k]['busy']),
                                                  result[k]['name']))
-                if len(result[k]['busy']):
-                    for r in result[k]['busy']:
-                        busymsg.append("%-20s\t%s" % (r, result[k]['busy'][r]))
-
+                if args.verbose:
+                    for r in result[k]['detail']:
+                        res += ("  +-- %-14s\t%10d\t%10s\t%10d\t%s\n" % (r,
+                                                    result[k]['detail'][r]['usage'],
+                                                    '-',
+                                                    result[k]['detail'][r]['capacity'],
+                                                    result[k]['detail'][r]['busy']
+                                                    ))
             if len(busymsg):
                 res += "\n" + "\n".join(busymsg)
     elif cmd == "lt":
@@ -153,8 +160,11 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                     ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
             for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
                 date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
+                resource = k["alloc_resource"] or k["resource"]
+                if "alloc_lgpu" in k and k["alloc_lgpu"] is not None:
+                    resource += ':' + k["alloc_lgpu"]
                 res += ("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s\n" %
-                          (k["type"], k["task_id"], k["alloc_resource"] or k["resource"], int(k["priority"] or 0), 
+                          (k["type"], k["task_id"], resource, int(k["priority"] or 0), 
                            date, k["image"], k["status"], k.get("message")))
     elif cmd == "describe":
         if args.service not in serviceList:
@@ -216,6 +226,9 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
 
+        if args.gpus < 0:
+            raise ValueError("ERROR: ngpus must be >= 0")
+
         content = {
             "docker": {
                 "registry": args.docker_registry,
@@ -225,7 +238,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             },
             "wait_after_launch": args.wait_after_launch,
             "trainer_id": args.trainer_id,
-            "options": getjson(args.options)
+            "options": getjson(args.options),
+            "ngpus": args.gpus
         }
 
         if args.name:

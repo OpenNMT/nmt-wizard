@@ -171,7 +171,7 @@ def fuse_s3_bucket(client, corpus):
     if status != 0:
         raise RuntimeError('failed to fuse S3 bucket: %s' % stderr.read())
 
-def check_environment(client, gpu_id, log_dir, docker_registries, requirements):
+def check_environment(client, lgpu, log_dir, docker_registries, requirements):
     """Check that the environment contains all the tools necessary to launch a task
     """
     for registry in six.itervalues(docker_registries):
@@ -182,7 +182,7 @@ def check_environment(client, gpu_id, log_dir, docker_registries, requirements):
     if not run_and_check_command(client, "test -d '%s'" % log_dir):
         raise EnvironmentError("missing log directory: %s" % log_dir)
 
-    if gpu_id == 0:
+    if len(lgpu) == 0:
         if not program_exists(client, "docker"):
             raise EnvironmentError("docker not available")
         return ''
@@ -190,39 +190,42 @@ def check_environment(client, gpu_id, log_dir, docker_registries, requirements):
         if not program_exists(client, "nvidia-docker"):
             raise EnvironmentError("nvidia-docker not available")
 
-        exit_status, stdout, stderr = run_command(
-            client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
-        if exit_status != 0:
-            raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
-                exit_status, stderr.read()))
+        for gpu_id in lgpu:
+            gpu_id = int(gpu_id)
+            exit_status, stdout, stderr = run_command(
+                client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
+            if exit_status != 0:
+                raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
+                    exit_status, stderr.read()))
 
-        out = stdout.read()
-        gpu = '?'
-        mem = '?'
-        m = re.search(b'Gpu *: (.*) *\n', out)
-        if m:
-            gpu = m.group(1).decode('utf-8')
-        m = re.search(b'Free *: (.*) MiB*\n', out)
-        if m:
-            mem = int(m.group(1).decode('utf-8'))
+            out = stdout.read()
+            gpu = '?'
+            mem = '?'
+            m = re.search(b'Gpu *: (.*) *\n', out)
+            if m:
+                gpu = m.group(1).decode('utf-8')
+            m = re.search(b'Free *: (.*) MiB*\n', out)
+            if m:
+                mem = int(m.group(1).decode('utf-8'))
 
-        if requirements:
-            if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
-                raise EnvironmentError("not enough gpu memory available %d/%d"
-                                       % (mem, requirements["free_gpu_memory"]))
-            if "free_disk_space" in requirements:    
-                for path, space_G in six.iteritems(requirements["free_disk_space"]):
-                    exit_status, stdout, stderr = run_command(
-                        client,
-                        "set -o pipefail; df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
+            if requirements:
+                if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
+                    raise EnvironmentError("not enough gpu memory available %d/%d"
+                                           % (mem, requirements["free_gpu_memory"]))
 
-                    if exit_status != 0:
-                        raise EnvironmentError("missing directory %s" % (path))
-                    out = stdout.read().strip()
-                    m = re.search(b'([0-9]+)G', out)
-                    if m is None or int(m.group(1).decode('utf-8')) < space_G:
-                        raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
-                                       % (path, out, space_G))
+        if "free_disk_space" in requirements:    
+            for path, space_G in six.iteritems(requirements["free_disk_space"]):
+                exit_status, stdout, stderr = run_command(
+                    client,
+                    "set -o pipefail; df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
+
+                if exit_status != 0:
+                    raise EnvironmentError("missing directory %s" % (path))
+                out = stdout.read().strip()
+                m = re.search(b'([0-9]+)G', out)
+                if m is None or int(m.group(1).decode('utf-8')) < space_G:
+                    raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
+                                   % (path, out, space_G))
 
         return 'gpu usage: %s, free mem: %s' % (gpu, mem)
 
@@ -310,7 +313,7 @@ def update_log(task_id,
 
 def launch_task(task_id,
                 client,
-                gpu_id,
+                lgpu,
                 log_dir,
                 docker_options,
                 the_docker_registry,
@@ -337,10 +340,10 @@ def launch_task(task_id,
         * `callback_url`: server to callback for beat of activity
         * `callback_interval`: time between 2 beats
     """
-    logger.info("launching task - %s", task_id)
-
+    gpu_id = ",".join([gpu_id for gpu_id in lgpu])
+    logger.info("launching task - %s / %s", task_id, gpu_id)
     logger.debug("check environment for task %s", task_id)
-    check_environment(client, gpu_id, log_dir,
+    check_environment(client, lgpu, log_dir,
                       {the_docker_registry:
                               docker_options['registries'][the_docker_registry]},
                        requirements)
@@ -397,10 +400,11 @@ def launch_task(task_id,
                 raise RuntimeError("error retrieving files: %s, %s" % (cmd_get_files, stderr.read()))
 
     if callback_url is not None:
-        exit_status, stdout, stderr = run_command(client, "curl -m 5 -s '%s/task/log/%s'" %
+        exit_status, stdout, stderr = run_command(client, "curl -m 5 -s -X POST '%s/task/log/%s'"
+                                                          " --data-ascii 'Initialization complete...'" %
                                                     (callback_url, task_id))
         if exit_status != 0:
-            raise RuntimeError("cannot send beat back (%s) - aborting" % stderr)
+            raise RuntimeError("cannot send beat back (%s) - aborting" % stderr.read())
 
     cmd = cmd_docker_run(gpu_id, docker_options, task_id,
                          image_ref, callback_url, callback_interval,

@@ -17,14 +17,35 @@ def _usagecapacity(service):
     usage = 0
     capacity = 0
     busy = {}
+    detail = {}
     for resource in service.list_resources():
-        capacity += service.list_resources()[resource]
-        usage += redis.llen("resource:%s:%s" % (service.name, resource))
+        detail[resource] = { 'busy': '' }
+        r_capacity = service.list_resources()[resource]
+        detail[resource]['capacity'] = r_capacity
+        capacity += r_capacity
+        r_usage = redis.hlen("resource:%s:%s" % (service.name, resource))
+        detail[resource]['usage'] = r_usage
+        usage += r_usage
         err = redis.get("busy:%s:%s" % (service.name, resource))
         if err:
-            busy["%s %s" % (service.name, resource)] = err
+            detail[resource]['busy'] = err
     queued = redis.llen("queued:"+service.name)
-    return usage, queued, capacity, busy
+    return usage, queued, capacity, busy, detail
+
+def _count_maxgpu(service):
+    aggr_resource = {}
+    max_gpu = -1
+    for resource in service.list_resources():
+        capacity = service.list_resources()[resource]
+        p = resource.find(':')
+        if p != -1:
+            resource = resource[0:p]
+        if resource not in aggr_resource:
+            aggr_resource[resource] = 0
+        aggr_resource[resource] += capacity
+        if aggr_resource[resource] > max_gpu:
+            max_gpu = aggr_resource[resource]
+    return max_gpu    
 
 def task_request(func):
     """minimal check on the request to check that tasks exists"""
@@ -53,10 +74,11 @@ def filter_request(route):
 def list_services():
     res = {}
     for k in services:
-        usage, queued, capacity, busy = _usagecapacity(services[k])
+        usage, queued, capacity, busy, detail = _usagecapacity(services[k])
         res[k] = { 'name':services[k].display_name,
                    'usage': usage, 'queued': queued,
-                   'capacity': capacity, 'busy': busy }
+                   'capacity': capacity, 'busy': busy,
+                   'detail': detail }
     return flask.jsonify(res)
 
 @app.route("/service/describe/<string:service>", methods=["GET"])
@@ -141,6 +163,14 @@ def launch(service):
         if (task_type != "train" and iterations != 1) or iterations < 1:
             flask.abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
+    ngpus = 1
+    if "ngpus" in content:
+        ngpus = content["ngpus"]
+    # check that we have a resource able to run such a request
+    if _count_maxgpu(service_module) < ngpus:
+        flask.abort(flask.make_response(flask.jsonify(message="no resource available on %s for %d gpus"
+                                            % (service, ngpus)), 400))
+
     priority = content.get("priority", 0)
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
@@ -149,7 +179,7 @@ def launch(service):
 
     while iterations > 0:
         task_id = build_task_id(content, xxyy, parent_task_id)
-        task.create(redis, task_id, task_type, parent_task_id, resource, service, content, files, priority)
+        task.create(redis, task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
         task_ids.append(task_id)
         iterations -= 1
         if iterations > 0:
@@ -184,7 +214,8 @@ def list_tasks(pattern):
     for task_key in task.scan_iter(redis, pattern):
         task_id = task.id(task_key)
         info = task.info(redis, task_id,
-                ["queued_time", "alloc_resource", "resource", "content", "status", "message", "type", "iterations", "priority"])
+                ["queued_time", "alloc_resource", "alloc_lgpu", "resource", "content",
+                 "status", "message", "type", "iterations", "priority"])
         if info["content"] is not None and info["content"] != "":
             content = json.loads(info["content"])
             info["image"] = content['docker']['image']

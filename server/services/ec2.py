@@ -70,6 +70,7 @@ class EC2Service(Service):
     def launch(self,
                task_id,
                options,
+               gpulist,
                resource,
                docker_registry,
                docker_image,

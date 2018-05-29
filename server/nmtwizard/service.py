@@ -84,6 +84,7 @@ class Service(object):
     def launch(self,
                task_id,
                options,
+               gpulist,
                resource,
                docker_registry,
                docker_image,
