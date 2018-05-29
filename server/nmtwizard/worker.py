@@ -58,6 +58,15 @@ class Worker(object):
                         # check if a resource is under-used and if so try pulling some
                         # task for it
                         for service in self._services:
+                            resources = self._services[service].list_resources()
+                            for resource in resources:                                    
+                                keyr = 'resource:%s:%s' % (service, resource)
+                                key_busy = 'busy:%s:%s' % (service, resource)
+                                key_reserved = 'reserved:%s:%s' % (service, resource)
+                                if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
+                                    if self._redis.exists(key_reserved) and self._redis.ttl('queue:'+self._redis.get(key_reserved))>10:
+                                        self._redis.expire('queue:'+self._redis.get(key_reserved), 5)
+                                        break
                             if self._redis.exists('queued:%s' % service):
                                 resources = self._services[service].list_resources()
                                 self._logger.debug('checking processes on : %s', service)
@@ -66,10 +75,9 @@ class Worker(object):
                                     keyr = 'resource:%s:%s' % (service, resource)
                                     key_busy = 'busy:%s:%s' % (service, resource)
                                     key_reserved = 'reserved:%s:%s' % (service, resource)
-                                    if (not self._redis.exists(key_busy) and
-                                            not self._redis.exists(key_reserved) and
-                                            self._redis.hlen(keyr) < resources[resource]):
-                                        availableResource = True
+                                    if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
+                                        if not self._redis.exists(key_reserved):
+                                            availableResource = True
                                         break
                                 if availableResource:
                                     self._logger.debug('resources available on %s - trying dequeuing', service)
@@ -126,8 +134,26 @@ class Worker(object):
                     self._logger.warning('%s: no resources available, waiting', task_id)
                     task.service_queue(self._redis, task_id, service.name)
             elif status == 'allocating':
-                self._logger.warning('allocating %s: not yet implemented', task_id)
-                task.work_queue(self._redis, task_id, delay=service.is_notifying_activity and 120 or 30)
+                resource = self._redis.hget(keyt, 'alloc_resource')
+                keyr = 'resource:%s:%s' % (service.name, resource)
+                ngpus = int(self._redis.hget(keyt, 'ngpus'))
+                already_allocated_gpus = 0
+                for k, v in six.iteritems(self._redis.hgetall(keyr)):
+                    if v == task_id:
+                        already_allocated_gpus += 1
+                capacity = service.list_resources()[resource]
+                available_gpus, remaining_gpus = self._reserve_resource(service, resource,
+                                                                        capacity, task_id,
+                                                                        ngpus - already_allocated_gpus,
+                                                                        0, -1, True)
+                self._logger.warning('task: %s - resource: %s (capacity %d)- already %d - available %d', task_id, resource, capacity, already_allocated_gpus, available_gpus)
+                if available_gpus == ngpus - already_allocated_gpus:
+                    task.set_status(self._redis, keyt, 'allocated')
+                    key_reserved = 'reserved:%s:%s' % (service.name, resource)
+                    self._redis.delete(key_reserved)
+                    task.work_queue(self._redis, task_id)
+                else:
+                    task.work_queue(self._redis, task_id, delay=service.is_notifying_activity and 120 or 30)
             elif status == 'allocated':
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
@@ -232,7 +258,7 @@ class Worker(object):
         return None, None
 
     def _reserve_resource(self, service, resource, capacity, task_id, ngpus,
-                          br_available_gpus, br_remaining):
+                          br_available_gpus, br_remaining, check_reserved = False):
         """Reserves the resource for task_id, if possible. The resource is locked
         while we try to reserve it.
         Resource should have more gpus available (within ngpus) than br_available_gpus
@@ -246,7 +272,7 @@ class Worker(object):
         with self._redis.acquire_lock(keyr):
             if self._redis.get(key_busy) is not None:
                 return False, False
-            if self._redis.get(key_reserved) is not None:
+            if not check_reserved and self._redis.get(key_reserved) is not None:
                 return False, False
             current_usage = self._redis.hlen(keyr)
             avail_gpu = capacity - current_usage

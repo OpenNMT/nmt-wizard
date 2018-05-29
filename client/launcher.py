@@ -288,7 +288,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                 res += ("SERVICE %s - RESOURCE %s - CONTAINER %s\n" % (
                             result['service'], result.get('resource'), result.get('container_id')))
             res += "ATTACHED FILES: %s\n" % ', '.join(result['files'])
-            res =+ "TIMELINE:\n"
+            res += "TIMELINE:\n"
             last = -1
             delay = []
             for k in sorted_times:

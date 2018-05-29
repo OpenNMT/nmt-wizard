@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import six
 
 from six.moves import configparser
 
@@ -39,10 +40,23 @@ for key in redis.keys('reserved:*'):
 for task_id in task.list_active(redis):
     with redis.acquire_lock(task_id):
         status = redis.hget('task:'+task_id, 'status')
-        if status == 'queue' or status == 'allocating':
+        if status == 'queue' or status == 'allocating' or status == 'allocated':
             task.service_queue(redis, task_id, redis.hget('task:'+task_id, 'service'))
+            task.set_status(redis, 'task:'+task_id, 'queued')
         else:
             task.work_queue(redis, task_id)
+
+# Desallocate all resources that are not anymore associated to a running task
+for service in services:
+    resources = services[service].list_resources()
+    for resource in resources:
+        keyr = 'resource:%s:%s' % (service, resource)
+        running_tasks = redis.hgetall(keyr)
+        for g, task_id in six.iteritems(running_tasks):
+            with redis.acquire_lock(task_id):
+                status = redis.hget('task:'+task_id, 'status')
+                if not(status == 'running' or status == 'terminating'):
+                    redis.hdel(keyr, g)
 
 # TODO: start multiple workers here?
 worker = Worker(redis, services,
