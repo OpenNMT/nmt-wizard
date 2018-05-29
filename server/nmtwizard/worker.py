@@ -248,17 +248,14 @@ class Worker(object):
                 return False, False
             if self._redis.get(key_reserved) is not None:
                 return False, False
-            self._logger.info("rr0")
             current_usage = self._redis.hlen(keyr)
             avail_gpu = capacity - current_usage
             used_gpu = min(avail_gpu, ngpus)
             remaining_gpus = capacity - used_gpu
-            self._logger.info("rr1")
             if (used_gpu > 0 and 
                ((used_gpu > br_available_gpus) or
                 (used_gpu == br_available_gpus and remaining_gpus < br_remaining))):
                 idx = 1
-                self._logger.info("rr2")
                 for i in xrange(used_gpu):
                     while self._redis.hget(keyr, str(idx)) is not None:
                         idx += 1

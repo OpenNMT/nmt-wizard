@@ -261,7 +261,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
     if nbgpu == 1 and gpu_id[0] == 0:
         gpu_id = '0'
     else:
-        env['NV_GPU'] = str(",".join(gpu_id))
+        env['NV_GPU'] = str(",".join([str(int(g)-1) for g in gpu_id]))
         gpu_id = ",".join([str(v) for v in range(1, nbgpu+1)])
 
     if docker_options.get('dev') == 1:
