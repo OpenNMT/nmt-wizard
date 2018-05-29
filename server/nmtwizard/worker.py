@@ -238,6 +238,8 @@ class Worker(object):
         Resource should have more gpus available (within ngpus) than br_available_gpus
         or the same number but a smaller size
         """
+        if capacity < ngpus:
+            return False, False
         keyr = 'resource:%s:%s' % (service.name, resource)
         key_busy = 'busy:%s:%s' % (service.name, resource)
         key_reserved = 'reserved:%s:%s' % (service.name, resource)

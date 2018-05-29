@@ -12,6 +12,7 @@ python_run = """
 import subprocess
 from threading import Thread, Lock
 import time
+import os
 
 task_id = "%s"
 cmd = \"\"\"
@@ -19,11 +20,16 @@ cmd = \"\"\"
 \"\"\".strip().split("\\n")
 log_file = "%s"
 callback_url = "%s"
+myenv = %s
 
 f = open(log_file, "w")
 f.write("COMMAND: "+" ".join(cmd)+"\\n")
 
-p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+p1 = subprocess.Popen(cmd,
+                       stdout=subprocess.PIPE, 
+                       stderr=subprocess.STDOUT,
+                       universal_newlines=True,
+                       env=dict(os.environ, **myenv))
 
 current_log = ""
 
@@ -249,6 +255,14 @@ def cmd_docker_pull(image_ref, docker_path=None):
 def cmd_docker_run(gpu_id, docker_options, task_id,
                    image_ref, callback_url, callback_interval,
                    storages, docker_command, log_dir=None, sep=" "):
+    env = {}
+    nbgpu = len(gpu_id)
+    nv_gpu = ''
+    if nbgpu == 1 and gpu_id[0] == 0:
+        gpu_id = '0'
+    else:
+        env['NV_GPU'] = str(",".join(gpu_id))
+        gpu_id = ",".join([str(v) for v in range(1, nbgpu+1)])
 
     if docker_options.get('dev') == 1:
         return "sleep%s35" % sep
@@ -300,7 +314,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
                 arg = '/root/tmp/%s%s' % (task_id, arg[10:])
             cmd += '_o_' + arg
 
-        return cmd.replace("_o_","\n")
+        return cmd.replace("_o_","\n"), str(env).replace("'",'"')
 
 def update_log(task_id,
                client,
@@ -406,10 +420,10 @@ def launch_task(task_id,
         if exit_status != 0:
             raise RuntimeError("cannot send beat back (%s) - aborting" % stderr.read())
 
-    cmd = cmd_docker_run(gpu_id, docker_options, task_id,
+    cmd, env = cmd_docker_run(lgpu, docker_options, task_id,
                          image_ref, callback_url, callback_interval,
                          storages, docker_command, log_dir)
-    cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id), callback_url or '') + "'"
+    cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id), callback_url or '', env) + "'"
 
     # get the process group id
     cmd += ' & ps -o pgid -p $!'

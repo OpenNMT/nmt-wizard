@@ -156,14 +156,14 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
         if not is_json:
-            res = ("%-5s %-42s %-12s %-8s %-20s %-22s %-9s %s\n" %
+            res = ("%-5s %-42s %-18s %-8s %-20s %-22s %-9s %s\n" %
                     ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
             for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
                 date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
                 resource = k["alloc_resource"] or k["resource"]
                 if "alloc_lgpu" in k and k["alloc_lgpu"] is not None:
                     resource += ':' + k["alloc_lgpu"]
-                res += ("%-4s %-42s %-12s %6d   %-20s %-22s %-9s %s\n" %
+                res += ("%-4s %-42s %-18s %6d   %-20s %-22s %-9s %s\n" %
                           (k["type"], k["task_id"], resource, int(k["priority"] or 0), 
                            date, k["image"], k["status"], k.get("message")))
     elif cmd == "describe":
