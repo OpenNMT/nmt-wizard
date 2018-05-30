@@ -196,6 +196,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
         if not program_exists(client, "nvidia-docker"):
             raise EnvironmentError("nvidia-docker not available")
 
+        usage = { 'gpus':[], 'disk':[] }
         for gpu_id in lgpu:
             gpu_id = int(gpu_id)
             exit_status, stdout, stderr = run_command(
@@ -213,11 +214,11 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
             m = re.search(b'Free *: (.*) MiB*\n', out)
             if m:
                 mem = int(m.group(1).decode('utf-8'))
-
+            usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem':mem})
             if requirements:
                 if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
-                    raise EnvironmentError("not enough gpu memory available %d/%d"
-                                           % (mem, requirements["free_gpu_memory"]))
+                    raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
+                                           % (gpu_id, mem, requirements["free_gpu_memory"]))
 
         if "free_disk_space" in requirements:    
             for path, space_G in six.iteritems(requirements["free_disk_space"]):
@@ -232,8 +233,9 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
                 if m is None or int(m.group(1).decode('utf-8')) < space_G:
                     raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
                                    % (path, out, space_G))
+                usage['disk'].append({'path':path, 'free': out, 'required': space_G})
 
-        return 'gpu usage: %s, free mem: %s' % (gpu, mem)
+        return usage
 
 def cmd_connect_private_registry(docker_registry):
     if docker_registry['type'] == "aws":

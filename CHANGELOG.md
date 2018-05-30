@@ -6,6 +6,7 @@
 
 ### New features
 
+* possibility to launch multi-gpu tasks
 * launch error now reports error message in task log
 * define `auto` registry - resolved by launcher checking at `default_for` in registry definition
 * add friendly name to tasks, and differentiate task type

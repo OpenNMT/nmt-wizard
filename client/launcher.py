@@ -378,7 +378,7 @@ if __name__ == "__main__":
         logger.error(err)
         sys.exit(1)
 
-    if args.json:
+    if args.json or isinstance(res, dict):
         print(json.dumps(res))
     else:
         print(res.strip())

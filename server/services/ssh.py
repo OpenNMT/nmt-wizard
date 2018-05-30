@@ -21,7 +21,7 @@ def _get_params(config, options):
 
     if params['server'] not in servers:
         raise ValueError('server %s not in server_pool list' % params['server'])
-
+    params['gpus'] = servers[params['server']]['gpus']
     server_cfg = servers[params['server']]
 
     if 'login' not in server_cfg and 'login' not in options:
@@ -94,7 +94,7 @@ class SSHService(Service):
         try:
             details = common.check_environment(
                 client,
-                params['gpu'],
+                params['gpus'],
                 params['log_dir'],
                 self._config['docker']['registries'],
                 self._config.get('requirements'))
