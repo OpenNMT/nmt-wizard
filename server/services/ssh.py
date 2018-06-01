@@ -54,9 +54,7 @@ class SSHService(Service):
                     for server in self._config['variables']['server_pool']}
 
     def get_resource_from_options(self, options):
-        if len(self._resources) == 1:
-            return self._resources[0]
-        elif "server" not in options:
+        if "server" not in options:
             return "auto"
         else:
             return options["server"]
