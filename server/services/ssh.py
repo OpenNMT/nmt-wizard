@@ -10,28 +10,20 @@ def _get_params(config, options):
     params = {}
     if 'server' not in options:
         server_pool = config['variables']['server_pool']
-        if len(server_pool) > 1 or len(server_pool[0]['gpus']) > 1:
+        if len(server_pool) > 1:
             raise ValueError('server option is required to select a server and a resource')
-        service = config['variables']['server_pool'][0]['host']
-        resource = str(config['variables']['server_pool'][0]['gpus'][0])
-        options['server'] = service + ':' + resource
-    fields = options['server'].split(':')
-    if len(fields) != 2:
-        raise ValueError(
-            "invalid server option '%s', should be 'server:gpu'" % options['server'])
+        resource = config['variables']['server_pool'][0]['host']
+        options['server'] = resource
 
-    params['server'] = fields[0]
-    params['gpu'] = int(fields[1])
+    params['server'] = options['server']
 
     servers = {server['host']:server for server in config['variables']['server_pool']}
 
     if params['server'] not in servers:
         raise ValueError('server %s not in server_pool list' % params['server'])
-
+    params['gpus'] = servers[params['server']]['gpus']
     server_cfg = servers[params['server']]
 
-    if params['gpu'] not in server_cfg['gpus']:
-        raise ValueError("GPU %d not in server gpus list" % params['gpu'])
     if 'login' not in server_cfg and 'login' not in options:
         raise ValueError('login not found in server configuration or user options')
     if 'log_dir' not in server_cfg:
@@ -58,7 +50,8 @@ class SSHService(Service):
         return gpus
 
     def list_resources(self):
-        return {gpu:1 for gpu in self._resources}
+        return {server['host']:len(server['gpus'])
+                    for server in self._config['variables']['server_pool']}
 
     def get_resource_from_options(self, options):
         if len(self._resources) == 1:
@@ -101,7 +94,7 @@ class SSHService(Service):
         try:
             details = common.check_environment(
                 client,
-                params['gpu'],
+                params['gpus'],
                 params['log_dir'],
                 self._config['docker']['registries'],
                 self._config.get('requirements'))
@@ -112,6 +105,7 @@ class SSHService(Service):
     def launch(self,
                task_id,
                options,
+               gpulist,
                resource,
                docker_registry,
                docker_image,
@@ -119,9 +113,7 @@ class SSHService(Service):
                docker_command,
                docker_files,
                wait_after_launch):
-        if len(self._resources) > 1:
-            options['server'] = resource
-
+        options['server'] = resource
         params = _get_params(self._config, options) 
         client = common.ssh_connect_with_retry(
             params['server'],
@@ -132,7 +124,7 @@ class SSHService(Service):
             task = common.launch_task(
                 task_id,
                 client,
-                params['gpu'],
+                gpulist,
                 params['log_dir'],
                 self._config['docker'],
                 docker_registry,
