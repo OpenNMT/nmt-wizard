@@ -12,7 +12,7 @@ adjectives = ["Able", "Acceptable", "Accurate", "Acidic", "Active", "Actual", "A
     "Clever", "Clumsy", "Cold", "Colossal", "Comfortable", "Commercial", "Common", "Competitive",
     "Complete", "Complex", "Comprehensive", "Confident", "Conscious", "Consistent", "Constant",
     "Content", "Cool", "Correct", "Crazy", "Creamy", "Creative", "Critical", "Cuddly", "Cultural",
-    "Curious", "Current", "Curved", "Cute", "Damaged", "Damp", "Dane", "Dangerous", "Dark",
+    "Curious", "Current", "Curved", "Cute", "Damaged", "Damp", "Dane", "Dangerous",
     "Dazzling", "Deafening", "Dear", "Decent", "Deep", "Defeated", "Delicious", "Delightful",
     "Desperate", "Different", "Difficult", "Direct", "Distinct", "Double", "Dramatic", "Drunk", "Dry",
     "Eager", "Early", "East", "Eastern", "Easy", "Economy", "Educational", "Effective", "Efficient",
