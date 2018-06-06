@@ -83,4 +83,4 @@ def load_services(directory):
             raise RuntimeError("%s duplicates service %s definition" % (filename, name))
         services[name] = service
         logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
-    return services
+    return services, base_config

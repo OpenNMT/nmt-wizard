@@ -26,6 +26,6 @@ redis = RedisDatabase(app.iniconfig.get('redis','host'),
                       app.iniconfig.get('redis','port',fallback=6379),
                       app.iniconfig.get('redis','db',fallback=0),
                       app.iniconfig.get('redis', 'password',fallback=None))
-services = config.load_services(app.iniconfig.get('default','config_dir'))
+services, base_config = config.load_services(app.iniconfig.get('default','config_dir'))
 
 from app import routes
