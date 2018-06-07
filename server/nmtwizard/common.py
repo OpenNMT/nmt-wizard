@@ -8,10 +8,49 @@ import paramiko
 
 logger = logging.getLogger(__name__)
 
+def displaycmd(l):
+    s=""
+    for t in l:
+        p = t.find("[[private:")
+        while p != -1:
+            q = t.find("]]", p)
+            if q != -1:
+                t = t[0:p] + t[q+2:]
+            else:
+                t = t[0:p]
+            p = t.find("[[private:", p)
+        if s != "":
+            s += " "
+        if re.search(r"[ \"!{};$]",t):
+            s += chr(39)+t+chr(39)
+        else:
+            s += t
+    return s
+
+def rmprivate(l):
+    if isinstance(l, list):
+        r=[]
+        for t in l:
+            r.append(rmprivate(t))
+        return r
+    else:
+        t = l
+        p = t.find("[[private:")
+        while p != -1:
+            t = t[0:p] + t[p+10:]
+            q = t.find("]]")
+            if q != -1:
+                t = t[0:q] + t[q+2:]
+                p = t.find("[[private:", q)
+            else:
+                p = -1
+        return t
+
 python_run = """
 import subprocess
 from threading import Thread, Lock
 import time
+import re
 import os
 
 task_id = "%s"
@@ -22,10 +61,44 @@ log_file = "%s"
 callback_url = "%s"
 myenv = %s
 
-f = open(log_file, "w")
-f.write("COMMAND: "+" ".join(cmd)+"\\n")
+def displaycmd(l):
+    s=""
+    for t in l:
+        p = t.find("[[private:")
+        while p != -1:
+            q = t.find("]]", p)
+            if q != -1:
+                t = t[0:p+9] + t[q:]
+            else:
+                t = t[0:p+9]
+            p = t.find("[[private:", p+11)
+        if s != "":
+            s += " "
+        if re.search(r"[ \\"!{};$]",t):
+            s += chr(39)+t+chr(39)
+        else:
+            s += t
+    return s
 
-p1 = subprocess.Popen(cmd,
+def rmprivate(l):
+    r=[]
+    for t in l:
+        p = t.find("[[private:")
+        while p != -1:
+            t = t[0:p] + t[p+10:]
+            q = t.find("]]")
+            if q != -1:
+                t = t[0:q] + t[q+2:]
+                p = t.find("[[private:", q)
+            else:
+                p = -1
+        r.append(t)
+    return r
+
+f = open(log_file, "w")
+f.write("COMMAND: "+displaycmd(cmd)+"\\n")
+
+p1 = subprocess.Popen(rmprivate(cmd),
                        stdout=subprocess.PIPE, 
                        stderr=subprocess.STDOUT,
                        universal_newlines=True,
@@ -92,10 +165,12 @@ if callback_url:
 def add_log_handler(fh):
     logger.addHandler(fh)
 
-def run_command(client, cmd, stdin_content=None, sudo=False):
+def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True):
     if sudo:
         cmd = "sudo " + cmd
     logger.debug("RUN %s", cmd)
+    if handlePrivate:
+        cmd = rmprivate(cmd)
     stdin, stdout, stderr = client.exec_command(cmd)
     if stdin_content is not None:
         stdin.write(stdin_content)
@@ -430,7 +505,7 @@ def launch_task(task_id,
     # get the process group id
     cmd += ' & ps -o pgid -p $!'
 
-    exit_status, stdout, stderr = run_command(client, cmd)
+    exit_status, stdout, stderr = run_command(client, cmd, handlePrivate=False)
     if exit_status != 0:
         raise RuntimeError("%s run failed: %s" % (cmd, stderr.read()))
 

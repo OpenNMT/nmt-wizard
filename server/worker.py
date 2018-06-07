@@ -27,7 +27,7 @@ redis = RedisDatabase(cfg.get('redis', 'host'),
 # make sure notify events are set
 redis.config_set('notify-keyspace-events', 'Klgx')
 
-services = config.load_services(cfg.get('default', 'config_dir'))
+services, base_config = config.load_services(cfg.get('default', 'config_dir'))
 
 # remove busy state from resources
 for key in redis.keys('busy:*'):

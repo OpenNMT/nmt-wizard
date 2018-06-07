@@ -227,7 +227,6 @@ def list_tasks(pattern):
     return flask.jsonify(ltask)
 
 @app.route("/task/terminate/<string:task_id>", methods=["GET"])
-@filter_request("GET/task/terminate")
 @task_request
 def terminate(task_id):
     with redis.acquire_lock(task_id):
@@ -241,7 +240,6 @@ def terminate(task_id):
     return flask.jsonify(message="terminating %s" % task_id)
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
-@filter_request("PUT/task/beat")
 @task_request
 def task_beat(task_id):
     duration = flask.request.args.get('duration')
@@ -285,7 +283,6 @@ def get_log(task_id):
     return response
 
 @app.route("/task/log/<string:task_id>", methods=["PATCH"])
-@filter_request("PATH/task/log")
 @task_request
 def append_log(task_id):
     content = flask.request.get_data()
@@ -293,7 +290,6 @@ def append_log(task_id):
     return flask.jsonify(200)
 
 @app.route("/task/log/<string:task_id>", methods=["POST"])
-@filter_request("POST/task/log")
 @task_request
 def post_log(task_id):
     content = flask.request.get_data()

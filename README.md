@@ -74,7 +74,8 @@ where `variables` is a list of possible options for the service. The structure o
 Template files are provided in `config/templates` and can be used as a basis for configuring services.
 
 **Note**:
-* it is possible to add a field `"default_ms":true` to one storage definition. If no model storage parameter (`-ms`) is provided to the docker, this storage will be used by default.  
+* it is possible to add a field `"default_ms":true` to one storage definition. If no model storage parameter (`-ms`) is provided to the docker, this storage will be used by default.
+* to avoid exposing credentials in the task logs, annotate with "[[private:xxxx]]" all the values that are sensitive, these values will be masked as "[[private]]" in training logs.
 
 ## Server configuration
 
