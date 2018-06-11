@@ -56,6 +56,12 @@ The configuration file has the following structure:
             "/home/devling/models:/root/models"
         ],
         "envvar": {  // Environment variables to set when running the Docker image.
+            "key1": "value1",
+            "specific": {
+                "image": {
+                    "key": "value"
+                }
+            }
         },
         "path": "" // if provided, will be used to select default path for docker command on remote service.
     },
@@ -76,6 +82,7 @@ Template files are provided in `config/templates` and can be used as a basis for
 **Note**:
 * it is possible to add a field `"default_ms":true` to one storage definition. If no model storage parameter (`-ms`) is provided to the docker, this storage will be used by default.
 * to avoid exposing credentials in the task logs, annotate with "[[private:xxxx]]" all the values that are sensitive, these values will be masked as "[[private]]" in training logs.
+* specific environment variables can be passed to specific image (for instance credentials) - use "specific" dict for that.
 
 ## Server configuration
 

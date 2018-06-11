@@ -24,6 +24,13 @@
                 },
                 "default_for": [ "myrepo" ]
             }
+        },
+        "envvar": {
+            "specific": {
+                "nmtwizard/google_translate": {
+                    "credentials": "{}"
+                }
+            }
         }
     },
     "storages" : {

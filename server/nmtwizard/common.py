@@ -330,7 +330,7 @@ def cmd_docker_pull(image_ref, docker_path=None):
     return '%sdocker pull %s' % (path, image_ref)
 
 def cmd_docker_run(gpu_id, docker_options, task_id,
-                   image_ref, callback_url, callback_interval,
+                   docker_image, image_ref, callback_url, callback_interval,
                    storages, docker_command, log_dir=None, sep=" "):
     env = {}
     nbgpu = len(gpu_id)
@@ -355,8 +355,14 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
             for k in docker_options['mount']:
                 cmd += '_o_-v_o_%s' % k
         if 'envvar' in docker_options:
-            for k in docker_options['envvar']:
-                cmd += '_o_-e_o_%s=%s' % (k, docker_options['envvar'][k])
+            for k, v in six.iteritems(docker_options['envvar']):
+                if isinstance(v, str):
+                    cmd += '_o_-e_o_%s=%s' % (k, v)
+                elif isinstance(v, dict) and k == "specific" and docker_image in v:
+                    # specific options for a given image
+                    for ks, vs in six.iteritems(v[docker_image]):
+                        if isinstance(vs, str):
+                            cmd += '_o_-e_o_%s=%s' % (ks, vs)
 
         # mount TMP_DIR used to store potential transfered files
         cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id
@@ -498,8 +504,8 @@ def launch_task(task_id,
             raise RuntimeError("cannot send beat back (%s) - aborting" % stderr.read())
 
     cmd, env = cmd_docker_run(lgpu, docker_options, task_id,
-                         image_ref, callback_url, callback_interval,
-                         storages, docker_command, log_dir)
+                              docker_image, image_ref, callback_url, callback_interval,
+                              storages, docker_command, log_dir)
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id), callback_url or '', env) + "'"
 
     # get the process group id
