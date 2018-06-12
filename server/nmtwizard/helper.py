@@ -102,7 +102,7 @@ nouns = ["Aardvark", "Aardwolf", "Albatross", "Alligator", "Alpaca", "Anaconda",
     "Coreopsis", "Coriander", "Cosmos", "Courgette", "Crocus", "Cucumber", "Cyclamen", "Dahlia", "Daikon", "Delicata", "Delphinium",
     "Dill", "Eggplant", "Endive", "Fennel", "Fig", "Foxglove", "Frisee", "Garlic", "Gayfeather", "Geranium", "Ginger", "Gladiolus",
     "Globeflower", "Grape", "Grapefruit", "Habanero", "Hollyhock", "Honeysuckle", "Hosta", "Hyacinth", "Hydrangea", "Impatien",
-    "Iris", "Jicama", "Kale", "Kerria", "Kiwifruit", "Kohlrabi", "Lamium", "Lantana", "Larkspur", "Lavender", "Leek", "Lemon",
+    "Iris", "Jicama", "Kale", "Kerria", "Kiwi", "Kohlrabi", "Lamium", "Lantana", "Larkspur", "Lavender", "Leek", "Lemon",
     "Lemongrass", "Lentil", "Lettuce", "Lilac", "Lime", "Lobelia", "Loosestrife", "Lupine", "Lychee", "Mandarin", "Mangetout",
     "Mango", "Marigold", "Marjoram", "Marrow", "Melon", "Mushroom", "Narcissus", "Nasturtium", "Nectarine", "Nicotiana", "Okra",
     "Oleander", "Onion", "Onions", "Orange", "Oregano", "Pansy", "Papaya", "Paprika", "Parrot", "Parsley", "Parsnip", "Passion",
@@ -155,13 +155,16 @@ def _model_name_analysis(model):
         l = model.split("_")
         if len(l) < 4 or len(l)>5:
             return
-        if len(l) == 5:
-            struct["trid"] = l.pop(0)
-        else:
-            struct["trid"] = None
+        struct["trid"] = l.pop(0)
         struct["xxyy"] = l.pop(0)
         struct["name"] = l.pop(0)
         struct["nn"] = l.pop(0)
+        try:
+            int(struct["nn"])
+        except ValueError:
+            if len(l) == 0:
+                l.append(struct["nn"])
+                del struct["nn"]
         struct["uuid"] = l.pop(0)
         usplit = struct["uuid"].split('-')
         if len(usplit) > 1:
@@ -183,9 +186,10 @@ def build_task_id(content, xxyy, parent_task):
     trid = 'XXXX'
     if 'trainer_id' in content and content['trainer_id']:
         trid = content['trainer_id']
-    nn = 0
+
     name = content["name"] if "name" in content else None
     parent_uuid = ''
+    nn = None
     if parent_task is not None:
         struct_name = _model_name_analysis(parent_task)
         if name is None and "name" in struct_name:
@@ -204,6 +208,9 @@ def build_task_id(content, xxyy, parent_task):
 
     the_uuid = str(uuid.uuid4()).replace("-","")
 
-    task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
+    if nn == None:
+        task_id = '%s_%s_%s_%s' % (trid, xxyy, name, the_uuid)
+    else:
+        task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
     task_id = task_id[0:41-len(parent_uuid)] + parent_uuid
     return task_id

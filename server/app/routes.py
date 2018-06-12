@@ -253,7 +253,6 @@ def task_beat(task_id):
     return flask.jsonify(200)
 
 @app.route("/task/file/<string:task_id>/<string:filename>", methods=["GET"])
-@filter_request("GET/task/file")
 @task_request
 def get_file(task_id, filename):
     content = task.get_file(redis, task_id, filename)
@@ -263,8 +262,8 @@ def get_file(task_id, filename):
     response = flask.make_response(content)
     return response
 
+@app.route("/file/<string:task_id>/<string:filename>", methods=["POST"])
 @app.route("/task/file/<string:task_id>/<string:filename>", methods=["POST"])
-@filter_request("POST/task/file")
 @task_request
 def post_file(task_id, filename):
     content = flask.request.get_data()

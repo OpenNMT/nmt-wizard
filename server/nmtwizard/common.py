@@ -361,8 +361,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
                 elif isinstance(v, dict) and k == "specific" and docker_image in v:
                     # specific options for a given image
                     for ks, vs in six.iteritems(v[docker_image]):
-                        if isinstance(vs, str):
-                            cmd += '_o_-e_o_%s=%s' % (ks, vs)
+                        cmd += '_o_-e_o_%s=%s' % (ks, vs)
 
         # mount TMP_DIR used to store potential transfered files
         cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id
@@ -397,7 +396,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
                 arg = '/root/tmp/%s%s' % (task_id, arg[10:])
             cmd += '_o_' + arg
 
-        return cmd.replace("_o_","\n"), str(env).replace("'",'"')
+        return cmd.replace("\n","\\\\n").replace("_o_","\n"), str(env).replace("'",'"')
 
 def update_log(task_id,
                client,
