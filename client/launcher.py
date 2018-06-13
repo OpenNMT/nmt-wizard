@@ -6,6 +6,7 @@ import sys
 import os
 import requests
 import regex as re
+from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
@@ -61,8 +62,8 @@ parser.add_argument('-u', '--url',
                     help="url to the launcher")
 parser.add_argument('-l', '--log-level', default='INFO',
                     help="log-level (INFO|WARN|DEBUG|FATAL|ERROR)")
-parser.add_argument('-j', '--json', action='store_true',
-                    help="display output in json format from rest server (default text)")
+parser.add_argument('-d', '--display', default='TABLE',
+                    help="display mode (TABLE, JSON, HTML, RAW)")
 subparsers = parser.add_subparsers(help='command help', dest='cmd')
 parser_list_services = subparsers.add_parser('ls',
                                              help='list available services')
@@ -156,16 +157,17 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
         if not is_json:
-            res = ("%-5s %-42s %-18s %-8s %-20s %-22s %-9s %s\n" %
-                    ("TYPE", "TASK_ID", "RESOURCE", "PRIORITY", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
+            res = PrettyTable(["Type", "Task ID", "Resource", "Priority", "Launch Date", "Image", "Status", "Message"])
             for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
                 date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
                 resource = k["alloc_resource"] or k["resource"]
                 if "alloc_lgpu" in k and k["alloc_lgpu"] is not None:
                     resource += ':' + k["alloc_lgpu"]
-                res += ("%-4s %-42s %-18s %6d   %-20s %-22s %-9s %s\n" %
-                          (k["type"], k["task_id"], resource, int(k["priority"] or 0), 
-                           date, k["image"], k["status"], k.get("message")))
+                p = k["image"].find('/')
+                if p != -1:
+                    k["image"] = k["image"][p+1:]
+                res.add_row([k["type"], k["task_id"], resource, int(k["priority"] or 0), 
+                             date, k["image"], k["status"], k.get("message")])
     elif cmd == "describe":
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
@@ -370,7 +372,7 @@ if __name__ == "__main__":
     serviceList = r.json()
 
     try:
-        res = process_request(serviceList, args.cmd, args.json, args)
+        res = process_request(serviceList, args.cmd, args.display=="JSON", args)
     except RuntimeError as err:
         logger.error(err)
         sys.exit(1)
@@ -378,7 +380,15 @@ if __name__ == "__main__":
         logger.error(err)
         sys.exit(1)
 
-    if args.json or isinstance(res, dict):
+    if args.display=="JSON" or isinstance(res, dict):
         print(json.dumps(res))
+    elif isinstance(res, PrettyTable):
+        if args.display == "TABLE":
+            print(res)
+        elif args.display == "RAW":
+            res.set_style(PLAIN_COLUMNS)
+            print(res)
+        else:
+            print(res.get_html_string())
     else:
         print(res.strip())
