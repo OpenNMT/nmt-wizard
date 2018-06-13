@@ -202,7 +202,10 @@ def build_task_id(content, xxyy, parent_task):
             nn = int(struct_name["nn"])
 
     if is_train:
-        nn += 1
+        if nn is None:
+            nn = 1
+        else:
+            nn += 1
         if not name:
             name = _generate_name()
 
