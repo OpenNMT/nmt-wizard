@@ -57,13 +57,13 @@ def task_request(func):
     return func_wrapper
 
 filter_routes = []
-def filter_request(route):
+def filter_request(route, ability=None):
     def wrapper(func):
         """generic request filter system for customization"""
         @wraps(func)
         def func_wrapper(*args, **kwargs):
             if len(filter_routes):
-                return filter_routes[0](route, func, *args, **kwargs)
+                return filter_routes[0](route, ability, func, *args, **kwargs)
             # if no filter defined, just pass through
             return func(*args, **kwargs)
         return func_wrapper
