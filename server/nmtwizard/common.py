@@ -295,7 +295,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
                     raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
                                            % (gpu_id, mem, requirements["free_gpu_memory"]))
 
-        if "free_disk_space" in requirements:    
+        if requirements and "free_disk_space" in requirements:    
             for path, space_G in six.iteritems(requirements["free_disk_space"]):
                 exit_status, stdout, stderr = run_command(
                     client,
