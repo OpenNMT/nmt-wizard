@@ -165,6 +165,29 @@ if callback_url:
 def add_log_handler(fh):
     logger.addHandler(fh)
 
+
+# Make sure error is processed as binary so won't cause additional exception when decoding
+def _patched_exec_command(self, 
+                          command, 
+                          bufsize=-1, 
+                          timeout=None, 
+                          get_pty=False, 
+                          stdin_binary=False, 
+                          stdout_binary=False, 
+                          stderr_binary=True):
+    
+    chan = self._transport.open_session()
+    if get_pty:
+        chan.get_pty()
+    chan.settimeout(timeout)
+    chan.exec_command(command)
+    stdin = chan.makefile('wb' if stdin_binary else 'w', bufsize)
+    stdout = chan.makefile('rb' if stdin_binary else 'r', bufsize)
+    stderr = chan.makefile_stderr('rb' if stdin_binary else 'r', bufsize)
+    return stdin, stdout, stderr
+
+paramiko.SSHClient.exec_command = _patched_exec_command
+
 def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True):
     if sudo:
         cmd = "sudo " + cmd
@@ -483,6 +506,14 @@ def launch_task(task_id,
         if exit_status != 0:
             raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, stderr.read()))
         for f in docker_files:
+            p = f.rfind("/")
+            if p != -1:
+                fdir = f[:p]
+                cmd_mkdir = "mkdir -p %s/%s/%s" % (mount_tmpdir, task_id, fdir)
+                exit_status, stdout, stderr = run_command(client, cmd_mkdir)
+                if exit_status != 0:
+                    s = stderr.read()
+                    raise RuntimeError("error build task tmp sub-dir: %s, %s" % (cmd_mkdir, stderr.read()))
             logger.info("retrieve file %s -> %s/%s", f, mount_tmpdir, task_id)
             cmd_get_files = 'curl "%s/task/file/%s/%s" > %s/%s/%s' % (
                 callback_url,

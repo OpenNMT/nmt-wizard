@@ -184,7 +184,7 @@ class Worker(object):
                     self._release_resource(service, resource, task_id)
                     task.set_status(self._redis, keyt, 'queued')
                     task.service_queue(self._redis, task_id, service.name)
-                    self._logger.info('could not launch %s on %s: blocking resource', task_id, resource)
+                    self._logger.info('could not launch [%s] %s on %s: blocking resource', str(e), task_id, resource)
                     return
                 self._logger.info('%s: task started on %s', task_id, service.name)
                 self._redis.hset(keyt, 'job', json.dumps(data))

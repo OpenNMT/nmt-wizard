@@ -21,16 +21,25 @@ def getjson(config):
     with open(config[1:]) as data:
         return json.load(data)
 
-def find_files_parameters(config, files):
-    for k in config:
-        v = config[k]
-        if isinstance(v, unicode) and v.startswith('/') and os.path.exists(v):
-            basename = os.path.basename(v)
-            files[basename] = (basename, open(v, 'rb'))
-            config[k] = "${TMP_DIR}/%s" % basename
-            logger.debug('found local file: %s -> ${TMP_DIR}/%s', v, basename)
-        elif isinstance(v, dict):
-            find_files_parameters(v, files)
+def find_files_parameters(v, files):
+    if isinstance(v, unicode) and v.startswith('/') and os.path.exists(v):
+        global_basename = os.path.basename(v)
+        if os.path.isdir(v):
+            allfiles = [(os.path.join(v, f), os.path.join(global_basename, f))
+                        for f in os.listdir(v) if os.path.isfile(os.path.join(v, f))]
+        else:
+            allfiles = [(v, global_basename)]
+        for f in allfiles:
+            files[f[1]] = (f[1], open(f[0], 'rb'))
+            logger.info('transferring local file: %s -> ${TMP_DIR}/%s', f[0], f[1])
+        return "${TMP_DIR}/%s" % global_basename
+    elif isinstance(v, list):
+        for idx in xrange(len(v)):
+            v[idx] = find_files_parameters(v[idx], files)
+    elif isinstance(v, dict):
+        for k in v:
+            v[k] = find_files_parameters(v[k], files)
+    return v
 
 def confirm(prompt=None, resp=False):
     """prompts for yes or no response from the user. Returns True for yes and
