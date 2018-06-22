@@ -27,7 +27,13 @@ def _usagecapacity(service):
         if reserved:
             detail[resource]['reserved'] = reserved
         r_usage = redis.hgetall("resource:%s:%s" % (service.name, resource)).values()
-        detail[resource]['usage'] = r_usage
+        count_usage = {}
+        for r in r_usage:
+            if r in count_usage:
+                count_usage[r] += 1
+            else:
+                count_usage[r] = 1
+        detail[resource]['usage'] = [ "%s: %d" % (k,count_usage[k]) for k in count_usage ]
         usage += len(r_usage)
         err = redis.get("busy:%s:%s" % (service.name, resource))
         if err:
