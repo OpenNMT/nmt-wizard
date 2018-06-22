@@ -16,19 +16,23 @@ def _usagecapacity(service):
     """calculate the current usage of the service."""
     usage = 0
     capacity = 0
-    busy = {}
+    busy = 0
     detail = {}
     for resource in service.list_resources():
-        detail[resource] = { 'busy': '' }
+        detail[resource] = { 'busy': '', 'reserved': '' }
         r_capacity = service.list_resources()[resource]
         detail[resource]['capacity'] = r_capacity
         capacity += r_capacity
-        r_usage = redis.hlen("resource:%s:%s" % (service.name, resource))
+        reserved = redis.get("reserved:%s:%s" % (service.name, resource))
+        if reserved:
+            detail[resource]['reserved'] = reserved
+        r_usage = redis.hgetall("resource:%s:%s" % (service.name, resource)).values()
         detail[resource]['usage'] = r_usage
-        usage += r_usage
+        usage += len(r_usage)
         err = redis.get("busy:%s:%s" % (service.name, resource))
         if err:
             detail[resource]['busy'] = err
+            busy = busy + 1
     queued = redis.llen("queued:"+service.name)
     return usage, queued, capacity, busy, detail
 

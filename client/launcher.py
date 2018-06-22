@@ -141,23 +141,28 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         result = serviceList
         if not is_json:
             busymsg = []
-            res = "%-20s\t%10s\t%10s\t%10s\t%10s\t%s\n" % ("SERVICE NAME", "USAGE", "QUEUED",
-                                                   "CAPACITY", "BUSY", "DESCRIPTION")
+            res = PrettyTable(["Service Name", "Usage", "Queued", "Capacity", "Busy", "Description"])
+            res.align["Service Name"] = "l"
+            res.align["Description"] = "l"            
             for k in result:
-                res += ("%-20s\t%10d\t%10d\t%10d\t%10d\t%s\n" % (k,
-                                                 result[k]['usage'],
-                                                 result[k]['queued'],
-                                                 result[k]['capacity'],
-                                                 len(result[k]['busy']),
-                                                 result[k]['name']))
+                res.add_row([k,
+                             result[k]['usage'],
+                             result[k]['queued'],
+                             result[k]['capacity'],
+                             result[k]['busy'],
+                             result[k]['name']])
                 if args.verbose:
                     for r in result[k]['detail']:
-                        res += ("  +-- %-14s\t%10d\t%10s\t%10d\t%s\n" % (r,
-                                                    result[k]['detail'][r]['usage'],
-                                                    '-',
-                                                    result[k]['detail'][r]['capacity'],
-                                                    result[k]['detail'][r]['busy']
-                                                    ))
+                        if result[k]['detail'][r]['busy'] != '':
+                            err = '**' + result[k]['detail'][r]['busy']
+                        else:
+                            err = ''
+                        res.add_row(["  +-- "+r,
+                                    "\n".join(result[k]['detail'][r]['usage']),
+                                    result[k]['detail'][r]['reserved'],
+                                    result[k]['detail'][r]['capacity'],
+                                    'yes' if result[k]['detail'][r]['busy'] else '',
+                                    err])
             if len(busymsg):
                 res += "\n" + "\n".join(busymsg)
     elif cmd == "lt":
