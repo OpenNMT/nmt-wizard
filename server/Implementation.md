@@ -10,7 +10,7 @@
 * depending on available resources, tasks from _service queues_ considered for allocation (depending on priority and dependencies) are pushed on `queue` and removed from their _service queue_
 
 * all the tasks on _work queue_ are considered for _advancement_ depending on their status:
-  * `queue` - if resource can be allocated or partially allocated, task moves to `allocated` or `allocating` (depending on availability of gpu), otherwise, task is sent back to its _service queue_. If task depends on non stopped task (should not happen), it is also pushed back to its _service queue_. If task depends on stopped but not successful task, it is terminated with dependency failure.
+  * `queued` - if resource can be allocated or partially allocated, task moves to `allocated` or `allocating` (depending on availability of gpu), otherwise, task is sent back to its _service queue_. If task depends on non stopped task (should not happen), it is also pushed back to its _service queue_. If task depends on stopped but not successful task, it is terminated with dependency failure.
   * `allocating` - task has been been attributed one resource on a server, once another resource on the same server will be available it will be added to the allocation pool till it reaches full allocation 
   * `allocated` - task is launched, status is changed to `running`, task is removed from the queue. If the task cannot be launched (for any reason), the corresponding resource is flagged as busy, the task is unallocated and goes back to the service queue
   * `running` - task status is checked by inspection on running resource, if task is still running, task is removed from the queue, otherwise changed to `terminating` status

@@ -40,7 +40,7 @@ for key in redis.keys('reserved:*'):
 for task_id in task.list_active(redis):
     with redis.acquire_lock(task_id):
         status = redis.hget('task:'+task_id, 'status')
-        if status == 'queue' or status == 'allocating' or status == 'allocated':
+        if status == 'queued' or status == 'allocating' or status == 'allocated':
             task.service_queue(redis, task_id, redis.hget('task:'+task_id, 'service'))
             task.set_status(redis, 'task:'+task_id, 'queued')
         else:
