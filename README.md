@@ -110,6 +110,7 @@ The server has the following HTTP routes:
 
 | METHOD    | ROUTE | PARAM | Description |
 | ---       | --- | --- | --- |
+| `GET`     | `status` | | Check service availability |
 | `GET`     | `service/list` | | Returns available services |
 | `GET`     | `service/describe/{service_id}` | | Returns user selectable options for a specified service |
 | `GET`     | `service/check/{service_id}` | | Checks availability of a given service with provided user options |

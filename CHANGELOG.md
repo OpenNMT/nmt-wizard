@@ -14,6 +14,7 @@
 * `list_services` displays usage and capacity of the different services
 * add priority field to prioritise tasks, and make queuing system more robust
 * detect busy resources and put them in quarantine mode
+* add '/status' service
 
 ### Fixes and improvements
 

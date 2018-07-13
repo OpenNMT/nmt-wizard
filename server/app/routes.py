@@ -304,3 +304,7 @@ def post_log(task_id):
     content = flask.request.get_data()
     task.set_log(redis, task_id, content)
     return flask.jsonify(200)
+
+@app.route("/status", methods=["GET"])
+def get_status():
+    return flask.jsonify(200)
