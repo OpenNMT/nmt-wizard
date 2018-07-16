@@ -188,7 +188,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         r = requests.get(os.path.join(args.url, "service/describe", args.service), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/describe\' service: %s' % r.text)
-        result = r.json()
+        res = r.json()
     elif cmd == "check":
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
@@ -196,9 +196,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                          json=getjson(args.options), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
-        result = r.json()
-        if not is_json:
-            res = result["message"]
+        res = r.json()
     elif cmd == "launch":
         if args.trainer_id is None:
             raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')

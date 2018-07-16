@@ -111,7 +111,7 @@ def check(service):
     except Exception as e:
         flask.abort(flask.make_response(flask.jsonify(message=str(e)), 500))
     else:
-        return flask.jsonify(message=details)
+        return flask.jsonify(details)
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch")

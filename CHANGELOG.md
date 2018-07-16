@@ -3,6 +3,7 @@
 ### Breaking changes
 * redefine more consistent routes
 * change `task_id` as positional argument for simpler client commands
+* fix `service/check` returning inconsistent json format 
 
 ### New features
 
