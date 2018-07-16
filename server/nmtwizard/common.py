@@ -286,10 +286,10 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
     if not run_and_check_command(client, "test -d '%s'" % log_dir):
         raise EnvironmentError("missing log directory: %s" % log_dir)
 
+    if not program_exists(client, "docker"):
+        raise EnvironmentError("docker not available")
     if len(lgpu) == 0:
-        if not program_exists(client, "docker"):
-            raise EnvironmentError("docker not available")
-        return ''
+        return {}
     else:
         if not program_exists(client, "nvidia-docker"):
             raise EnvironmentError("nvidia-docker not available")
@@ -480,7 +480,7 @@ def launch_task(task_id,
                 cmd_connect_private_registry(docker_registry)
             )
             if exit_status != 0:
-                raise RuntimeError("cannot connect to private registry: %s" % stderr.read())
+                raise EnvironmentError("cannot connect to private registry: %s" % stderr.read())
 
         # pull the docker image
         registry_urip = '' if registry_uri == '' else registry_uri + '/'

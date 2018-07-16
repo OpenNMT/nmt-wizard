@@ -19,6 +19,7 @@
 
 ### Fixes and improvements
 
+* invalid docker image makes a run fail immediately
 * check and retry if redis database is not available
 * add default master storage (`"default_ms":true`)
 * `docker.path` variable to set docker path on remote service

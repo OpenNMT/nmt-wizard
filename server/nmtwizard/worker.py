@@ -176,7 +176,7 @@ class Worker(object):
                         content['docker']['command'],
                         task.file_list(self._redis, task_id),
                         content['wait_after_launch'])
-                except Exception as e:
+                except EnvironmentError as e:
                     # the resource is not available and will be set busy
                     self._block_resource(resource, service, str(e))
                     # set the task as queued again
@@ -185,6 +185,11 @@ class Worker(object):
                     task.set_status(self._redis, keyt, 'queued')
                     task.service_queue(self._redis, task_id, service.name)
                     self._logger.info('could not launch [%s] %s on %s: blocking resource', str(e), task_id, resource)
+                    return
+                except Exception as e:
+                    # all other errors make the task fail
+                    task.append_log(self._redis, task_id, str(e))
+                    task.terminate(self._redis, task_id, phase='runtime_error')
                     return
                 self._logger.info('%s: task started on %s', task_id, service.name)
                 self._redis.hset(keyt, 'job', json.dumps(data))
