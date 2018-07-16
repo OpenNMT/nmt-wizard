@@ -189,7 +189,7 @@ class Worker(object):
                 except Exception as e:
                     # all other errors make the task fail
                     task.append_log(self._redis, task_id, str(e))
-                    task.terminate(self._redis, task_id, phase='runtime_error')
+                    task.terminate(self._redis, task_id, phase='launch_error')
                     return
                 self._logger.info('%s: task started on %s', task_id, service.name)
                 self._redis.hset(keyt, 'job', json.dumps(data))
