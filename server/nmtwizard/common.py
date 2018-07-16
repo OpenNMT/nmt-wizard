@@ -309,7 +309,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
             m = re.search(b'Gpu *: (.*) *\n', out)
             if m:
                 gpu = m.group(1).decode('utf-8')
-            m = re.search(b'Free *: (.*) MiB*\n', out)
+            m = re.search(b'Free *: (.*) MiB *\n', out)
             if m:
                 mem = int(m.group(1).decode('utf-8'))
             usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem':mem})

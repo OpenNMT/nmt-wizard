@@ -18,6 +18,7 @@
 
 ### Fixes and improvements
 
+* check and retry if redis database is not available
 * add default master storage (`"default_ms":true`)
 * `docker.path` variable to set docker path on remote service
 * for ssh service, if `options.server` is not set, set it to `auto`
