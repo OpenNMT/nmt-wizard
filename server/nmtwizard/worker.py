@@ -33,31 +33,33 @@ class Worker(object):
                     self._logger.warning('received expired event on channel %s', channel)
                     if channel.startswith('__keyspace@0__:beat:'):
                         task_id = channel[20:]
-                        self._logger.info('%s: task expired', task_id)
-                        with self._redis.acquire_lock(task_id):
-                            task.terminate(self._redis, task_id, phase='expired')
+                        service = self._redis.hget('task:'+task_id, 'service')
+                        if service in self._services:
+                            self._logger.info('%s: task expired', task_id)
+                            with self._redis.acquire_lock(task_id):
+                                task.terminate(self._redis, task_id, phase='expired')
                     elif channel.startswith('__keyspace@0__:queue:'):
-                        task_id = channel[21:]
-                        task.work_queue(self._redis, task_id)
+                        service = self._redis.hget('task:'+task_id, 'service')
+                        if service in self._services:
+                            task_id = channel[21:]
+                            task.work_queue(self._redis, task_id, service)
             else:
-                task_id = task.work_unqueue(self._redis)
-                if task_id is not None:
-                    try:
-                        self._advance_task(task_id)
-                    except RuntimeWarning:
-                        self._logger.warning(
-                            '%s: failed to acquire a lock, retrying', task_id)
-                        task.work_queue(self._redis, task_id)
-                    except Exception as e:
-                        self._logger.error('%s: %s', task_id, str(e))
-                        with self._redis.acquire_lock(task_id):
-                            task.set_log(self._redis, task_id, str(e))
-                            task.terminate(self._redis, task_id, phase="launch_error")
-                else:
-                    if counter > self._refresh_counter:
-                        # check if a resource is under-used and if so try pulling some
-                        # task for it
-                        for service in self._services:
+                for service in self._services:
+                    task_id = task.work_unqueue(self._redis, service)
+                    if task_id is not None:
+                        try:
+                            self._advance_task(task_id)
+                        except RuntimeWarning:
+                            self._logger.warning(
+                                '%s: failed to acquire a lock, retrying', task_id)
+                            task.work_queue(self._redis, task_id, service)
+                        except Exception as e:
+                            self._logger.error('%s: %s', task_id, str(e))
+                            with self._redis.acquire_lock(task_id):
+                                task.set_log(self._redis, task_id, str(e))
+                                task.terminate(self._redis, task_id, phase="launch_error")
+                    else:
+                        if counter > self._refresh_counter:
                             resources = self._services[service].list_resources()
                             for resource in resources:                                    
                                 keyr = 'resource:%s:%s' % (service, resource)
@@ -82,7 +84,8 @@ class Worker(object):
                                 if availableResource:
                                     self._logger.debug('resources available on %s - trying dequeuing', service)
                                     self._service_unqueue(self._services[service])
-                        counter = 0
+                if counter > self._refresh_counter:
+                    counter = 0
             counter += 1
             time.sleep(0.01)
 
@@ -129,7 +132,7 @@ class Worker(object):
                         task.set_status(self._redis, keyt, 'allocated')
                     else:
                         task.set_status(self._redis, keyt, 'allocating')
-                    task.work_queue(self._redis, task_id)
+                    task.work_queue(self._redis, task_id, service_name)
                 else:
                     self._logger.warning('%s: no resources available, waiting', task_id)
                     task.service_queue(self._redis, task_id, service.name)
@@ -151,9 +154,10 @@ class Worker(object):
                     task.set_status(self._redis, keyt, 'allocated')
                     key_reserved = 'reserved:%s:%s' % (service.name, resource)
                     self._redis.delete(key_reserved)
-                    task.work_queue(self._redis, task_id)
+                    task.work_queue(self._redis, task_id, service.name)
                 else:
-                    task.work_queue(self._redis, task_id, delay=service.is_notifying_activity and 120 or 30)
+                    task.work_queue(self._redis, task_id, service.name,
+                                    delay=service.is_notifying_activity and 120 or 30)
             elif status == 'allocated':
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
@@ -196,7 +200,8 @@ class Worker(object):
                 task.set_status(self._redis, keyt, 'running')
                 # For services that do not notify their activity, we should
                 # poll the task status more regularly.
-                task.work_queue(self._redis, task_id, delay=service.is_notifying_activity and 120 or 30)
+                task.work_queue(self._redis, task_id, service.name,
+                                delay=service.is_notifying_activity and 120 or 30)
 
             elif status == 'running':
                 self._logger.debug('- checking activity of task: %s', task_id)
@@ -207,7 +212,8 @@ class Worker(object):
                                       task_id, service.name)
                     task.terminate(self._redis, task_id, phase='exited')
                 else:
-                    task.work_queue(self._redis, task_id, delay=service.is_notifying_activity and 120 or 30)
+                    task.work_queue(self._redis, task_id, service.name,
+                                    delay=service.is_notifying_activity and 120 or 30)
 
             elif status == 'terminating':
                 data = self._redis.hget(keyt, 'job')
@@ -343,5 +349,5 @@ class Worker(object):
                         best_task_queued_time = queued_time
 
             if best_task_id:
-                task.work_queue(self._redis, best_task_id)
+                task.work_queue(self._redis, best_task_id, service.name)
                 self._redis.lrem(queue, best_task_id)

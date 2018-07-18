@@ -24,7 +24,7 @@ def create(redis, task_id, task_type, parent_task, resource, service, content, f
     for k in files:
         redis.hset("files:" + task_id, k, files[k])
     set_status(redis, keyt, "queued")
-    enable(redis, task_id)
+    enable(redis, task_id, service)
     service_queue(redis, task_id, service)
 
 def terminate(redis, task_id, phase):
@@ -38,18 +38,20 @@ def terminate(redis, task_id, phase):
     set_status(redis, keyt, "terminating")
     work_queue(redis, task_id)
 
-def work_queue(redis, task_id, delay=0):
+def work_queue(redis, task_id, service=None, delay=0):
+    if service is None:
+        service = redis.hget('task:'+task_id, 'service')
     """Queues the task in the work queue with a delay."""
     if delay == 0:
-        redis.lpush('work', task_id)
+        redis.lpush('work:'+service, task_id)
         redis.delete('queue:'+task_id)
     else:
         redis.set('queue:'+task_id, delay)
         redis.expire('queue:'+task_id, int(delay))
 
-def work_unqueue(redis):
+def work_unqueue(redis, service):
     """Pop a task from the work queue."""
-    return redis.rpop('work')
+    return redis.rpop('work:'+service)
 
 def service_queue(redis, task_id, service):
     """Queue the task on the service queue."""
@@ -58,17 +60,21 @@ def service_queue(redis, task_id, service):
         redis.lpush('queued:'+service, task_id)
         redis.delete('queue:'+task_id)
 
-def enable(redis, task_id):
+def enable(redis, task_id, service=None):
+    if service is None:
+        service = redis.hget('task:'+task_id, 'service')
     """Marks a task as enabled."""
-    redis.sadd("active", task_id)
+    redis.sadd("active:"+service, task_id)
 
-def disable(redis, task_id):
+def disable(redis, task_id, service=None):
+    if service is None:
+        service = redis.hget('task:'+task_id, 'service')
     """Marks a task as disabled."""
-    redis.srem("active", task_id)
+    redis.srem("active:"+service, task_id)
 
-def list_active(redis):
+def list_active(redis, service):
     """Returns all active tasks (i.e. non stopped)."""
-    return redis.smembers("active")
+    return redis.smembers("active:"+service)
 
 def file_list(redis, task_id):
     """Returns the list of files attached to a task"""
