@@ -39,9 +39,9 @@ class Worker(object):
                             with self._redis.acquire_lock(task_id):
                                 task.terminate(self._redis, task_id, phase='expired')
                     elif channel.startswith('__keyspace@0__:queue:'):
+                        task_id = channel[21:]
                         service = self._redis.hget('task:'+task_id, 'service')
                         if service in self._services:
-                            task_id = channel[21:]
                             task.work_queue(self._redis, task_id, service)
             else:
                 for service in self._services:
