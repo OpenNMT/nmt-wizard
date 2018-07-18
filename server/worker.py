@@ -39,18 +39,6 @@ while retry < 10:
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
 
-# Migration for tasks on 'work/active' queue to 'work/active:service' queue
-while True:
-    task_id = redis.rpop('work')
-    if task_id is None:
-        break
-    redis.lpush('work:'+redis.hget('task:'+task_id, 'service'), task_id)
-while True:
-    task_id = redis.rpop('active')
-    if task_id is None:
-        break
-    redis.lpush('active:'+redis.hget('task:'+task_id, 'service'), task_id)
-
 services, base_config = config.load_services(cfg.get('default', 'config_dir'))
 
 for service in services:
