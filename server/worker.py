@@ -39,28 +39,50 @@ while retry < 10:
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
 
+# Migration for tasks on 'work/active' queue to 'work/active:service' queue
+while True:
+    task_id = redis.rpop('work')
+    if task_id is None:
+        break
+    redis.lpush('work:'+redis.hget('task:'+task_id, 'service'), task_id)
+while True:
+    task_id = redis.rpop('active')
+    if task_id is None:
+        break
+    redis.lpush('active:'+redis.hget('task:'+task_id, 'service'), task_id)
+
 services, base_config = config.load_services(cfg.get('default', 'config_dir'))
 
-# remove busy state from resources
-for key in redis.keys('busy:*'):
-    redis.delete(key)
-# remove reserved state from resources
-for key in redis.keys('reserved:*'):
-    redis.delete(key)
-
-# On startup, add all active tasks in the work queue.
-for task_id in task.list_active(redis):
-    with redis.acquire_lock(task_id):
-        status = redis.hget('task:'+task_id, 'status')
-        if status == 'queued' or status == 'allocating' or status == 'allocated':
-            task.service_queue(redis, task_id, redis.hget('task:'+task_id, 'service'))
-            task.set_status(redis, 'task:'+task_id, 'queued')
-        else:
-            task.work_queue(redis, task_id)
-
-# Desallocate all resources that are not anymore associated to a running task
 for service in services:
+
+    # remove busy state from resources
+    for key in redis.keys('busy:%s:*' % service):
+        redis.delete(key)
+    # remove reserved state from resources
+    for key in redis.keys('reserved:%s:*' % service):
+        redis.delete(key)
+    # remove queued tasks on service
+    for key in redis.keys('queued:%s' % service):
+        redis.delete(key)
+
+    # On startup, add all active tasks in the work queue or service queue
+    for task_id in task.list_active(redis, service):
+        with redis.acquire_lock(task_id):
+            status = redis.hget('task:'+task_id, 'status')
+            if status == 'queued' or status == 'allocating' or status == 'allocated':
+                task.service_queue(redis, task_id, redis.hget('task:'+task_id, 'service'))
+                task.set_status(redis, 'task:'+task_id, 'queued')
+            else:
+                task.work_queue(redis, task_id, service)
+        # check integrity of tasks
+        if redis.hget(task_id, 'priority') is None:
+            redis.hset(task_id, 'priority', 0)
+        if redis.hget(task_id, 'queued_time') is None:
+            redis.hset(task_id, 'queued_time', time.time())
+
+    # Desallocate all resources that are not anymore associated to a running task
     resources = services[service].list_resources()
+
     for resource in resources:
         keyr = 'resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keyr)
