@@ -275,8 +275,9 @@ def fuse_s3_bucket(client, corpus):
     if status != 0:
         raise RuntimeError('failed to fuse S3 bucket: %s' % stderr.read())
 
-def check_environment(client, lgpu, log_dir, docker_registries, requirements):
+def check_environment(client, lgpu, log_dir, docker_registries, requirements, check=True):
     """Check that the environment contains all the tools necessary to launch a task
+       and meets requirement
     """
     for registry in six.itervalues(docker_registries):
         if registry['type'] == 'aws' and not program_exists(client, 'aws'):
@@ -313,7 +314,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
             if m:
                 mem = int(m.group(1).decode('utf-8'))
             usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem':mem})
-            if requirements:
+            if check and requirements:
                 if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
                     raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
                                            % (gpu_id, mem, requirements["free_gpu_memory"]))
@@ -328,7 +329,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements):
                     raise EnvironmentError("missing directory %s" % (path))
                 out = stdout.read().strip()
                 m = re.search(b'([0-9]+)G', out)
-                if m is None or int(m.group(1).decode('utf-8')) < space_G:
+                if check and (m is None or int(m.group(1).decode('utf-8')) < space_G):
                     raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
                                    % (path, out, space_G))
                 usage['disk'].append({'path':path, 'free': out, 'required': space_G})

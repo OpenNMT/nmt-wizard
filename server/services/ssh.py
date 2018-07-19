@@ -95,7 +95,8 @@ class SSHService(Service):
                 params['gpus'],
                 params['log_dir'],
                 self._config['docker']['registries'],
-                self._config.get('requirements'))
+                self._config.get('requirements'),
+                False)
         finally:
             client.close()
         return details

@@ -27,6 +27,7 @@
 * fix and improve task termination for ssh service
 * incremental log during training
 * automatically configure database at launch time
+* `service/check` does not fail if resources not available
 * misc bug fixes
 
 ## [v0.1.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.1.0) (2018-03-02)

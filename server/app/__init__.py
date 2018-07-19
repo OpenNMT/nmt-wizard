@@ -36,7 +36,6 @@ while retry < 10:
         break
     except ConnectionError as e:
         retry += 1
-        logger.warn("cannot connect to redis DB - retrying (%d)" % retry)
         time.sleep(1)
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
