@@ -215,7 +215,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         args.docker_image = m.group(3)
 
         if args.service not in serviceList:
-            raise ValueError("ERROR: service '%s' not defined" % args.service)
+            raise ValueError("service '%s' not defined" % args.service)
 
         # for multi-part file sending
         files = {}
@@ -226,7 +226,9 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             if c.startswith("@"):
                 with open(c[1:], "rt") as f:
                     c = f.read()
-            if os.path.exists(c):
+            if os.path.isabs(c):
+                if not os.path.exists(c):
+                    raise ValueError("file '%s' does not exist" % c)
                 basename = os.path.basename(c)
                 files[basename] = (basename, open(c, 'rb'))
                 c = "${TMP_DIR}/%s" % basename

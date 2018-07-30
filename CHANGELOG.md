@@ -4,6 +4,7 @@
 * redefine more consistent routes
 * change `task_id` as positional argument for simpler client commands
 * fix `service/check` returning inconsistent json format 
+* local path parameters must be absolute path
 
 ### New features
 
