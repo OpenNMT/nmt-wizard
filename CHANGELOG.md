@@ -1,6 +1,14 @@
 ## [Unreleased]
 
 ### Breaking changes
+
+### New features
+
+### Fixes and improvements
+
+## [v0.2.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.2.0) (2018-07-31)
+
+### Breaking changes
 * redefine more consistent routes
 * change `task_id` as positional argument for simpler client commands
 * fix `service/check` returning inconsistent json format 
@@ -8,6 +16,7 @@
 
 ### New features
 
+* versioning information
 * possibility to launch multi-gpu tasks
 * launch error now reports error message in task log
 * define `auto` registry - resolved by launcher checking at `default_for` in registry definition

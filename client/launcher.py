@@ -10,6 +10,24 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
+VERSION = "0.2.0-ce"
+def append_version(v):
+    global VERSION
+    VERSION += ":" + v
+def get_version():
+    return VERSION
+
+class VersionAction(argparse.Action):
+    def __init__(self, nargs=0, **kw):
+        super(VersionAction, self).__init__(nargs=nargs, **kw)
+    def __call__(self, parser, namespace, values, option_string=None):
+        print("Client version: %s" % VERSION)
+        r = requests.get(os.path.join(os.getenv('LAUNCHER_URL'), "version"))
+        if r.status_code != 200:
+            raise RuntimeError('incorrect result from \'version\' service: %s' % r.text)
+        print("Server version: %s" % r.text)
+        sys.exit(1)
+
 reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:([-A-Za-z_.0-9]+)|)$")
 logger = None
 
@@ -133,6 +151,8 @@ parser_file.add_argument('task_id',
                               help="task identifier")
 parser_file.add_argument('-f', '--filename',
                               help="filename to retrieve - for instance log", required=True)
+parser.add_argument('--version', action=VersionAction, help="Version information")
+
 
 def process_request(serviceList, cmd, is_json, args, auth=None):
     res = None

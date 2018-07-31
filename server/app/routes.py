@@ -1,4 +1,4 @@
-from app import app, redis, services
+from app import app, redis, services, get_version
 import flask
 from nmtwizard import common, task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task
@@ -309,3 +309,7 @@ def post_log(task_id):
 @app.route("/status", methods=["GET"])
 def get_status():
     return flask.jsonify(200)
+
+@app.route("/version", methods=["GET"])
+def get_version_request():
+    return flask.make_response(get_version())
