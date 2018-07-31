@@ -1,9 +1,13 @@
-from app import app, redis, services, get_version
+from app import app, redis, services, get_version, ch
 import flask
 from nmtwizard import common, task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task
 import json
 from functools import wraps
+import logging
+
+logger = logging.getLogger(__name__)
+logger.addHandler(ch)
 
 def _get_service(service):
     """Wrapper to fail on invalid service."""

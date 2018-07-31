@@ -3,6 +3,7 @@ from flask_ini import FlaskIni
 import os
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import config, common
+
 import logging
 import time
 from redis.exceptions import ConnectionError
@@ -17,7 +18,7 @@ def get_version():
 app = Flask(__name__)
 
 ch = logging.StreamHandler()
-ch.setLevel(logging.ERROR)
+ch.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 
