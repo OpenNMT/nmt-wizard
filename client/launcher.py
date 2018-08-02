@@ -92,6 +92,8 @@ parser.add_argument('-l', '--log-level', default='INFO',
 parser.add_argument('-d', '--display', default='TABLE',
                     help="display mode (TABLE, JSON, HTML, RAW)")
 subparsers = parser.add_subparsers(help='command help', dest='cmd')
+subparsers.required = True
+
 parser_list_services = subparsers.add_parser('ls',
                                              help='list available services')
 parser_list_services.add_argument('-v', '--verbose', help='detail resource name, and running tasks',
