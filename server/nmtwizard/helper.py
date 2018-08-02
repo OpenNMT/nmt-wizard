@@ -124,10 +124,10 @@ def shallow_command_analysis(command):
     yy = 'yy'
     parent_task = None
     while i < len(command):
-        if command[i] == '-m' and i+1 < len(command):
+        if (command[i] == '-m' or command[i] == '--model') and i+1 < len(command):
             parent_task = command[i+1]
             i += 1
-        elif command[i] == '-c' and i+1 < len(command):
+        elif (command[i] == '-c' or command[i] == '--config') and i+1 < len(command):
             config = json.loads(command[i+1])
             if not parent_task and "model" in config:
                 parent_task = config["model"]
