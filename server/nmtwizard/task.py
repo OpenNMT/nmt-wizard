@@ -16,6 +16,10 @@ def set_status(redis, keyt, status):
         if ttl is not None and ttl != 0:
             print('Apply %d ttl on %s' % (ttl, keyt))
             redis.expire(keyt, ttl)
+            keyfile = keyt.replace("task:", "files:")
+            redis.expire(keyfile, ttl)
+            keylog = keyt.replace("task:", "log:")
+            redis.expire(keylog, ttl)
 
 def exists(redis, task_id):
     """Checks if a task exist."""
