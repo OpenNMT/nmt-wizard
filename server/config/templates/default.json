@@ -67,5 +67,27 @@
 
     },
     "callback_url": "http://XXXXX:5000",
-    "callback_interval": 60
+    "callback_interval": 60,
+    "ttl_policy" : [
+        { 
+            "pattern": {
+                "status": "stopped",
+                "message": "dependency_error"
+            },
+            "ttl": 3600
+        },
+        { 
+            "pattern": {
+                "status": "stopped",
+                "type": "trans"
+            },
+            "ttl": 86400
+        },
+        { 
+            "pattern": {
+                "status": "stopped"
+            },
+            "ttl": 604800
+        }
+    ]
 }

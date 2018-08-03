@@ -8,6 +8,9 @@
 
 ## [v0.2.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.2.1) (2018-08-02)
 
+### New features
+* introduce ttl on stopped task in database
+
 ### Fixes and improvements
 
 * fix python 3 compatibility issue (client)

@@ -1,10 +1,21 @@
 import time
 import json
 
+ttl_policy_func = None
+def set_ttl_policy(func):
+    global ttl_policy_func
+    ttl_policy_func = func
+
 def set_status(redis, keyt, status):
     """Sets the status and save the time of change."""
+    global ttl_policy_func
     redis.hset(keyt, "status", status)
     redis.hset(keyt, status + "_time", time.time())
+    if ttl_policy_func is not None and status == "stopped":
+        ttl = ttl_policy_func(redis.hgetall(keyt))
+        if ttl is not None and ttl != 0:
+            print('Apply %d ttl on %s' % (ttl, keyt))
+            redis.expire(keyt, ttl)
 
 def exists(redis, task_id):
     """Checks if a task exist."""

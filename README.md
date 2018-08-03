@@ -71,7 +71,16 @@ The configuration file has the following structure:
     "storages": {  // Storage configuration as described in single-training-docker.
     },
     "callback_url": "http://LAUNCHER_URL",
-    "callback_interval": 60
+    "callback_interval": 60,
+    "ttl_policy" : [
+        { 
+            "pattern": {
+                "status": "stopped",
+                "message": "dependency_error"
+            },
+            "ttl": 10
+        }
+    ]
 }
 ```
 
@@ -83,6 +92,7 @@ Template files are provided in `config/templates` and can be used as a basis for
 * it is possible to add a field `"default_ms":true` to one storage definition. If no model storage parameter (`-ms`) is provided to the docker, this storage will be used by default.
 * to avoid exposing credentials in the task logs, annotate with "[[private:xxxx]]" all the values that are sensitive, these values will be masked as "[[private]]" in training logs.
 * specific environment variables can be passed to specific image (for instance credentials) - use "specific" dict for that.
+* `ttl_policy` defines the time to leave (ttl) for stopped tasks in the redis database. Each pattern defines a config to match on the stopped task, if all conditions applies, the corresponding ttl is applie.
 
 ## Server configuration
 

@@ -8,12 +8,13 @@ from nmtwizard import task
 
 class Worker(object):
 
-    def __init__(self, redis, services, refresh_counter, quarantine_time, index=0):
+    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, index=0):
         self._redis = redis
         self._services = services
         self._logger = logging.getLogger('worker%d' % index)
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
+        task.set_ttl_policy(ttl_policy)
 
     def run(self):
         self._logger.info('Starting worker')

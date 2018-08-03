@@ -80,8 +80,23 @@ for service in services:
                 if not(status == 'running' or status == 'terminating'):
                     redis.hdel(keyr, g)
 
+# define ttl policy for a task
+def ttl_policy(task_map):
+    s = task_map['service']
+    if s is not None and s in services and 'ttl_policy' in services[s]._config:
+        for ttl_rule in services[s]._config['ttl_policy']:
+            match = True
+            for p, v in six.iteritems(ttl_rule['pattern']):
+                match = p in task_map and task_map[p] == v
+                if not match:
+                    break
+            if match:
+                return ttl_rule['ttl']
+    return 0
+
 # TODO: start multiple workers here?
 worker = Worker(redis, services,
+                ttl_policy,
                 cfg.getint('default', 'refresh_counter'),
                 cfg.getint('default', 'quarantine_time'))
 worker.run()
