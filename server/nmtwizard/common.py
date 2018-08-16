@@ -191,7 +191,14 @@ paramiko.SSHClient.exec_command = _patched_exec_command
 def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True):
     if sudo:
         cmd = "sudo " + cmd
-    logger.debug("RUN %s", cmd)
+    if logger.getEffectiveLevel() == logging.DEBUG:
+        logger.debug("RUN `%s`", cmd)
+    else:
+        p = cmd.find("\n")
+        if p == -1:
+            logger.info("RUN `%s`", cmd)
+        else:
+            logger.info("RUN `%s`...", cmd[:p])
     if handlePrivate:
         cmd = rmprivate(cmd)
     stdin, stdout, stderr = client.exec_command(cmd)

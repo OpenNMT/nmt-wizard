@@ -1,4 +1,5 @@
 import logging
+import logging.config
 import time
 import os
 import sys
@@ -14,8 +15,8 @@ from nmtwizard.worker import Worker
 cfg = configparser.ConfigParser()
 cfg.read('settings.ini')
 
-logging.basicConfig(stream=sys.stdout, level=cfg.get('default', 'log_level'))
-logger = logging.getLogger()
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('worker')
 
 redis_password = None
 if cfg.has_option('redis', 'password'):

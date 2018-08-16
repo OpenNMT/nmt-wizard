@@ -5,6 +5,7 @@
 ### New features
 
 ### Fixes and improvements
+* worker use `logging.conf` for formatted logs
 
 ## [v0.2.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.2.1) (2018-08-02)
 
