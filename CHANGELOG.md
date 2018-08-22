@@ -6,6 +6,7 @@
 
 ### Fixes and improvements
 * worker use `logging.conf` for formatted logs
+* fix ghost tasks remaining after terminated if they were already in service queue
 
 ## [v0.2.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.2.1) (2018-08-02)
 

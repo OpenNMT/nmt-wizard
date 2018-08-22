@@ -49,6 +49,11 @@ def terminate(redis, task_id, phase):
     keyt = "task:" + task_id
     if redis.hget(keyt, "status") in ("terminating", "stopped"):
         return
+
+    # remove from service queue if it was there
+    service = redis.hget(keyt, "service")
+    redis.lrem('queued:'+service, task_id)
+
     redis.hset(keyt, "message", phase)
     set_status(redis, keyt, "terminating")
     work_queue(redis, task_id)
