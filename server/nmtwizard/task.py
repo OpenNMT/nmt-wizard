@@ -25,8 +25,10 @@ def exists(redis, task_id):
     """Checks if a task exist."""
     return redis.exists("task:" + task_id)
 
-def create(redis, task_id, task_type, parent_task, resource, service, content, files, priority=0, ngpus=1):
+def create(redis, task_id, task_type, parent_task, resource, service, content, files, priority=0, ngpus=1, ncpus=None):
     """Creates a new task and enables it."""
+    if ncpus is None:
+        ncpus = 2
     keyt = "task:" + task_id
     redis.hset(keyt, "type", task_type)
     if parent_task:
@@ -36,6 +38,7 @@ def create(redis, task_id, task_type, parent_task, resource, service, content, f
     redis.hset(keyt, "content", json.dumps(content))
     redis.hset(keyt, "priority", priority)
     redis.hset(keyt, "ngpus", ngpus)
+    redis.hset(keyt, "ncpus", ncpus)
     for k in files:
         redis.hset("files:" + task_id, k, files[k])
     set_status(redis, keyt, "queued")

@@ -296,52 +296,50 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
 
     if not program_exists(client, "docker"):
         raise EnvironmentError("docker not available")
-    if len(lgpu) == 0:
-        return {}
-    else:
+    if len(lgpu) != 0:
         if not program_exists(client, "nvidia-docker"):
             raise EnvironmentError("nvidia-docker not available")
 
-        usage = { 'gpus':[], 'disk':[] }
-        for gpu_id in lgpu:
-            gpu_id = int(gpu_id)
+    usage = { 'gpus':[], 'disk':[] }
+    for gpu_id in lgpu:
+        gpu_id = int(gpu_id)
+        exit_status, stdout, stderr = run_command(
+            client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
+        if exit_status != 0:
+            raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
+                exit_status, stderr.read()))
+
+        out = stdout.read()
+        gpu = '?'
+        mem = '?'
+        m = re.search(b'Gpu *: (.*) *\n', out)
+        if m:
+            gpu = m.group(1).decode('utf-8')
+        m = re.search(b'Free *: (.*) MiB *\n', out)
+        if m:
+            mem = int(m.group(1).decode('utf-8'))
+        usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem':mem})
+        if check and requirements:
+            if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
+                raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
+                                       % (gpu_id, mem, requirements["free_gpu_memory"]))
+
+    if requirements and "free_disk_space" in requirements:    
+        for path, space_G in six.iteritems(requirements["free_disk_space"]):
             exit_status, stdout, stderr = run_command(
-                client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
+                client,
+                "set -o pipefail; df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
+
             if exit_status != 0:
-                raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
-                    exit_status, stderr.read()))
+                raise EnvironmentError("missing directory %s" % (path))
+            out = stdout.read().strip()
+            m = re.search(b'([0-9]+)G', out)
+            if check and (m is None or int(m.group(1).decode('utf-8')) < space_G):
+                raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
+                               % (path, out, space_G))
+            usage['disk'].append({'path':path, 'free': out, 'required': space_G})
 
-            out = stdout.read()
-            gpu = '?'
-            mem = '?'
-            m = re.search(b'Gpu *: (.*) *\n', out)
-            if m:
-                gpu = m.group(1).decode('utf-8')
-            m = re.search(b'Free *: (.*) MiB *\n', out)
-            if m:
-                mem = int(m.group(1).decode('utf-8'))
-            usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem':mem})
-            if check and requirements:
-                if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
-                    raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
-                                           % (gpu_id, mem, requirements["free_gpu_memory"]))
-
-        if requirements and "free_disk_space" in requirements:    
-            for path, space_G in six.iteritems(requirements["free_disk_space"]):
-                exit_status, stdout, stderr = run_command(
-                    client,
-                    "set -o pipefail; df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
-
-                if exit_status != 0:
-                    raise EnvironmentError("missing directory %s" % (path))
-                out = stdout.read().strip()
-                m = re.search(b'([0-9]+)G', out)
-                if check and (m is None or int(m.group(1).decode('utf-8')) < space_G):
-                    raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
-                                   % (path, out, space_G))
-                usage['disk'].append({'path':path, 'free': out, 'required': space_G})
-
-        return usage
+    return usage
 
 def cmd_connect_private_registry(docker_registry):
     if docker_registry['type'] == "aws":
@@ -366,7 +364,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
     env = {}
     nbgpu = len(gpu_id)
     nv_gpu = ''
-    if nbgpu == 1 and gpu_id[0] == 0:
+    if nbgpu == 0 or (nbgpu == 1 and gpu_id[0] == 0):
         gpu_id = '0'
     else:
         env['NV_GPU'] = str(",".join([str(int(g)-1) for g in gpu_id]))
@@ -375,7 +373,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
     if docker_options.get('dev') == 1:
         return "sleep%s35" % sep
     else:
-        docker_cmd = 'docker' if gpu_id == 0 else 'nvidia-docker'
+        docker_cmd = 'docker' if gpu_id == '0' else 'nvidia-docker'
         docker_path = docker_options.get('path')
         if docker_path:
             docker_cmd = docker_path +'/' + docker_cmd

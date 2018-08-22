@@ -22,6 +22,8 @@ def _get_params(config, options):
     if params['server'] not in servers:
         raise ValueError('server %s not in server_pool list' % params['server'])
     params['gpus'] = servers[params['server']]['gpus']
+    params['ncpus'] = servers[params['server']]['ncpus']
+
     server_cfg = servers[params['server']]
 
     if 'login' not in server_cfg and 'login' not in options:
@@ -39,8 +41,16 @@ def _get_params(config, options):
 class SSHService(Service):
 
     def __init__(self, config):
+        for server in config['variables']['server_pool']:
+            if 'gpus' not in server:
+                server['gpus'] = []
+            if 'ncpus' not in server or server['ncpus'] == 0:
+                if len(server['gpus']) == 0:
+                    raise ValueError("ncpus and gpus missing in server `%s`" % server)
+                server['ncpus'] = 2 * len(server['gpus'])
         super(SSHService, self).__init__(config)
         self._resources = self._list_all_gpus()
+        server_pool = config['variables']['server_pool']
 
     def _list_all_gpus(self):
         gpus = []
@@ -51,6 +61,10 @@ class SSHService(Service):
 
     def list_resources(self):
         return {server['host']:len(server['gpus'])
+                    for server in self._config['variables']['server_pool']}
+
+    def list_servers(self):
+        return {server['host']:server
                     for server in self._config['variables']['server_pool']}
 
     def get_resource_from_options(self, options):

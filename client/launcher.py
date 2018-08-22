@@ -182,7 +182,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                         res.add_row(["  +-- "+r,
                                     "\n".join(result[k]['detail'][r]['usage']),
                                     result[k]['detail'][r]['reserved'],
-                                    result[k]['detail'][r]['capacity'],
+                                    '%d (%d)' % (result[k]['detail'][r]['capacity'], result[k]['detail'][r]['ncpus']),
                                     'yes' if result[k]['detail'][r]['busy'] else '',
                                     err])
             if len(busymsg):

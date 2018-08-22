@@ -63,7 +63,7 @@ class Worker(object):
                         if counter > self._refresh_counter:
                             resources = self._services[service].list_resources()
                             for resource in resources:                                    
-                                keyr = 'resource:%s:%s' % (service, resource)
+                                keyr = 'gpu_resource:%s:%s' % (service, resource)
                                 key_busy = 'busy:%s:%s' % (service, resource)
                                 key_reserved = 'reserved:%s:%s' % (service, resource)
                                 if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
@@ -75,10 +75,13 @@ class Worker(object):
                                 self._logger.debug('checking processes on : %s', service)
                                 availableResource = False
                                 for resource in resources:                                    
-                                    keyr = 'resource:%s:%s' % (service, resource)
+                                    keyr = 'gpu_resource:%s:%s' % (service, resource)
                                     key_busy = 'busy:%s:%s' % (service, resource)
                                     key_reserved = 'reserved:%s:%s' % (service, resource)
-                                    if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
+                                    # try dequeuing only if resource not busy, not reserved, and is pure cpu
+                                    # or has cpu available
+                                    if not self._redis.exists(key_busy) and (
+                                            resources[resource]==0 or self._redis.hlen(keyr) < resources[resource]):
                                         if not self._redis.exists(key_reserved):
                                             availableResource = True
                                         break
@@ -124,7 +127,8 @@ class Worker(object):
                             task.service_queue(self._redis, task_id, service.name)
                             return
                 ngpus = int(self._redis.hget(keyt, 'ngpus'))
-                resource, available_gpus = self._allocate_resource(task_id, resource, service, ngpus)
+                ncpus = int(self._redis.hget(keyt, 'ncpus'))
+                resource, available_gpus = self._allocate_resource(task_id, resource, service, ngpus, ncpus)
                 if resource is not None:
                     self._logger.info('%s: resource %s reserved (%d/%d)',
                                       task_id, resource, available_gpus, ngpus)
@@ -139,8 +143,9 @@ class Worker(object):
                     task.service_queue(self._redis, task_id, service.name)
             elif status == 'allocating':
                 resource = self._redis.hget(keyt, 'alloc_resource')
-                keyr = 'resource:%s:%s' % (service.name, resource)
+                keyr = 'gpu_resource:%s:%s' % (service.name, resource)
                 ngpus = int(self._redis.hget(keyt, 'ngpus'))
+                ncpus = int(self._redis.hget(keyt, 'ncpus'))
                 already_allocated_gpus = 0
                 for k, v in six.iteritems(self._redis.hgetall(keyr)):
                     if v == task_id:
@@ -148,7 +153,7 @@ class Worker(object):
                 capacity = service.list_resources()[resource]
                 available_gpus, remaining_gpus = self._reserve_resource(service, resource,
                                                                         capacity, task_id,
-                                                                        ngpus - already_allocated_gpus,
+                                                                        ngpus - already_allocated_gpus, ncpus,
                                                                         0, -1, True)
                 self._logger.warning('task: %s - resource: %s (capacity %d)- already %d - available %d', task_id, resource, capacity, already_allocated_gpus, available_gpus)
                 if available_gpus == ngpus - already_allocated_gpus:
@@ -164,11 +169,15 @@ class Worker(object):
                 resource = self._redis.hget(keyt, 'alloc_resource')
                 self._logger.info('%s: launching on %s', task_id, service.name)
                 try:
-                    keyr = 'resource:%s:%s' % (service.name, resource)
+                    keyr = 'gpu_resource:%s:%s' % (service.name, resource)
                     lgpu = []
                     for k, v in six.iteritems(self._redis.hgetall(keyr)):
                         if v == task_id:
                             lgpu.append(k)
+                    if 'ncpus' in content:
+                        ncpus = content['ncpus']
+                    else:
+                        ncpus = 2
                     self._redis.hset(keyt, 'alloc_lgpu', ",".join(lgpu))
                     data = service.launch(
                         task_id,
@@ -184,15 +193,16 @@ class Worker(object):
                 except EnvironmentError as e:
                     # the resource is not available and will be set busy
                     self._block_resource(resource, service, str(e))
-                    # set the task as queued again
                     self._redis.hdel(keyt, 'alloc_resource')
-                    self._release_resource(service, resource, task_id)
+                    # set the task as queued again
+                    self._release_resource(service, resource, task_id, ncpus)
                     task.set_status(self._redis, keyt, 'queued')
                     task.service_queue(self._redis, task_id, service.name)
                     self._logger.info('could not launch [%s] %s on %s: blocking resource', str(e), task_id, resource)
                     return
                 except Exception as e:
                     # all other errors make the task fail
+                    self._logger.info('fail task [%s] - %s', task_id, str(e))
                     task.append_log(self._redis, task_id, str(e))
                     task.terminate(self._redis, task_id, phase='launch_error')
                     return
@@ -218,6 +228,7 @@ class Worker(object):
 
             elif status == 'terminating':
                 data = self._redis.hget(keyt, 'job')
+                ncpus = int(self._redis.hget(keyt, 'ncpus'))
                 if data is not None:
                     container_id = self._redis.hget(keyt, 'container_id')
                     data = json.loads(data)
@@ -229,7 +240,7 @@ class Worker(object):
                     except Exception:
                         self._logger.warning('%s: failed to terminate', task_id)
                 resource = self._redis.hget(keyt, 'alloc_resource')
-                self._release_resource(service, resource, task_id)
+                self._release_resource(service, resource, task_id, ncpus)
                 task.set_status(self._redis, keyt, 'stopped')
                 task.disable(self._redis, task_id)
 
@@ -240,7 +251,7 @@ class Worker(object):
         self._redis.set(keyb, err)
         self._redis.expire(keyb, self._quarantine_time)
 
-    def _allocate_resource(self, task_id, resource, service, ngpus):
+    def _allocate_resource(self, task_id, resource, service, ngpus, ncpus):
         """Allocates a resource for task_id and returns the name of the resource
         (or None if none where allocated).
         """
@@ -251,25 +262,27 @@ class Worker(object):
         if resource == 'auto':
             for name, capacity in six.iteritems(resources):
                 available_gpus, remaining_gpus = self._reserve_resource(service, name, capacity, task_id, ngpus,
-                                                        br_available_gpus, br_remaining)
-                if available_gpus:
+                                                        ncpus, br_available_gpus, br_remaining)
+                if available_gpus is not False:
                     if best_resource is not None:
-                        self._release_resource(service, best_resource, task_id)
+                        self._release_resource(service, best_resource, task_id, ncpus)
                     best_resource = name
                     br_remaining = remaining_gpus
                     br_available_gpus = available_gpus
+                    if available_gpus == 0:
+                        break
             return best_resource, br_available_gpus
         elif resource not in resources:
             raise ValueError('resource %s does not exist for service %s' % (resource, service.name))
         else:
             available_gpus, remaining_gpus = self._reserve_resource(service, resource,
-                                                                    resources[resource], task_id, ngpus,
+                                                                    resources[resource], task_id, ngpus, ncpus,
                                                                     0, -1)
             if available_gpus:
                 return resource, available_gpus
         return None, None
 
-    def _reserve_resource(self, service, resource, capacity, task_id, ngpus,
+    def _reserve_resource(self, service, resource, capacity, task_id, ngpus, ncpus,
                           br_available_gpus, br_remaining, check_reserved = False):
         """Reserves the resource for task_id, if possible. The resource is locked
         while we try to reserve it.
@@ -278,12 +291,22 @@ class Worker(object):
         """
         if capacity < ngpus:
             return False, False
-        keyr = 'resource:%s:%s' % (service.name, resource)
+        keyr = 'gpu_resource:%s:%s' % (service.name, resource)
+        keyc = 'ncpus:%s:%s' % (service.name, resource)
         key_busy = 'busy:%s:%s' % (service.name, resource)
         key_reserved = 'reserved:%s:%s' % (service.name, resource)
         with self._redis.acquire_lock(keyr):
             if self._redis.get(key_busy) is not None:
                 return False, False
+            if ngpus == 0:
+                available_cpus = int(self._redis.get(keyc))
+                self._logger.debug('**** 0 GPU required - reserving %s', resource)
+                if ncpus < available_cpus:
+                    self._redis.rpush('cpu_resource:%s:%s' % (service.name, resource), task_id)
+                    self._redis.decr(keyc, ncpus)
+                    return 0, 0
+                else:
+                    return False, False
             if not check_reserved and self._redis.get(key_reserved) is not None:
                 return False, False
             current_usage = self._redis.hlen(keyr)
@@ -299,16 +322,17 @@ class Worker(object):
                         idx += 1
                         assert idx <= capacity, "invalid gpu alloc for %s" % keyr
                     self._redis.hset(keyr, str(idx), task_id)
+                self._redis.decr(keyc, ncpus)
                 if used_gpu < ngpus:
                     self._redis.set(key_reserved, task_id)
                 return used_gpu, remaining_gpus
             else:
                 return False, False
 
-    def _release_resource(self, service, resource, task_id):
+    def _release_resource(self, service, resource, task_id, ncpus = 0):
         """remove the task from resource queue
         """
-        keyr = 'resource:%s:%s' % (service.name, resource)
+        keyr = 'gpu_resource:%s:%s' % (service.name, resource)
         with self._redis.acquire_lock(keyr):
             for k, v in six.iteritems(self._redis.hgetall(keyr)):
                 if v == task_id:
@@ -316,6 +340,9 @@ class Worker(object):
             key_reserved = 'reserved:%s:%s' % (service.name, resource)
             if self._redis.get(key_reserved) == task_id:
                 self._redis.delete(key_reserved)
+            self._redis.lrem('cpu_resource:%s:%s' % (service.name, resource), task_id)
+            if ncpus != 0:
+                self._redis.incr('ncpus:%s:%s' % (service, resource), ncpus)
 
     def _service_unqueue(self, service):
         """find the best next task to push to the work queue

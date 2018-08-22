@@ -486,10 +486,12 @@ The Redis database contains the following fields:
 | `beat:<task_id>` | int | Specific ttl-key for a given task |
 | `lock:<resource...,task:...>` | value | Temporary lock on a resource or task |
 | `queued:<service>` | list | Tasks waiting for a resource |
-| `resource:<service>:<resourceid>` | dict | Tasks using this resource, key is (pseudo) GPU-id |
+| `gpu_resource:<service>:<resourceid>` | dict | Tasks using GPU on this resource, key is (pseudo) GPU-id |
+| `cpu_resource:<service>:<resourceid>` | list | Tasks using CPU (only) on this resource |
 | `reserved:<service>:<resourceid>` | value | id of a task reserving a specific resource |
+| `ncpus:<service>:<resourceid>` | value | number of cpus available for a specific resource |
 | `busy:<service>:<resourceid>` | string | expirable timestamp on a resource indicating that the resource has been seen unavailable |
-| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, allocating, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|allocating|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li><li>priority: task priority (higher better)</li><li>alloc_(resource|lgpu): allocated resource and gpu list</li></ul> |
+| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, allocating, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|allocating|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li><li>priority: task priority (higher better)</li><li>alloc_(resource|lgpu): allocated resource and gpu list</li><li>(ncpus|ngpus): number of cpus/gpus used by the task</li></ul> |
 | `files:<task_id>` | dict | files associated to a task, "log" is generated when training is complete |
 | `queue:<task_id>` | str | expirable timestamp on the task - is used to regularily check status |
 | `work:<service>` | list | Tasks being processed on a given service |

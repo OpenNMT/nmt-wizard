@@ -20,10 +20,11 @@
 
 When a worker is started:
 * all active tasks are pushed back on _work_ or _service queues_ depending on their status.
+* reservation are removed
 
 # Resources status
 
-Tasks running on a given resource are listed in corresponding redis list `resource:<service>:<resourceid>`.
+Tasks running on a given resource are listed in corresponding redis dict `gpu_resource:<service>:<resourceid>` and list `cpu_resource:<service>:<resourceid>`.
 If a launch fails (node not reachable, or actual resource not available on the node) - the corresponding resource is put in _quarantine_ for time specified in configuration file. During this time, the resource will not be allocated anymore.
 
 Allocation of resource is made following the rules:

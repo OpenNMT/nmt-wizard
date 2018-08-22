@@ -19,9 +19,12 @@ def _get_service(service):
 def _usagecapacity(service):
     """calculate the current usage of the service."""
     usage = 0
+    usage_cpu = 0
     capacity = 0
+    capacity_cpus = 0
     busy = 0
     detail = {}
+    servers = service.list_servers()
     for resource in service.list_resources():
         detail[resource] = { 'busy': '', 'reserved': '' }
         r_capacity = service.list_resources()[resource]
@@ -30,21 +33,31 @@ def _usagecapacity(service):
         reserved = redis.get("reserved:%s:%s" % (service.name, resource))
         if reserved:
             detail[resource]['reserved'] = reserved
-        r_usage = redis.hgetall("resource:%s:%s" % (service.name, resource)).values()
+        r_usage = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         count_usage = {}
-        for r in r_usage:
-            if r in count_usage:
-                count_usage[r] += 1
+        ncpus = {}
+        for t in r_usage:
+            if t in count_usage:
+                count_usage[t] += 1
             else:
-                count_usage[r] = 1
-        detail[resource]['usage'] = [ "%s: %d" % (k,count_usage[k]) for k in count_usage ]
+                count_usage[t] = 1
+                ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
+        r_usage = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
+        for t in r_usage:
+            count_usage[t] = 0
+            ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
+        detail[resource]['usage'] = [ "%s: %d (%d)" % (k, count_usage[k], ncpus[k]) for k in count_usage ]
+        detail[resource]['ncpus'] = servers[resource]['ncpus']
+        detail[resource]['avail_cpus'] = int(redis.get("ncpus:%s:%s" % (service.name, resource)))
         usage += len(r_usage)
+        capacity_cpus += servers[resource]['ncpus']
+        usage_cpu += sum([ncpus[k] for k in count_usage])
         err = redis.get("busy:%s:%s" % (service.name, resource))
         if err:
             detail[resource]['busy'] = err
             busy = busy + 1
     queued = redis.llen("queued:"+service.name)
-    return usage, queued, capacity, busy, detail
+    return "%d (%d)" % (usage, usage_cpu), queued, "%d (%d)" % (capacity, capacity_cpus), busy, detail
 
 def _count_maxgpu(service):
     aggr_resource = {}

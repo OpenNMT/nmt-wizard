@@ -71,15 +71,29 @@ for service in services:
 
     # Desallocate all resources that are not anymore associated to a running task
     resources = services[service].list_resources()
+    servers = services[service].list_servers()
 
     for resource in resources:
-        keyr = 'resource:%s:%s' % (service, resource)
+        keyc = 'ncpus:%s:%s' % (service, resource)
+        redis.set(keyc, servers[resource]['ncpus'])
+        keyr = 'gpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keyr)
         for g, task_id in six.iteritems(running_tasks):
             with redis.acquire_lock(task_id):
                 status = redis.hget('task:'+task_id, 'status')
                 if not(status == 'running' or status == 'terminating'):
                     redis.hdel(keyr, g)
+                else:
+                    redis.decr(keyc, int(redis.hget('task:'+task_id, 'ncpus')))
+        keyr = 'cpu_resource:%s:%s' % (service, resource)
+        tasks = redis.lrange(keyr, 0, -1)
+        redis.ltrim(keyr, 0, -1)
+        for task_id in tasks:
+            with redis.acquire_lock(task_id):
+                status = redis.hget('task:'+task_id, 'status')
+                if status == 'running' or status == 'terminating':
+                    redis.decr(keyc, int(redis.hget('task:'+task_id, 'ncpus')))
+                    redis.rpush(task_id)            
 
 # define ttl policy for a task
 def ttl_policy(task_map):
