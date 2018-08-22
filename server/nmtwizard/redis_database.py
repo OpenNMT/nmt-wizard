@@ -16,7 +16,7 @@ class RedisDatabase(redis.Redis):
             port=port,
             db=db,
             password=password,
-            decode_responses=True)
+            decode_responses=False)
 
     def acquire_lock(self, name, acquire_timeout=10, expire_time=60):
         return RedisLock(self, name, acquire_timeout=acquire_timeout, expire_time=expire_time)
