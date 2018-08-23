@@ -1,5 +1,6 @@
 from app import app, redis, services, get_version, ch
 import flask
+import io
 from nmtwizard import common, task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task
 import json
@@ -287,8 +288,7 @@ def get_file(task_id, filename):
     if content is None:
         flask.abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
-    response = flask.make_response(content)
-    return response
+    return flask.send_file(io.BytesIO(content), attachment_filename=filename, mimetype="application/octet-stream")
 
 @app.route("/file/<string:task_id>/<path:filename>", methods=["POST"])
 @app.route("/task/file/<string:task_id>/<path:filename>", methods=["POST"])
