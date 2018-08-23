@@ -3,6 +3,7 @@
 ### Breaking changes
 
 ### New features
+* add possibility to change ssh port for connection to training services
 
 ### Fixes and improvements
 * worker use `logging.conf` for formatted logs

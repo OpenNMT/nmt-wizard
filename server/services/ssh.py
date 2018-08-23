@@ -6,18 +6,25 @@ from nmtwizard.service import Service
 
 logger = logging.getLogger(__name__)
 
+def _hostname(server):
+    if 'name' in server:
+        return server['name']
+    if server['port'] == 22:
+        return server['host']
+    return "%s:%s" % (server['host'], server['port'])
+
 def _get_params(config, options):
     params = {}
     if 'server' not in options:
         server_pool = config['variables']['server_pool']
         if len(server_pool) > 1:
             raise ValueError('server option is required to select a server and a resource')
-        resource = config['variables']['server_pool'][0]['host']
+        resource = _hostname(config['variables']['server_pool'][0])
         options['server'] = resource
 
     params['server'] = options['server']
 
-    servers = {server['host']:server for server in config['variables']['server_pool']}
+    servers = {_hostname(server):server for server in config['variables']['server_pool']}
 
     if params['server'] not in servers:
         raise ValueError('server %s not in server_pool list' % params['server'])
@@ -34,9 +41,10 @@ def _get_params(config, options):
     params['login'] = server_cfg.get('login', options.get('login'))
     params['log_dir'] = server_cfg['log_dir']
     params['login_cmd'] = server_cfg.get('login_cmd')
+    params['port'] = server_cfg['port']
+    params['host'] = server_cfg['host']
 
     return params
-
 
 class SSHService(Service):
 
@@ -44,6 +52,8 @@ class SSHService(Service):
         for server in config['variables']['server_pool']:
             if 'gpus' not in server:
                 server['gpus'] = []
+            if 'port' not in server:
+                server['port'] = 22
             if 'ncpus' not in server or server['ncpus'] == 0:
                 if len(server['gpus']) == 0:
                     raise ValueError("ncpus and gpus missing in server `%s`" % server)
@@ -56,15 +66,15 @@ class SSHService(Service):
         gpus = []
         for server in self._config['variables']['server_pool']:
             for gpu in server['gpus']:
-                gpus.append('%s:%d' % (server['host'], gpu))
+                gpus.append('%s[%d]' % (_hostname(server), gpu))
         return gpus
 
     def list_resources(self):
-        return {server['host']:len(server['gpus'])
+        return {_hostname(server):len(server['gpus'])
                     for server in self._config['variables']['server_pool']}
 
     def list_servers(self):
-        return {server['host']:server
+        return {_hostname(server):server
                     for server in self._config['variables']['server_pool']}
 
     def get_resource_from_options(self, options):
@@ -99,7 +109,8 @@ class SSHService(Service):
     def check(self, options):
         params = _get_params(self._config, options)
         client = common.ssh_connect_with_retry(
-            params['server'],
+            params['host'],
+            params['port'],
             params['login'],
             self._config['privateKey'],
             login_cmd=params['login_cmd'])
@@ -129,7 +140,8 @@ class SSHService(Service):
         options['server'] = resource
         params = _get_params(self._config, options) 
         client = common.ssh_connect_with_retry(
-            params['server'],
+            params['host'],
+            params['port'],
             params['login'],
             self._config['privateKey'],
             login_cmd=params['login_cmd'])
@@ -158,7 +170,8 @@ class SSHService(Service):
 
     def status(self, task_id, params, get_log=True):
         client = common.ssh_connect_with_retry(
-            params['server'],
+            params['host'],
+            params['port'],
             params['login'],
             self._config['privateKey'],
             login_cmd=params['login_cmd'])
@@ -180,7 +193,8 @@ class SSHService(Service):
 
     def terminate(self, params):
         client = common.ssh_connect_with_retry(
-            params['server'],
+            params['host'],
+            params['port'],
             params['login'],
             self._config['privateKey'],
             login_cmd=params['login_cmd'])

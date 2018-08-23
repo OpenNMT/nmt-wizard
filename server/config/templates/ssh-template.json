@@ -6,10 +6,21 @@
     "variables": {
         "server_pool": [
             {
-                "host": "ssaling04",
-                "gpus": [1,2,3,4],
-                "login": "devling",
-                "log_dir": "inftraining_logs"
+                "name": "morpheus",
+                "host": "server_01",
+                "port": 2222,
+                "gpus": [],
+                "ncpus": 4,
+                "login": "root",
+                "log_dir": "/share/inftraining_logs"
+            },
+            {
+                "host": "server_01",
+                "port": 2223,
+                "gpus": [1, 2, 3],
+                "ncpus": 6,
+                "login": "root",
+                "log_dir": "/share/inftraining_logs"
             }
         ]
     },
@@ -25,5 +36,5 @@
         "envvar": {
         }
     },
-    "disabled": 1
+    "disabled": false
 }

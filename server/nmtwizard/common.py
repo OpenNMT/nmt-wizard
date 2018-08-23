@@ -224,6 +224,7 @@ def has_gpu_support(client):
     return run_and_check_command(client, "nvidia-smi")
 
 def ssh_connect_with_retry(hostname,
+                           port,
                            username,
                            key_path,
                            delay=0,
@@ -232,7 +233,7 @@ def ssh_connect_with_retry(hostname,
     """Wrap the SSH connect method with a delay and retry mechanism. This is
     useful when connecting to an instance that was freshly started.
     """
-    logger.info("Connecting to %s via SSH...", hostname)
+    logger.info("Connecting to %s:%s via SSH...", hostname, port)
     start = time.time()
     client = paramiko.client.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -243,6 +244,7 @@ def ssh_connect_with_retry(hostname,
             client.load_system_host_keys()
             client.connect(
                 hostname,
+                port=port,
                 username=username,
                 key_filename=key_path,
                 look_for_keys=False)
