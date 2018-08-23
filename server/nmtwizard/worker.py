@@ -342,7 +342,7 @@ class Worker(object):
                 self._redis.delete(key_reserved)
             self._redis.lrem('cpu_resource:%s:%s' % (service.name, resource), task_id)
             if ncpus != 0:
-                self._redis.incr('ncpus:%s:%s' % (service, resource), ncpus)
+                self._redis.incr('ncpus:%s:%s' % (service.name, resource), ncpus)
 
     def _service_unqueue(self, service):
         """find the best next task to push to the work queue
