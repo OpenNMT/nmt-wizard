@@ -10,7 +10,7 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
-VERSION = "0.2.0-ce"
+VERSION = "0.2.1-ce"
 def append_version(v):
     global VERSION
     VERSION += ":" + v
@@ -153,7 +153,7 @@ parser_file.add_argument('task_id',
                               help="task identifier")
 parser_file.add_argument('-f', '--filename',
                               help="filename to retrieve - for instance log", required=True)
-parser.add_argument('--version', action=VersionAction, help="Version information")
+parser.add_argument('-v', '--version', action=VersionAction, help="Version information")
 
 
 def process_request(serviceList, cmd, is_json, args, auth=None):
