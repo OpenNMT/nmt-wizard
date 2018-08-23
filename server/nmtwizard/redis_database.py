@@ -18,13 +18,13 @@ class RedisDatabase(redis.Redis):
             password=password,
             decode_responses=False)
 
-    def acquire_lock(self, name, acquire_timeout=10, expire_time=60):
+    def acquire_lock(self, name, acquire_timeout=20, expire_time=60):
         return RedisLock(self, name, acquire_timeout=acquire_timeout, expire_time=expire_time)
 
 
 class RedisLock(object):
 
-    def __init__(self, redis, name, acquire_timeout=10, expire_time=60):
+    def __init__(self, redis, name, acquire_timeout=20, expire_time=60):
         self._redis = redis
         self._name = name
         self._acquire_timeout = acquire_timeout
@@ -41,7 +41,7 @@ class RedisLock(object):
             if self._redis.setnx(lock, self._identifier):
                 self._redis.expire(lock, self._expire_time)
                 return self
-            time.sleep(.01)
+            time.sleep(.1)
         raise RuntimeWarning("failed to acquire lock on %s" % self._name)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
