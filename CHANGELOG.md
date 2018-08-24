@@ -1,15 +1,18 @@
 ## [Unreleased]
 
+
+## [v0.2.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.2.2) (2018-08-24)
+
 ### Breaking changes
 * normalize database structure for support of CPU servers.
 
 ### New features
 * add possibility to change ssh port for connection to training services
+* enable pure-cpu server and support 0-gpu tasks
 
 ### Fixes and improvements
 * worker use `logging.conf` for formatted logs
 * fix ghost tasks remaining after terminated if they were already in service queue
-* enable pure-cpu server and support 0-gpu tasks
 * fix download of binary file (#9)
 * extend locking period for more robustness under load
 
