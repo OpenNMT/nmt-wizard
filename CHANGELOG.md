@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## Fixes and improvements
+* Fix incorrect usage count with `ls`
 
 ## [v0.2.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.2.2) (2018-08-24)
 

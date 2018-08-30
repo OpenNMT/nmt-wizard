@@ -45,7 +45,6 @@ def _usagecapacity(service):
                 ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
         r_usage = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
         for t in r_usage:
-            count_usage[t] = 0
             ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
         detail[resource]['usage'] = [ "%s: %d (%d)" % (k, count_usage[k], ncpus[k]) for k in count_usage ]
         detail[resource]['ncpus'] = servers[resource]['ncpus']
