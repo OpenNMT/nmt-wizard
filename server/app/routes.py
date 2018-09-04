@@ -151,6 +151,7 @@ def launch(service):
     elif "trans" in content["docker"]["command"]: task_type = "trans"
     elif "preprocess" in content["docker"]["command"]: task_type = "prepr"
     elif "release" in content["docker"]["command"]: task_type = "relea"
+    elif "buildvocab" in content["docker"]["command"]: task_type = "vocab"
 
     if task_type == '????':
         flask.abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
