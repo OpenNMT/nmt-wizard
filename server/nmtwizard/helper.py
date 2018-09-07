@@ -181,6 +181,7 @@ def build_task_id(content, xxyy, parent_task):
 
     # first find nature of the task - train or not
     is_train = "train" in content["docker"]["command"]
+    is_buildvocab = "buildvocab" in content["docker"]["command"]
     trid = 'XXXX'
     if 'trainer_id' in content and content['trainer_id']:
         trid = content['trainer_id']
@@ -199,9 +200,12 @@ def build_task_id(content, xxyy, parent_task):
         if "nn" in struct_name:
             nn = int(struct_name["nn"])
 
-    if is_train:
+    if is_train or is_buildvocab:
         if nn is None:
-            nn = 1
+            if is_train:
+                nn = 1
+            elif is_buildvocab:
+                nn = 0
         else:
             nn += 1
         if not name:
