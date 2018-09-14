@@ -3,6 +3,9 @@
 ### Breaking changes
 * rename shortcut for `--priority` to `-P`
 
+### New features
+* Add `--quiet` mode and `-S STATUS` for `lt` command
+
 ## Fixes and improvements
 * Fix incorrect usage count with `ls`
 * Review Funny names to remove offending candidates

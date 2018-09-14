@@ -135,6 +135,9 @@ parser_list_tasks = subparsers.add_parser('lt',
                                           help='list tasks matching prefix pattern')
 parser_list_tasks.add_argument('-p', '--prefix', default=os.getenv('LAUNCHER_TID', ''),
                                help='prefix for the tasks to list (default ENV[LAUNCHER_TID])')
+parser_list_tasks.add_argument('-q', '--quiet', help="only display task_id", action='store_true')
+parser_list_tasks.add_argument('-S', '--status', help="filter on status value")
+
 parser_del_tasks = subparsers.add_parser('dt',
                                          help='delete tasks matching prefix pattern')
 parser_del_tasks.add_argument('-p', '--prefix', required=True,
@@ -192,7 +195,13 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
-        if not is_json:
+        if args.status:
+            result = [r for r in result if r["status"] == args.status]
+        if args.quiet:
+            res = []
+            for k in result:
+                res.append(k["task_id"])
+        elif not is_json:
             res = PrettyTable(["Type", "Task ID", "Resource", "Priority", "Launch Date", "Image", "Status", "Message"])
             for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
                 date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
@@ -204,6 +213,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                     k["image"] = k["image"][p+1:]
                 res.add_row([k["type"], k["task_id"], resource, int(k["priority"] or 0), 
                              date, k["image"], k["status"], k.get("message")])
+        else:
+            res = r.json()
     elif cmd == "describe":
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
