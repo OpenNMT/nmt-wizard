@@ -301,7 +301,7 @@ class Worker(object):
             if ngpus == 0:
                 available_cpus = int(self._redis.get(keyc))
                 self._logger.debug('**** 0 GPU required - reserving %s', resource)
-                if ncpus < available_cpus:
+                if ncpus <= available_cpus:
                     self._redis.rpush('cpu_resource:%s:%s' % (service.name, resource), task_id)
                     self._redis.decr(keyc, ncpus)
                     return 0, 0
