@@ -130,6 +130,25 @@ def info(redis, task_id, fields):
     r["current_time"] = int(time.time())
     return r
 
+def change(redis, task_id, service, priority, ngpus):
+    """ move a task to another service or change priority/ngpus, assume service exists
+        check task_id is queued """
+    keyt = "task:" + task_id
+    with redis.acquire_lock(keyt):
+        prev_service = redis.hget(keyt, "service")
+        status = redis.hget(keyt, "status")
+        if status != "queued":
+            return (False, "cannot move task `%s` - not in queued status" % task_id)
+        if service:
+            redis.hset(keyt, "service", service)
+            redis.lrem('queued:'+prev_service, task_id)
+            redis.lpush('queued:'+service, task_id)
+        if priority:
+            redis.hset(keyt, "priority", priority)
+        if ngpus:
+            redis.hset(keyt, "ngpus", ngpus)
+    return (True,"")
+
 def delete(redis, task_id):
     """Delete a given task."""
     keyt = "task:" + task_id
