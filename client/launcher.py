@@ -127,7 +127,7 @@ parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID
                            help='trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])')
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
                            help='for training tasks, iterate several tasks in a row')
-parser_launch.add_argument('-p', '--priority', type=int, default=0,
+parser_launch.add_argument('-P', '--priority', type=int, default=0,
                            help='task priority - highest better')
 parser_launch.add_argument('docker_command', type=str, nargs='*',
                            help='Docker command')
