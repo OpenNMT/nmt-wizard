@@ -170,7 +170,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             res.align["Service Name"] = "l"
             res.align["Description"] = "l"            
             for k in result:
-                res.add_row([k,
+                res.add_row(["%s [%s]" % (k, result[k]['pid']),
                              result[k]['usage'],
                              result[k]['queued'],
                              result[k]['capacity'],

@@ -40,14 +40,13 @@ redis = RedisDatabase(app.iniconfig.get('redis','host'),
 retry = 0
 while retry < 10:
     try:
-        redis.get("test_connection")
+        storages_list = redis.get("admin:storages")
+        assert storages_list, "ERROR: cannot get storages from worker db"
         break
-    except ConnectionError as e:
+    except (ConnectionError, AssertionError) as e:
         retry += 1
         time.sleep(1)
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
-
-services, base_config = config.load_services(app.iniconfig.get('default','config_dir'))
 
 from app import routes

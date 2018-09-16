@@ -9,6 +9,7 @@ def set_ttl_policy(func):
 def set_status(redis, keyt, status):
     """Sets the status and save the time of change."""
     global ttl_policy_func
+    assert keyt.startswith("task:"), "invalid format of task_id: " + keyt
     redis.hset(keyt, "status", status)
     redis.hset(keyt, status + "_time", time.time())
     if ttl_policy_func is not None and status == "stopped":

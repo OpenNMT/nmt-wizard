@@ -8,10 +8,11 @@ from nmtwizard import task
 
 class Worker(object):
 
-    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, index=0):
+    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id):
         self._redis = redis
         self._services = services
-        self._logger = logging.getLogger('worker%d' % index)
+        self._logger = logging.getLogger('worker')
+        self._worker_id = worker_id
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
         task.set_ttl_policy(ttl_policy)
@@ -24,6 +25,7 @@ class Worker(object):
         pubsub.psubscribe('__keyspace@0__:beat:*')
         pubsub.psubscribe('__keyspace@0__:queue:*')
         counter = 0
+        counter_beat = 0
 
         while True:
             message = pubsub.get_message()
@@ -31,7 +33,6 @@ class Worker(object):
                 channel = message['channel']
                 data = message['data']
                 if data == 'expired':
-                    self._logger.warning('received expired event on channel %s', channel)
                     if channel.startswith('__keyspace@0__:beat:'):
                         task_id = channel[20:]
                         service = self._redis.hget('task:'+task_id, 'service')
@@ -43,9 +44,15 @@ class Worker(object):
                         task_id = channel[21:]
                         service = self._redis.hget('task:'+task_id, 'service')
                         if service in self._services:
+                            self._logger.info('%s: move to work queue', task_id)
                             task.work_queue(self._redis, task_id, service)
             else:
                 for service in self._services:
+                    keys = 'admin:service:%s' % service
+                    if counter_beat == 0:
+                        self._redis.hset(keys, "beat_time", time.time())
+                        self._redis.expire(self._worker_id, 360)
+
                     task_id = task.work_unqueue(self._redis, service)
                     if task_id is not None:
                         try:
@@ -90,6 +97,10 @@ class Worker(object):
                                     self._service_unqueue(self._services[service])
                 if counter > self._refresh_counter:
                     counter = 0
+                counter_beat += 1
+                if counter_beat > 1000:
+                    counter_beat = 0    
+
             counter += 1
             time.sleep(0.01)
 

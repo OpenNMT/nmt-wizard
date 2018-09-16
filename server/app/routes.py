@@ -1,7 +1,8 @@
-from app import app, redis, services, get_version, ch
+from app import app, redis, get_version, ch
 import flask
 import io
 from nmtwizard import common, task
+import pickle
 from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task
 import json
 from functools import wraps
@@ -10,12 +11,13 @@ import logging
 logger = logging.getLogger(__name__)
 logger.addHandler(ch)
 
-def _get_service(service):
+def get_service(service):
     """Wrapper to fail on invalid service."""
-    if service not in services:
+    def_string = redis.hget("admin:service:"+service, "def")
+    if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
         flask.abort(flask.make_response(response, 404))
-    return services[service]
+    return pickle.loads(def_string)
 
 def _usagecapacity(service):
     """calculate the current usage of the service."""
@@ -100,18 +102,28 @@ def filter_request(route, ability=None):
 @filter_request("GET/service/list")
 def list_services():
     res = {}
-    for k in services:
-        usage, queued, capacity, busy, detail = _usagecapacity(services[k])
-        res[k] = { 'name':services[k].display_name,
-                   'usage': usage, 'queued': queued,
-                   'capacity': capacity, 'busy': busy,
-                   'detail': detail }
+    workers = {}
+    for keys in redis.scan_iter("admin:service:*"):
+        service = keys[14:]
+        service_def = get_service(service)                
+        usage, queued, capacity, busy, detail = _usagecapacity(service_def)
+        pid = redis.hget(keys, "worker_pid")
+        name = service_def.display_name
+        if pid not in workers:
+            workers[pid] = redis.get("admin:worker:" + pid)
+        if workers[pid] is None:
+            busy = "yes"
+            pid += " ** WORKER NOT RESPONDING **"
+        res[service] = { 'name': name, 'pid': pid,
+                         'usage': usage, 'queued': queued,
+                         'capacity': capacity, 'busy': busy,
+                         'detail': detail }
     return flask.jsonify(res)
 
 @app.route("/service/describe/<string:service>", methods=["GET"])
 @filter_request("GET/service/describe")
 def describe(service):
-    service_module = _get_service(service)
+    service_module = get_service(service)
     return flask.jsonify(service_module.describe())
 
 @app.route("/service/check/<string:service>", methods=["GET"])
@@ -120,7 +132,7 @@ def check(service):
     service_options = flask.request.get_json() if flask.request.is_json else None
     if service_options is None:
         service_options = {}
-    service_module = _get_service(service)
+    service_module = get_service(service)
     try:
         details = service_module.check(service_options)
     except ValueError as e:
@@ -143,7 +155,7 @@ def launch(service):
     for k in flask.request.files:
         files[k] = flask.request.files[k].read()
 
-    service_module = _get_service(service)
+    service_module = get_service(service)
     content["service"] = service
 
     task_type = '????'

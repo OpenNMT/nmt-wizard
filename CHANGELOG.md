@@ -2,6 +2,7 @@
 
 ### Breaking changes
 * rename shortcut for `--priority` to `-P`
+* launcher service does not rely on json configuration files, and dynamically retrieve configuration from `admin` section in database
 
 ### New features
 * Add `--quiet` mode and `-S STATUS` for `lt` command

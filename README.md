@@ -140,7 +140,7 @@ export LAUNCHER_CONFIG=${PWD}/settings.ini
 FLASK_APP=main.py flask run [--host=0.0.0.0]
 ```
 
-Here are the are the available routes. Also see the next section
+Here are the available routes. Also see the next section
 
 #### `GET /service/list`
 
@@ -297,7 +297,7 @@ Lists available services.
 * **Arguments:**
   * `pattern`: pattern for the tasks to match. See [KEYS pattern](https://redis.io/commands/keys) for syntax.
 * **Input:** None
-* **Output:** A list of tasks matching the pattern with minimal information (`task_id`, `queued_time`, `status`, `service`, `message`)
+* **Output:** A list of tasks matching the pattern with minimal information (`task_id`, `queued_time`, `status`, `service`, `message`, `pid`)
 * **Example:**
 
 ```
@@ -478,7 +478,7 @@ python client/launcher.py -h
 
 ### Redis database
 
-The Redis database contains the following fields:
+The Redis database contains the following task fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -495,3 +495,12 @@ The Redis database contains the following fields:
 | `files:<task_id>` | dict | files associated to a task, "log" is generated when training is complete |
 | `queue:<task_id>` | str | expirable timestamp on the task - is used to regularily check status |
 | `work:<service>` | list | Tasks being processed on a given service |
+
+and the following `admin` fields - all prefixed by `admin:`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `admin:storages` | JSON | Description of storages block as defined in `default.json` |
+| `admin:service:<service>` | dict | <ul><li>`beat_time`: last beat time of the corresponding worker</li><li>`worker_pid`: pid of the corresponding worker</li><li>`launch_time`: time of the worker launch</li><li>`def`: pickle of the corresponding service class definition</li></ul> |
+| `admin:resources:<service>` | list | list of the attached resources |
+

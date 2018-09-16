@@ -1,6 +1,8 @@
 import logging
 import logging.config
 import time
+import json
+import pickle
 import os
 import sys
 import six
@@ -42,7 +44,15 @@ assert retry < 10, "Cannot connect to redis DB - aborting"
 
 services, base_config = config.load_services(cfg.get('default', 'config_dir'))
 
+redis.set('admin:storages', json.dumps(base_config['storages']))
+
+pid = os.getpid()
+redis.set('admin:worker:%d' % pid, time.time())
+
 for service in services:
+    keys = 'admin:service:%s' % service
+    redis.hset(keys, 'worker_pid', pid)
+    redis.hset(keys, "launch_time", time.time())
 
     # remove busy state from resources
     for key in redis.keys('busy:%s:*' % service):
@@ -73,7 +83,10 @@ for service in services:
     resources = services[service].list_resources()
     servers = services[service].list_servers()
 
+    redis.delete('admin:resources:'+service)
+    redis.hset(keys, 'def', pickle.dumps(services[service]))
     for resource in resources:
+        redis.lpush('admin:resources:'+service, resource)
         keyc = 'ncpus:%s:%s' % (service, resource)
         redis.set(keyc, servers[resource]['ncpus'])
         keyr = 'gpu_resource:%s:%s' % (service, resource)
@@ -113,5 +126,6 @@ def ttl_policy(task_map):
 worker = Worker(redis, services,
                 ttl_policy,
                 cfg.getint('default', 'refresh_counter'),
-                cfg.getint('default', 'quarantine_time'))
+                cfg.getint('default', 'quarantine_time'),
+                'admin:worker:%d' % pid)
 worker.run()
