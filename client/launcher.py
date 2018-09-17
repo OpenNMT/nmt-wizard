@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 import os
+import six
 import requests
 import regex as re
 from prettytable import PrettyTable, PLAIN_COLUMNS
@@ -40,7 +41,7 @@ def getjson(config):
         return json.load(data)
 
 def find_files_parameters(v, files):
-    if isinstance(v, unicode) and v.startswith('/') and os.path.exists(v):
+    if isinstance(v, six.string_types) and v.startswith('/') and os.path.exists(v):
         global_basename = os.path.basename(v)
         if os.path.isdir(v):
             allfiles = [(os.path.join(v, f), os.path.join(global_basename, f))

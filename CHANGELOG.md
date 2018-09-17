@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+## Fixes and improvements
+* Fix client compatibility with Python 3
+
 ## [v0.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.3.0) (2018-09-17)
 
 ### Breaking changes
