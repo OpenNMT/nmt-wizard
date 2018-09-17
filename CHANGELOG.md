@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [v0.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.3.0) (2018-09-17)
+
 ### Breaking changes
 * rename shortcut for `--priority` to `-P`
 * launcher service does not rely on json configuration files, and dynamically retrieve configuration from `admin` section in database
