@@ -1,1 +1,6 @@
 *.pyc
+snw.egg-info/dependency_links.txt
+snw.egg-info/PKG-INFO
+snw.egg-info/requires.txt
+snw.egg-info/SOURCES.txt
+snw.egg-info/top_level.txt
