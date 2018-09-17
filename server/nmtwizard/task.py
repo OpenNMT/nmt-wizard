@@ -141,9 +141,12 @@ def change(redis, task_id, service, priority, ngpus):
         if status != "queued":
             return (False, "cannot move task `%s` - not in queued status" % task_id)
         if service:
-            redis.hset(keyt, "service", service)
-            redis.lrem('queued:'+prev_service, task_id)
-            redis.lpush('queued:'+service, task_id)
+            if prev_service != service:
+                disable(redis, task_id, prev_service)
+                enable(redis, task_id, service)
+                redis.hset(keyt, "service", service)
+                redis.lrem('queued:'+prev_service, task_id)
+                redis.lpush('queued:'+service, task_id)
         if priority:
             redis.hset(keyt, "priority", priority)
         if ngpus:

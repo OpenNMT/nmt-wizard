@@ -1,7 +1,11 @@
 ## [Unreleased]
 
+
+## [v0.3.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.3.1) (2018-09-17)
+
 ## Fixes and improvements
 * Fix client compatibility with Python 3
+* Fix 'change task' not putting tasks on the new service active queue
 
 ## [v0.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.3.0) (2018-09-17)
 
