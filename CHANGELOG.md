@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+### New features
+* Possibly chain training and translation tasks
 
 ## Fixes and improvements
 * when running chained training - update queued time to be close to terminate time of parent task

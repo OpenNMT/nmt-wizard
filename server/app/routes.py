@@ -1,9 +1,10 @@
 from app import app, redis, get_version, ch
 import flask
 import io
+from copy import deepcopy
 from nmtwizard import common, task
 import pickle
-from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task
+from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task, remove_config_option
 import json
 from functools import wraps
 import logging
@@ -212,6 +213,9 @@ def launch(service):
         flask.abort(flask.make_response(flask.jsonify(message="no resource available on %s for %d gpus"
                                             % (service, ngpus)), 400))
 
+    totranslate = content.get("totranslate")
+    del content["totranslate"]
+
     priority = content.get("priority", 0)
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
@@ -222,6 +226,23 @@ def launch(service):
         task_id = build_task_id(content, xxyy, parent_task_id)
         task.create(redis, task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
         task_ids.append(task_id)
+        remove_config_option(content_translate["docker"]["command"])
+        if totranslate:
+            content_translate = deepcopy(content)
+            content_translate["priority"] = priority+1
+            content_translate["ngpus"] = min(ngpus, 1)
+            content_translate["docker"]["command"] = ["trans"]
+            content_translate["docker"]["command"].append('-i')
+            for f in totranslate:
+                content_translate["docker"]["command"].append(f[0])
+            content_translate["docker"]["command"].append('-o')
+            for f in totranslate:
+                content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
+            change_parent_task(content_translate["docker"]["command"], task_id)
+            trans_task_id = build_task_id(content, xxyy, task_id)
+            task.create(redis, trans_task_id, "trans", task_id, resource, service, content_translate, (),
+                        content_translate["priority"], content_translate["ngpus"])
+            task_ids.append(trans_task_id)
         iterations -= 1
         if iterations > 0:
             parent_task_id = task_id

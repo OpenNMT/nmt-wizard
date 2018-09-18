@@ -140,12 +140,20 @@ def shallow_command_analysis(command):
 def change_parent_task(command, task_id):
     i = 0
     while i < len(command):
-        if command[i] == '-m' and i+1 < len(command):
+        if (command[i] == '-m' or command[i] == '--model') and i+1 < len(command):
             command[i+1] = task_id
             return
         i += 1
     command.insert(0, task_id)
     command.insert(0, '-m')
+
+def remove_config_option(command):
+    i = 0
+    while i < len(command):
+        if (command[i] == '-c' or command[i] == '--config') and i+1 < len(command):
+            del command[i:i+1]
+            return
+        i += 1
 
 def _model_name_analysis(model):
     if model:
