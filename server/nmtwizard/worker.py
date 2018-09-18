@@ -379,7 +379,12 @@ class Worker(object):
                         keyp = 'task:%s' % parent
                         if self._redis.exists(keyp):
                             # if the parent task is in the database, check for dependencies
-                            if self._redis.hget(keyp, 'status') != 'stopped':
+                            parent_status = self._redis.hget(keyp, 'status');
+                            if parent_status != 'stopped':
+                                if parent_status == 'running':
+                                    # parent is still running so update queued time to be as close as
+                                    # as possible to terminate time of parent task
+                                    redis.hset(next_keyt, "queued_time", time.time())
                                 continue
                     if priority > best_task_priority or (
                         priority == best_task_priority and best_task_queued_time > queued_time):

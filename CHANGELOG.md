@@ -1,6 +1,9 @@
 ## [Unreleased]
 
 
+## Fixes and improvements
+* when running chained training - update queued time to be close to terminate time of parent task
+
 ## [v0.3.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.3.1) (2018-09-17)
 
 ## Fixes and improvements
