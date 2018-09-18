@@ -2,6 +2,7 @@
 
 ### New features
 * Possibly chain training and translation tasks
+* (admin) add `stop by admin` feature (see [here](http://devwiki.systran.fr/index.php/PN9_Guide#Stop_worker))
 
 ## Fixes and improvements
 * when running chained training - update queued time to be close to terminate time of parent task

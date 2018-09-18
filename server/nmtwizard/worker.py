@@ -2,6 +2,7 @@ import time
 import json
 import logging
 import six
+import sys
 
 from nmtwizard import task
 
@@ -31,7 +32,11 @@ class Worker(object):
             counter_beat += 1
             if counter_beat > 1000:
                 counter_beat = 0
+                self._redis.set(self._worker_id, time.time())
                 self._redis.expire(self._worker_id, 360)
+                if self._redis.get(self._worker_id+':stop') is not None:
+                    self._logger.info('stop by admin request')
+                    sys.exit(0)
 
             message = pubsub.get_message()
             if message:
