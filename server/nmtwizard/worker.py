@@ -25,9 +25,14 @@ class Worker(object):
         pubsub.psubscribe('__keyspace@0__:beat:*')
         pubsub.psubscribe('__keyspace@0__:queue:*')
         counter = 0
-        counter_beat = 0
+        counter_beat = 1000
 
         while True:
+            counter_beat += 1
+            if counter_beat > 1000:
+                counter_beat = 0
+                self._redis.expire(self._worker_id, 360)
+
             message = pubsub.get_message()
             if message:
                 channel = message['channel']
@@ -48,11 +53,6 @@ class Worker(object):
                             task.work_queue(self._redis, task_id, service)
             else:
                 for service in self._services:
-                    keys = 'admin:service:%s' % service
-                    if counter_beat == 0:
-                        self._redis.hset(keys, "beat_time", time.time())
-                        self._redis.expire(self._worker_id, 360)
-
                     task_id = task.work_unqueue(self._redis, service)
                     if task_id is not None:
                         try:
@@ -97,9 +97,6 @@ class Worker(object):
                                     self._service_unqueue(self._services[service])
                 if counter > self._refresh_counter:
                     counter = 0
-                counter_beat += 1
-                if counter_beat > 1000:
-                    counter_beat = 0    
 
             counter += 1
             time.sleep(0.01)
