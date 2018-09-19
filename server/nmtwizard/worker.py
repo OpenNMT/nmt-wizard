@@ -388,7 +388,7 @@ class Worker(object):
                                 if parent_status == 'running':
                                     # parent is still running so update queued time to be as close as
                                     # as possible to terminate time of parent task
-                                    redis.hset(next_keyt, "queued_time", time.time())
+                                    self._redis.hset(next_keyt, "queued_time", time.time())
                                 continue
                     if priority > best_task_priority or (
                         priority == best_task_priority and best_task_queued_time > queued_time):
