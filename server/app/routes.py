@@ -216,6 +216,8 @@ def launch(service):
     if "totranslate" in content:
         totranslate = content["totranslate"]
         del content["totranslate"]
+    else:
+        totranslate = None
 
     priority = content.get("priority", 0)
 
