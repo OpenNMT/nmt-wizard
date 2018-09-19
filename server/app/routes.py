@@ -229,7 +229,7 @@ def launch(service):
         task_id = build_task_id(content, xxyy, parent_task_id)
         task.create(redis, task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
         task_ids.append(task_id)
-        remove_config_option(content_translate["docker"]["command"])
+        remove_config_option(content["docker"]["command"])
         if totranslate:
             content_translate = deepcopy(content)
             content_translate["priority"] = priority+1
