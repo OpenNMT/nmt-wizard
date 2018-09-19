@@ -1,6 +1,7 @@
 import time
 import json
 import os
+import shutil
 
 ttl_policy_func = None
 def set_ttl_policy(func):
@@ -146,7 +147,7 @@ def change(redis, task_id, service, priority, ngpus):
             redis.hset(keyt, "ngpus", ngpus)
     return (True,"")
 
-def delete(redis, task_id):
+def delete(redis, taskfile_dir, task_id):
     """Delete a given task."""
     keyt = "task:" + task_id
     status = redis.hget(keyt, "status")
@@ -157,8 +158,9 @@ def delete(redis, task_id):
     with redis.acquire_lock(keyt):
         redis.delete(keyt)
         redis.delete("queue:" + task_id)
-        redis.delete("files:" + task_id)
-        redis.delete("log:" + task_id)
+        task_dir = os.path.join(taskfile_dir, task_id)
+        if os.path.isdir(task_dir):
+            shutil.rmtree(task_dir)
     return True
 
 # TODO: create iterator returning directly task_id
