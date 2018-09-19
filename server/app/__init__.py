@@ -37,6 +37,10 @@ redis = RedisDatabase(app.iniconfig.get('redis','host'),
                       app.iniconfig.get('redis','db',fallback=0),
                       app.iniconfig.get('redis', 'password',fallback=None))
 
+assert app.iniconfig.get('default', 'taskfile_dir'), "missing taskfile_dir from settings.ini"
+taskfile_dir = app.iniconfig.get('default', 'taskfile_dir')
+assert os.path.isdir(taskfile_dir), "taskfile_dir (%s) must be a directory" % taskfile_dir
+
 retry = 0
 while retry < 10:
     try:

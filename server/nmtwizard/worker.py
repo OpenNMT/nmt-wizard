@@ -9,13 +9,15 @@ from nmtwizard import task
 
 class Worker(object):
 
-    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id):
+    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id,
+                 taskfile_dir):
         self._redis = redis
         self._services = services
         self._logger = logging.getLogger('worker')
         self._worker_id = worker_id
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
+        self._taskfile_dir = taskfile_dir
         task.set_ttl_policy(ttl_policy)
 
     def run(self):
@@ -69,7 +71,7 @@ class Worker(object):
                         except Exception as e:
                             self._logger.error('%s: %s', task_id, str(e))
                             with self._redis.acquire_lock(task_id):
-                                task.set_log(self._redis, task_id, str(e))
+                                task.set_log(self._redis, self._taskfile_dir, task_id, str(e))
                                 task.terminate(self._redis, task_id, phase="launch_error")
                     else:
                         if counter > self._refresh_counter:
@@ -201,7 +203,7 @@ class Worker(object):
                         content['docker']['image'],
                         content['docker']['tag'],
                         content['docker']['command'],
-                        task.file_list(self._redis, task_id),
+                        task.file_list(self._redis, self._taskfile_dir, task_id),
                         content['wait_after_launch'])
                 except EnvironmentError as e:
                     # the resource is not available and will be set busy
@@ -216,7 +218,7 @@ class Worker(object):
                 except Exception as e:
                     # all other errors make the task fail
                     self._logger.info('fail task [%s] - %s', task_id, str(e))
-                    task.append_log(self._redis, task_id, str(e))
+                    task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
                     task.terminate(self._redis, task_id, phase='launch_error')
                     return
                 self._logger.info('%s: task started on %s', task_id, service.name)

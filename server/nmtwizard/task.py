@@ -1,5 +1,6 @@
 import time
 import json
+import os
 
 ttl_policy_func = None
 def set_ttl_policy(func):
@@ -17,16 +18,13 @@ def set_status(redis, keyt, status):
         if ttl is not None and ttl != 0:
             print('Apply %d ttl on %s' % (ttl, keyt))
             redis.expire(keyt, ttl)
-            keyfile = keyt.replace("task:", "files:")
-            redis.expire(keyfile, ttl)
-            keylog = keyt.replace("task:", "log:")
-            redis.expire(keylog, ttl)
 
 def exists(redis, task_id):
     """Checks if a task exist."""
     return redis.exists("task:" + task_id)
 
-def create(redis, task_id, task_type, parent_task, resource, service, content, files, priority=0, ngpus=1, ncpus=None):
+def create(redis, taskfile_dir,
+           task_id, task_type, parent_task, resource, service, content, files, priority=0, ngpus=1, ncpus=None):
     """Creates a new task and enables it."""
     if ncpus is None:
         ncpus = 2
@@ -41,7 +39,7 @@ def create(redis, task_id, task_type, parent_task, resource, service, content, f
     redis.hset(keyt, "ngpus", ngpus)
     redis.hset(keyt, "ncpus", ncpus)
     for k in files:
-        redis.hset("files:" + task_id, k, files[k])
+        set_file(redis, taskfile_dir, task_id, files[k], k)
     set_status(redis, keyt, "queued")
     enable(redis, task_id, service)
     service_queue(redis, task_id, service)
@@ -100,12 +98,7 @@ def list_active(redis, service):
     """Returns all active tasks (i.e. non stopped)."""
     return redis.smembers("active:"+service)
 
-def file_list(redis, task_id):
-    """Returns the list of files attached to a task"""
-    keyf = "files:" + task_id
-    return redis.hkeys(keyf)
-
-def info(redis, task_id, fields):
+def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""
     keyt = "task:" + task_id
     field = None
@@ -117,8 +110,8 @@ def info(redis, task_id, fields):
         with redis.acquire_lock(keyt):
             fields = redis.hkeys(keyt)
             fields.append("ttl")
-            r=info(redis, task_id, fields)
-            r['files'] = file_list(redis, task_id)
+            r=info(redis, taskfile_dir, task_id, fields)
+            r['files'] = file_list(redis, taskfile_dir, task_id)
             return r
     r = {}
     for f in fields:
@@ -199,22 +192,39 @@ def beat(redis, task_id, duration, container_id):
         if container_id is not None:
             redis.hset(keyt, "container_id", container_id)
 
-def set_file(redis, task_id, content, filename):
-    keyf = "files:" + task_id
-    redis.hset(keyf, filename, content)
+def file_list(redis, taskfile_dir, task_id):
+    """Returns the list of files attached to a task"""
+    task_dir = os.path.join(taskfile_dir, task_id)
+    if not os.path.isdir(task_dir):
+        return []
+    return os.listdir(task_dir)
 
-def get_file(redis, task_id, filename):
-    keyf = "files:" + task_id
-    return redis.hget(keyf, filename)
+def set_file(redis, taskfile_dir, task_id, content, filename):
+    taskdir = os.path.join(taskfile_dir, task_id)
+    if not os.path.isdir(taskdir):
+        os.mkdir(taskdir)
+    with open(os.path.join(taskdir, filename), "wb") as fh:
+        fh.write(content)
 
-def get_log(redis, task_id):
-    keyf = "log:" + task_id
-    return redis.get(keyf)
+def append_file(redis, taskfile_dir, task_id, content, filename):
+    taskdir = os.path.join(taskfile_dir, task_id)
+    if not os.path.isdir(taskdir):
+        os.mkdir(taskdir)
+    with open(os.path.join(taskdir, filename), "ab") as fh:
+        fh.write(content)
 
-def append_log(redis, task_id, content):
-    keyf = "log:" + task_id
-    redis.append(keyf, content)
+def get_file(redis, taskfile_dir, task_id, filename):
+    path = os.path.join(taskfile_dir, task_id, filename)
+    if not os.path.isfile(path):
+        return None
+    with open(path, "rb") as fh:
+        return fh.read()
 
-def set_log(redis, task_id, content):
-    keyf = "log:" + task_id
-    redis.set(keyf, content)
+def get_log(redis, taskfile_dir, task_id):
+    return get_file(redis, taskfile_dir, task_id, "log")
+
+def append_log(redis, taskfile_dir, task_id, content):
+    return append_file(redis, taskfile_dir, task_id, content, "log")
+
+def set_log(redis, taskfile_dir, task_id, content):
+    return set_file(redis, taskfile_dir, task_id, content, "log")
