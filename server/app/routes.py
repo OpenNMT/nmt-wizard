@@ -213,8 +213,9 @@ def launch(service):
         flask.abort(flask.make_response(flask.jsonify(message="no resource available on %s for %d gpus"
                                             % (service, ngpus)), 400))
 
-    totranslate = content.get("totranslate")
-    del content["totranslate"]
+    if totranslate in content:
+        totranslate = content["totranslate"]
+        del content["totranslate"]
 
     priority = content.get("priority", 0)
 
