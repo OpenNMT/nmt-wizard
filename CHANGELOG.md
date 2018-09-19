@@ -1,4 +1,4 @@
-## [Unreleased]
+## [v0.4.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.4.0) (2018-09-19)
 
 ### New features
 * Possibly chain training and translation tasks
