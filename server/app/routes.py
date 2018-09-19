@@ -1,4 +1,4 @@
-from app import app, redis, get_version, ch
+from app import app, redis, get_version, ch, taskfile_dir
 import flask
 import io
 from copy import deepcopy
@@ -227,7 +227,8 @@ def launch(service):
 
     while iterations > 0:
         task_id = build_task_id(content, xxyy, parent_task_id)
-        task.create(redis, task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
+        task.create(redis, taskfile_dir,
+                    task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
         task_ids.append(task_id)
         remove_config_option(content["docker"]["command"])
         if totranslate:
@@ -243,7 +244,8 @@ def launch(service):
                 content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
             change_parent_task(content_translate["docker"]["command"], task_id)
             trans_task_id = build_task_id(content, xxyy, task_id)
-            task.create(redis, trans_task_id, "trans", task_id, resource, service, content_translate, (),
+            task.create(redis, taskfile_dir,
+                        trans_task_id, "trans", task_id, resource, service, content_translate, (),
                         content_translate["priority"], content_translate["ngpus"])
             task_ids.append(trans_task_id)
         iterations -= 1
@@ -260,14 +262,14 @@ def launch(service):
 @filter_request("GET/task/status")
 @task_request
 def status(task_id):
-    response = task.info(redis, task_id, [])
+    response = task.info(redis, taskfile_dir, task_id, [])
     return flask.jsonify(response)
 
 @app.route("/task/<string:task_id>", methods=["DELETE"])
 @filter_request("DELETE/task")
 @task_request
 def del_task(task_id):
-    response = task.delete(redis, task_id)
+    response = task.delete(redis, taskfile_dir, task_id)
     if isinstance(response, list) and not response[0]:
         flask.abort(flask.make_response(flask.jsonify(message=response[1]), 400))        
     return flask.jsonify(message="deleted %s" % task_id)
@@ -278,7 +280,7 @@ def list_tasks(pattern):
     ltask = []
     for task_key in task.scan_iter(redis, pattern):
         task_id = task.id(task_key)
-        info = task.info(redis, task_id,
+        info = task.info(redis, taskfile_dir, task_id,
                 ["queued_time", "alloc_resource", "alloc_lgpu", "resource", "content",
                  "status", "message", "type", "iterations", "priority"])
         if info["content"] is not None and info["content"] != "":
@@ -295,7 +297,7 @@ def list_tasks(pattern):
 @task_request
 def terminate(task_id):
     with redis.acquire_lock(task_id):
-        current_status = task.info(redis, task_id, "status")
+        current_status = task.info(redis, taskfile_dir, task_id, "status")
         if current_status is None:
             flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
         elif current_status == "stopped":
@@ -320,7 +322,7 @@ def task_beat(task_id):
 @app.route("/task/file/<string:task_id>/<path:filename>", methods=["GET"])
 @task_request
 def get_file(task_id, filename):
-    content = task.get_file(redis, task_id, filename)
+    content = task.get_file(redis, taskfile_dir, task_id, filename)
     if content is None:
         flask.abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
@@ -331,14 +333,14 @@ def get_file(task_id, filename):
 @task_request
 def post_file(task_id, filename):
     content = flask.request.get_data()
-    task.set_file(redis, task_id, content, filename)
+    task.set_file(redis, taskfile_dir, task_id, content, filename)
     return flask.jsonify(200)
 
 @app.route("/task/log/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/log")
 @task_request
 def get_log(task_id):
-    content = task.get_log(redis, task_id)
+    content = task.get_log(redis, taskfile_dir, task_id)
     if content is None:
         flask.abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))
@@ -349,14 +351,14 @@ def get_log(task_id):
 @task_request
 def append_log(task_id):
     content = flask.request.get_data()
-    task.append_log(redis, task_id, content)
+    task.append_log(redis, taskfile_dir, task_id, content)
     return flask.jsonify(200)
 
 @app.route("/task/log/<string:task_id>", methods=["POST"])
 @task_request
 def post_log(task_id):
     content = flask.request.get_data()
-    task.set_log(redis, task_id, content)
+    task.set_log(redis, taskfile_dir, task_id, content)
     return flask.jsonify(200)
 
 @app.route("/status", methods=["GET"])

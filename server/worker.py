@@ -127,5 +127,6 @@ worker = Worker(redis, services,
                 ttl_policy,
                 cfg.getint('default', 'refresh_counter'),
                 cfg.getint('default', 'quarantine_time'),
-                'admin:worker:%d' % pid)
+                'admin:worker:%d' % pid,
+                cfg.get('default', 'taskfile_dir'))
 worker.run()
