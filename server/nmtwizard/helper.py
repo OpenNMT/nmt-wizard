@@ -151,7 +151,7 @@ def remove_config_option(command):
     i = 0
     while i < len(command):
         if (command[i] == '-c' or command[i] == '--config') and i+1 < len(command):
-            del command[i:i+1]
+            del command[i:i+2]
             return
         i += 1
 
