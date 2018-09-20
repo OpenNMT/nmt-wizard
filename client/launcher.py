@@ -298,7 +298,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             content["iterations"] = args.iterations
         if args.priority:
             content["priority"] = args.priority
-        if args.totranslate:
+        if 'totranslate' in args and args.totranslate:
             content["totranslate"] = args.totranslate
 
         logger.debug("sending request: %s", json.dumps(content))
