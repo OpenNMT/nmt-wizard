@@ -243,7 +243,7 @@ def launch(service):
             for f in totranslate:
                 content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
             change_parent_task(content_translate["docker"]["command"], task_id)
-            trans_task_id = build_task_id(content, xxyy, task_id)
+            trans_task_id = build_task_id(content_translate, xxyy, task_id)
             task.create(redis, taskfile_dir,
                         trans_task_id, "trans", task_id, resource, service, content_translate, (),
                         content_translate["priority"], content_translate["ngpus"])

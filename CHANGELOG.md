@@ -1,5 +1,12 @@
 ## Unreleased
 
+## [v0.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.4.2) (2018-09-21)
+
+## Fixes and improvements
+* fix ID of chained translation tasks (#12)
+
+## [v0.4.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.4.1) (2018-09-20)
+
 ## Fixes and improvements
 * Fix broken 'trans'
 
