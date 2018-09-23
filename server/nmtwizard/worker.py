@@ -5,6 +5,7 @@ import six
 import sys
 
 from nmtwizard import task
+from nmtwizard import workeradmin
 
 
 class Worker(object):
@@ -12,6 +13,7 @@ class Worker(object):
     def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id,
                  taskfile_dir):
         self._redis = redis
+        self._service = next(iter(services))
         self._services = services
         self._logger = logging.getLogger('worker')
         self._worker_id = worker_id
@@ -34,11 +36,13 @@ class Worker(object):
             counter_beat += 1
             if counter_beat > 1000:
                 counter_beat = 0
-                self._redis.set(self._worker_id, time.time())
-                self._redis.expire(self._worker_id, 360)
-                if self._redis.get(self._worker_id+':stop') is not None:
-                    self._logger.info('stop by admin request')
+                if self._redis.exists(self._worker_id):
+                    self._redis.hset(self._worker_id, "beat_time", time.time())
+                    self._redis.expire(self._worker_id, 600)
+                else:
+                    self._logger.info('stopped by key expiration/removal')
                     sys.exit(0)
+            workeradmin.process(self._logger, self._redis, self._service)
 
             message = pubsub.get_message()
             if message:

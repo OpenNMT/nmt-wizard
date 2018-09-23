@@ -44,20 +44,20 @@ def load_service(config_path, base_config=None):
     service = importlib.import_module(config["module"]).init(config)
     return name, service
 
-def load_services(directory):
-    """Loads configured services.
-
-    Each service is configured by a JSON file and a optional shared configuration
-    named "default.json".
+def load_service_config(filename):
+    """Load configured service given a json file and corresponding default.json
+       Both should be in the same directory
 
     Args:
-      directory: The directory to load services from.
+      directory: The path to the json file configuring the service.
 
     Returns:
       A map of service name to service module.
     """
-    if not os.path.isdir(directory):
-        raise ValueError("invalid service directory %s" % os.path.abspath(directory))
+    if not os.path.isfile(filename):
+        raise ValueError("invalid path to service configuration: %s" % filename)
+
+    directory = os.path.dirname(os.path.abspath(filename))
 
     base_config = {}
     base_config_path = os.path.join(directory, _BASE_CONFIG_NAME)
@@ -68,19 +68,12 @@ def load_services(directory):
 
     logger.info("Loading services from %s", directory)
     services = {}
-    for filename in os.listdir(directory):
-        config_path = os.path.join(directory, filename)
-        if (not os.path.isfile(config_path)
-                or not filename.endswith(".json")
-                or filename == _BASE_CONFIG_NAME):
-            continue
-        logger.info("Loading service configuration %s", config_path)
-        name, service = load_service(config_path, base_config=base_config)
-        if service is None:
-            logger.info("Skipping disabled service %s", name)
-            continue
-        if name in services:
-            raise RuntimeError("%s duplicates service %s definition" % (filename, name))
-        services[name] = service
-        logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
+
+    logger.info("Loading service configuration %s", filename)
+    name, service = load_service(filename, base_config=base_config)
+    if service is None:
+        raise RuntimeError("disabled service %s/%s" % (filename, name))
+    services[name] = service
+    logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
+
     return services, base_config

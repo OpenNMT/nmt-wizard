@@ -6,3 +6,4 @@ paramiko
 redis
 flask_ini
 shutil
+hashlib
