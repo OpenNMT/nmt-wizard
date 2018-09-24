@@ -16,6 +16,7 @@ def get_version():
     return VERSION
 
 app = Flask(__name__)
+app._requestid = 1
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.WARNING)

@@ -1,13 +1,16 @@
-from app import app, redis, get_version, ch, taskfile_dir
 import flask
 import io
-from copy import deepcopy
-from nmtwizard import common, task
 import pickle
-from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task, remove_config_option
 import json
-from functools import wraps
 import logging
+import os
+import time
+from copy import deepcopy
+from functools import wraps
+
+from app import app, redis, get_version, ch, taskfile_dir
+from nmtwizard import common, task
+from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task, remove_config_option
 
 logger = logging.getLogger(__name__)
 logger.addHandler(ch)
@@ -103,18 +106,18 @@ def filter_request(route, ability=None):
 @filter_request("GET/service/list")
 def list_services():
     res = {}
-    workers = {}
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
         service_def = get_service(service)                
         usage, queued, capacity, busy, detail = _usagecapacity(service_def)
-        pid = redis.hget(keys, "worker_pid")
+        pids = []
+        for keyw in redis.scan_iter("admin:worker:%s:*" % service):
+            pids.append(keyw[len("admin:worker:%s:" % service):])
+        pid = ",".join(pids)
         name = service_def.display_name
-        if pid not in workers:
-            workers[pid] = redis.get("admin:worker:" + pid)
-        if workers[pid] is None:
+        if len(pids) == 0:
             busy = "yes"
-            pid += " ** WORKER NOT RESPONDING **"
+            pid = "**NO WORKER**"
         res[service] = { 'name': name, 'pid': pid,
                          'usage': usage, 'queued': queued,
                          'capacity': capacity, 'busy': busy,
@@ -126,6 +129,54 @@ def list_services():
 def describe(service):
     service_module = get_service(service)
     return flask.jsonify(service_module.describe())
+
+@app.route("/service/listconfig/<string:service>", methods=["GET"])
+@filter_request("GET/service/listconfig", "edit:config")
+def server_listconfig(service):
+    current_configuration = redis.hget("admin:service:%s" % service, "current_configuration")
+    configurations = redis.hget("admin:service:%s" % service, "configurations")
+    return flask.jsonify({
+                            'current': current_configuration,
+                            'configurations': json.loads(configurations)
+                         })
+
+
+def post_adminrequest(app, service, action, configname, value=True):
+    identifier = "%d.%d" % (os.getpid(), app._requestid)
+    app._requestid += 1
+    redis.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
+    wait = 0
+    while wait < 360:
+        configresult = redis.get("admin:configresult:%s:%s:%s:%s" % (service, action, configname, identifier))
+        if configresult:
+            break
+        wait += 1
+        time.sleep(1)
+    if configresult is None:
+        redis.delete("admin:configresult:%s:%s:%s:%s" % (service, action, configname, identifier))
+        flask.abort(flask.make_response(flask.jsonify(message="request time-out"), 408))
+    elif configresult != "ok":
+        flask.abort(flask.make_response(flask.jsonify(message=configresult), 400))
+    return configresult
+
+@app.route("/service/selectconfig/<string:service>/<string:configname>", methods=["GET"])
+@filter_request("GET/service/selectconfig", "edit:config")
+def server_selectconfig(service, configname):
+    configresult = post_adminrequest(app, service, "select", configname)
+    return flask.jsonify(configresult)
+
+@app.route("/service/setconfig/<string:service>/<string:configname>", methods=["POST"])
+@filter_request("GET/service/setconfig", "edit:config")
+def server_setconfig(service, configname):
+    config = flask.request.form.get('config')
+    configresult = post_adminrequest(app, service, "set", configname, config)
+    return flask.jsonify(configresult)
+
+@app.route("/service/delconfig/<string:service>/<string:configname>", methods=["GET"])
+@filter_request("GET/service/delconfig", "edit:config")
+def server_delconfig(service, configname):
+    configresult = post_adminrequest(app, service, "del", configname)
+    return flask.jsonify(configresult)
 
 @app.route("/service/check/<string:service>", methods=["GET"])
 @filter_request("GET/service/check")

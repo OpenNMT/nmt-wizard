@@ -97,6 +97,7 @@ redis.expire(keyw, 600)
 keys = 'admin:service:%s' % service
 redis.hset(keys, "current_configuration", current_configuration)
 redis.hset(keys, "configurations", json.dumps(configurations))
+redis.hset(keys, "def", pickle.dumps(services[service]))
 
 # remove busy state from resources
 for key in redis.keys('busy:%s:*' % service):
@@ -131,7 +132,6 @@ servers = services[service].list_servers()
 # if multiple workers are for same service with different configurations
 # or storage definition change - restart all workers
 
-redis.set('admin:def:%s' % service, pickle.dumps(services[service]))
 
 redis.delete('admin:resources:'+service)
 for resource in resources:

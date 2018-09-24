@@ -73,6 +73,7 @@ def process(logger, redis, service):
                 logger.info("INTERNAL ERROR: missing configuration (=> %s) - restarting" % cmd[4])
             else:
                 shutil.copyfile("configurations/%s_%s.json" % (service, cmd[4]), "%s.json" % service)
+                result(redis, cmd, 'ok')
                 logger.info("restarting worker after configuration change (=> %s)" % cmd[4])
             sys.exit(0)
         else:
