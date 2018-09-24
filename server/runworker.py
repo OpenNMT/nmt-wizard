@@ -13,7 +13,7 @@ from nmtwizard.redis_database import RedisDatabase
 from redis.exceptions import ConnectionError
 from six.moves import configparser
 
-# connecting to redis to monitor the process
+# connecting to redis to monitor the worker process
 cfg = configparser.ConfigParser()
 cfg.read('settings.ini')
 redis_password = None
