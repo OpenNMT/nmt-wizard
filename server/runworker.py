@@ -7,6 +7,33 @@ import sys
 import time
 import argparse
 import json
+import signal
+
+from nmtwizard.redis_database import RedisDatabase
+from redis.exceptions import ConnectionError
+from six.moves import configparser
+
+# connecting to redis to monitor the process
+cfg = configparser.ConfigParser()
+cfg.read('settings.ini')
+redis_password = None
+if cfg.has_option('redis', 'password'):
+    redis_password = cfg.get('redis', 'password')
+redis = RedisDatabase(cfg.get('redis', 'host'),
+                      cfg.getint('redis', 'port'),
+                      cfg.get('redis', 'db'),
+                      redis_password)
+retry = 0
+while retry < 10:
+    try:
+        redis.get('notify-keyspace-events')
+        break
+    except ConnectionError as e:
+        retry += 1
+        logger.warn("cannot connect to redis DB - retrying (%d)" % retry)
+        time.sleep(1)
+assert retry < 10, "Cannot connect to redis DB - aborting"
+
 
 def md5file(fp):
     """Returns the MD5 of the file fp."""
@@ -38,10 +65,12 @@ assert "%s_base.json" % service in config_service, "missing base configuration f
 if os.path.isfile("%s.json" % service):
     current_config_md5 = md5file("%s.json" % service)
     assert current_config_md5 in config_service_md5, "current configuration file not in `configurations`"
-    print "** current configuration is: %s" % config_service_md5[current_config_md5]
+    print "[%s] ** current configuration is: %s" % (service, config_service_md5[current_config_md5])
+    sys.stdout.flush()
 else:
     shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
-    print "** using base configuration: configurations/%s_base.json" % service
+    print "[%s] ** using base configuration: configurations/%s_base.json" % (service, service)
+    sys.stdout.flush()
 
 assert sys.argv[0].find("runworker") != -1
 
@@ -50,6 +79,16 @@ worker_arg = [sys.executable, sys.argv[0].replace("runworker", "worker"), config
 
 count_fast_fail = 0
 counter = 0
+
+current_pid = None
+def graceful_exit(signum, frame):
+    if current_pid:
+        os.kill(current_pid, signal.SIGTERM)
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, graceful_exit)
+signal.signal(signal.SIGINT, graceful_exit)
+
 
 while True:
     with open(config_file) as f:
@@ -68,18 +107,37 @@ while True:
     log_fh.write("\n")
     log_fh.flush()
  
-    print "** [%s] launching: %s - log %s" % (service, cmdline, logfile)
+    print "[%s] ** launching: %s - log %s" % (service, cmdline, logfile)
+    sys.stdout.flush()
     p1 = subprocess.Popen(worker_arg, stdout=log_fh, stderr=subprocess.STDOUT, close_fds=True) 
-    print "** [%s] launched with pid: %d" % (service, p1.pid)
+    current_pid = p1.pid
+    print "[%s] ** launched with pid: %d" % (service, p1.pid)
+    sys.stdout.flush()
 
     try:
-        p1.wait()
+        while True:
+            poll = p1.poll()
+            if poll:
+                break
+            time.sleep(5)
+            if time.time() - start > 30:
+                # check if worker still there
+                w = redis.exists("admin:worker:%s:%d" % (service, p1.pid))
+                if w is False:
+                    p1.kill()
     except Exception as e:
-    	print str(e)
+    	log_fh.write("-" * 80)
+        log_fh.write("\n")
+        log_fh.write("INTERRUPTED: "+str(e))
+        log_fh.write("\n")
+
+    # whatever happened, we remove trace of the worker
+    redis.delete("admin:worker:%s:%d" % (service, p1.pid))
 
     stop = time.time()
 
-    print "** [%s] process stopped: %d" % (service, p1.pid)
+    print "[%s] ** process stopped: %d" % (service, p1.pid)
+    sys.stdout.flush()
 
     log_fh.flush()
     log_fh.write("-" * 80)
@@ -95,8 +153,10 @@ while True:
         if md5file("%s.json" % service) != md5file(os.path.join("configurations", "%s_base.json" % service)):
             shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
             count_fast_fail = 0
-            print "** [%s] 10 fast fails in a row - switching to base configuration..." % service
+            print "[%s] ** 10 fast fails in a row - switching to base configuration..." % service
+            sys.stdout.flush()
         else:
-            print "** [%s] 10 fast fails in a row - aborting..." % service
+            print "[%s] ** 10 fast fails in a row - aborting..." % service
+            sys.stdout.flush()
             log_fh.write("...10 fast fails in a row - aborting...\n")
             break

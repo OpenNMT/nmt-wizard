@@ -8,6 +8,7 @@ import os
 import sys
 import six
 import argparse
+import signal
 
 from redis.exceptions import ConnectionError
 
@@ -170,6 +171,15 @@ def ttl_policy(task_map):
             if match:
                 return ttl_rule['ttl']
     return 0
+
+def graceful_exit(signum, frame):
+    logger.info('received interrupt - stopping')
+    redis.delete(keyw)
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, graceful_exit)
+signal.signal(signal.SIGINT, graceful_exit)
+
 
 # TODO: start multiple workers here?
 worker = Worker(redis, services,
