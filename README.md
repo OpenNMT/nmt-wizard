@@ -109,10 +109,23 @@ The first component to launch is the worker that should always be running. It ha
 * the update of active resources
 
 ```bash
-cd server && python worker.py
+cd server && python worker.py configfile.json
 ```
 
-For performance, multiple workers might be running simultaneously. In that case, a longer refresh should be defined.
+One worker has to be launched for every service pool. To monitor each worker and allow to be relaunched in case it stops (either because of an issue/exception in the code, or simply for updating its parameter) - the worker should be launcher using `runworker.py` as following:
+
+```bash
+python runworker.py service_name
+```
+
+`runworker.py` and `worker.py` are requesting following:
+* a `configurations` directory in which the different configurations for the service will be copied
+* a `logs` directory in which worker logs will be saved
+* an active configuration file for the service in the current directory with name `service_name.json`. Not that a service name should be composed of letters, digits, - and _ characters only
+* the settings.ini file
+* the logger configuration file `logging.conf`
+
+To administer multiple services: create a main directory with above-mentioned structure, and launch as many workers as pool to create.
 
 ### Server
 
