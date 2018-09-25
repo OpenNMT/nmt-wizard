@@ -141,7 +141,7 @@ def server_listconfig(service):
                          })
 
 
-def post_adminrequest(app, service, action, configname, value=True):
+def post_adminrequest(app, service, action, configname="base", value=True):
     identifier = "%d.%d" % (os.getpid(), app._requestid)
     app._requestid += 1
     redis.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
@@ -177,6 +177,31 @@ def server_setconfig(service, configname):
 def server_delconfig(service, configname):
     configresult = post_adminrequest(app, service, "del", configname)
     return flask.jsonify(configresult)
+
+@app.route("/service/restart/<string:service>", methods=["GET"])
+@filter_request("GET/service/restart", "edit:config")
+def server_restart(service):
+    configresult = post_adminrequest(app, service, "restart")
+    return flask.jsonify(configresult)
+
+@app.route("/service/enable/<string:service>/<string:resource>", methods=["GET"])
+@filter_request("GET/service/enable", "edit:config")
+def server_enable(service, resource):
+    keyr = "busy:%s:%s" % (service, resource)
+    if redis.exists(keyr):
+        redis.delete("busy:%s:%s" % (service, resource))
+        return flask.jsonify("ok")
+    else:
+        flask.abort(flask.make_response(flask.jsonify(message="resource was not disabled"), 400))
+
+@app.route("/service/disable/<string:service>/<string:resource>", methods=["GET"])
+@filter_request("GET/service/disable", "edit:config")
+def server_disable(service, resource):
+    message = flask.request.args.get('message')
+    if message is None:
+        message = "DISABLED"
+    redis.set("busy:%s:%s" % (service, resource), message)
+    return flask.jsonify("ok")
 
 @app.route("/service/check/<string:service>", methods=["GET"])
 @filter_request("GET/service/check")

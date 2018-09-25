@@ -100,9 +100,6 @@ redis.hset(keys, "current_configuration", current_configuration)
 redis.hset(keys, "configurations", json.dumps(configurations))
 redis.hset(keys, "def", pickle.dumps(services[service]))
 
-# remove busy state from resources
-for key in redis.keys('busy:%s:*' % service):
-    redis.delete(key)
 # remove reserved state from resources
 for key in redis.keys('reserved:%s:*' % service):
     redis.delete(key)

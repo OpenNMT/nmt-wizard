@@ -76,6 +76,9 @@ def process(logger, redis, service):
                 result(redis, cmd, 'ok')
                 logger.info("restarting worker after configuration change (=> %s)" % cmd[4])
             sys.exit(0)
+        elif cmd[3] == 'restart':
+            result(redis, cmd, 'ok')
+            logger.info("restarting worker by admin request" % cmd[4])
         else:
             result(redis, cmd, 'ERROR: invalid admin:config action `%s`' % cmd[3])
 
