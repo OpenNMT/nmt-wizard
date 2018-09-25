@@ -3,6 +3,7 @@ import json
 import re
 import logging
 import six
+import io
 
 import paramiko
 
@@ -226,7 +227,8 @@ def has_gpu_support(client):
 def ssh_connect_with_retry(hostname,
                            port,
                            username,
-                           key_path,
+                           key_filename=None,
+                           pkey=None,
                            delay=0,
                            retry=0,
                            login_cmd=None):
@@ -242,11 +244,17 @@ def ssh_connect_with_retry(hostname,
             time.sleep(delay)
         try:
             client.load_system_host_keys()
+            if pkey is not None:
+                private_key_file = io.StringIO()
+                private_key_file.write('-----BEGIN RSA PRIVATE KEY-----\n%s\n-----END RSA PRIVATE KEY-----\n' % pkey)
+                private_key_file.seek(0)
+                pkey = paramiko.RSAKey.from_private_key(private_key_file)
             client.connect(
                 hostname,
                 port=port,
                 username=username,
-                key_filename=key_path,
+                pkey=pkey,
+                key_filename=key_filename,
                 look_for_keys=False)
             logger.info("Connection to %s successful (%f)", hostname, time.time()-start)
             if login_cmd is not None:

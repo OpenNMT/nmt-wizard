@@ -112,7 +112,8 @@ class SSHService(Service):
             params['host'],
             params['port'],
             params['login'],
-            self._config['privateKey'],
+            pkey=self._config.get('pkey'),
+            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
             login_cmd=params['login_cmd'])
         try:
             details = common.check_environment(
@@ -143,7 +144,8 @@ class SSHService(Service):
             params['host'],
             params['port'],
             params['login'],
-            self._config['privateKey'],
+            pkey=self._config.get('pkey'),
+            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
             login_cmd=params['login_cmd'])
         try:
             task = common.launch_task(
@@ -173,7 +175,8 @@ class SSHService(Service):
             params['host'],
             params['port'],
             params['login'],
-            self._config['privateKey'],
+            pkey=self._config.get('pkey'),
+            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
             login_cmd=params['login_cmd'])
 
         if 'container_id' in params:
@@ -196,7 +199,8 @@ class SSHService(Service):
             params['host'],
             params['port'],
             params['login'],
-            self._config['privateKey'],
+            pkey=self._config.get('pkey'),
+            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
             login_cmd=params['login_cmd'])
         if 'container_id' in params:
             common.run_docker_command(client, 'rm --force %s' % params['container_id'])
