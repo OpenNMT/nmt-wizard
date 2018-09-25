@@ -117,7 +117,7 @@ while True:
     try:
         while True:
             poll = p1.poll()
-            if poll:
+            if poll is not None:
                 break
             time.sleep(5)
             if time.time() - start > 30:
