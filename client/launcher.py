@@ -96,68 +96,84 @@ subparsers = parser.add_subparsers(help='command help', dest='cmd')
 subparsers.required = True
 
 parser_list_services = subparsers.add_parser('ls',
-                                             help='list available services')
+                                        help='list available services')
 parser_list_services.add_argument('-v', '--verbose', help='detail resource name, and running tasks',
                                   action='store_true')
 parser_describe = subparsers.add_parser('describe',
                                         help='list available options for the service')
 parser_describe.add_argument('-s', '--service', help="service name")
 parser_check = subparsers.add_parser('check',
-                                     help='check that service associated to provided options is operational')
-parser_check.add_argument('-s', '--service', help="service name")
+                                        help='check that service associated to provided options is operational')
+parser_check.add_argument('-s', '--service', 
+                                        help='service name')
 parser_check.add_argument('-o', '--options', default='{}',
-                          help="options selected to run the service")
+                                        help="options selected to run the service")
+parser_check.add_argument('-r', '--resource',
+                                        help="alternatively to `options`, resource name to check")
 parser_launch = subparsers.add_parser('launch',
-                                      help='launch a task on the service associated to provided options')
-parser_launch.add_argument('-s', '--service', help="service name")
+                                        help='launch a task on the service associated to provided options')
+parser_launch.add_argument('-s', '--service',
+                                        help='service name')
 parser_launch.add_argument('-o', '--options', default='{}',
-                           help="options selected to run the service")
-parser_launch.add_argument('-g', '--gpus', help="number of gpus", type=int, default=1)
+                                        help='options selected to run the service')
+parser_launch.add_argument('-r', '--resource',
+                                        help="alternatively to `options`, resource name to use")
+parser_launch.add_argument('-g', '--gpus', type=int, default=1,
+                                        help='number of gpus')
 parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
-                           help=('if not 0, wait for this number of seconds after launch '
-                                 'to check that launch is ok - by default wait for 2 seconds'))
+                                        help='if not 0, wait for this number of seconds after launch '
+                                             'to check that launch is ok - by default wait for 2 seconds')
 parser_launch.add_argument('-r', '--docker_registry', default='auto',
-                           help='docker registry (as configured on server side) - default is `auto`')
+                                        help='docker registry (as configured on server side) - default is `auto`')
 parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
-                           help='Docker image (can be prefixed by docker_registry:)')
+                                        help='Docker image (can be prefixed by docker_registry:)')
 parser_launch.add_argument('-t', '--docker_tag', default="latest",
-                           help='Docker image tag (default is latest)')
+                                        help='Docker image tag (default is latest)')
 parser_launch.add_argument('-n', '--name',
-                           help='Friendly name for the model, for subsequent tasks, inherits from previous')
+                                        help='Friendly name for the model, for subsequent tasks, inherits'
+                                             ' from previous')
 parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
-                           help='trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])')
+                                        help='trainer id, used as a prefix to generated models (default '
+                                             'ENV[LAUNCHER_TID])')
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
-                           help='for training tasks, iterate several tasks in a row')
+                                        help='for training tasks, iterate several tasks in a row')
 parser_launch.add_argument('-P', '--priority', type=int, default=0,
-                           help='task priority - highest better')
+                                        help='task priority - highest better')
 parser_launch.add_argument('docker_command', type=str, nargs='*',
-                           help='Docker command')
+                                        help='Docker command')
 parser_list_tasks = subparsers.add_parser('lt',
-                                          help='list tasks matching prefix pattern')
+                                        help='list tasks matching prefix pattern')
 parser_list_tasks.add_argument('-p', '--prefix', default=os.getenv('LAUNCHER_TID', ''),
-                               help='prefix for the tasks to list (default ENV[LAUNCHER_TID])')
-parser_list_tasks.add_argument('-q', '--quiet', help="only display task_id", action='store_true')
-parser_list_tasks.add_argument('-S', '--status', help="filter on status value")
+                                        help='prefix for the tasks to list (default ENV[LAUNCHER_TID])')
+parser_list_tasks.add_argument('-q', '--quiet', action='store_true',
+                                        help='only display task_id')
+parser_list_tasks.add_argument('-S', '--status',
+                                        help='filter on status value')
 
 parser_del_tasks = subparsers.add_parser('dt',
-                                         help='delete tasks matching prefix pattern')
+                                        help='delete tasks matching prefix pattern')
 parser_del_tasks.add_argument('-p', '--prefix', required=True,
-                              help='prefix for the tasks to delete')
-parser_status = subparsers.add_parser('status', help='get status of a task')
+                                        help='prefix for the tasks to delete')
+parser_status = subparsers.add_parser('status',
+                                        help='get status of a task')
 parser_status.add_argument('task_id',
-                              help="task identifier")
-parser_terminate = subparsers.add_parser('terminate', help='terminate a task')
+                                        help='task identifier')
+parser_terminate = subparsers.add_parser('terminate',
+                                        help='terminate a task')
 parser_terminate.add_argument('task_id',
-                              help="task identifier")
-parser_log = subparsers.add_parser('log', help='get log associated to a task')
+                                        help='task identifier')
+parser_log = subparsers.add_parser('log',
+                                        help='get log associated to a task')
 parser_log.add_argument('task_id',
-                              help="task identifier")
-parser_file = subparsers.add_parser('file', help='get file associated to a task')
+                                        help='task identifier')
+parser_file = subparsers.add_parser('file',
+                                        help='get file associated to a task')
 parser_file.add_argument('task_id',
-                              help="task identifier")
-parser_file.add_argument('-f', '--filename',
-                              help="filename to retrieve - for instance log", required=True)
-parser.add_argument('-v', '--version', action=VersionAction, help="Version information")
+                                        help='task identifier')
+parser_file.add_argument('-f', '--filename', required=True,
+                                        help='filename to retrieve - for instance log')
+parser.add_argument('-v', '--version', action=VersionAction,
+                                        help='Version information')
 
 
 def process_request(serviceList, cmd, is_json, args, auth=None):
@@ -226,8 +242,12 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
     elif cmd == "check":
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
+        if args.options == '{}' and args.resource is not None:
+            args.options = { "server": args.resource }
+        else:
+            args.options = getjson(args.options)
         r = requests.get(os.path.join(args.url, "service/check", args.service),
-                         json=getjson(args.options), auth=auth)
+                         json=args.options, auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         res = r.json()
@@ -279,6 +299,11 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if args.gpus < 0:
             raise ValueError("ERROR: ngpus must be >= 0")
 
+        if args.options == '{}' and args.resource is not None:
+            args.options = { "server": args.resource }
+        else:
+            args.options = getjson(args.options)
+
         content = {
             "docker": {
                 "registry": args.docker_registry,
@@ -288,7 +313,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             },
             "wait_after_launch": args.wait_after_launch,
             "trainer_id": args.trainer_id,
-            "options": getjson(args.options),
+            "options": args.options,
             "ngpus": args.gpus
         }
 
