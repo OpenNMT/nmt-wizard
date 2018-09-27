@@ -1,4 +1,4 @@
-from app import app, redis, get_version, ch, taskfile_dir
+from app import app, redis, get_version, taskfile_dir
 import flask
 import io
 from copy import deepcopy
@@ -10,9 +10,10 @@ from functools import wraps
 import logging
 
 logger = logging.getLogger(__name__)
-logger.addHandler(ch)
+logger.addHandler(app.logger)
 
 def get_service(service):
+    app.logger.info("Hello world!")
     """Wrapper to fail on invalid service."""
     def_string = redis.hget("admin:service:"+service, "def")
     if def_string is None:
