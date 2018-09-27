@@ -2,7 +2,7 @@ from flask import Flask
 from flask_ini import FlaskIni
 import os
 from nmtwizard.redis_database import RedisDatabase
-from nmtwizard import config, common
+from nmtwizard import common
 
 import logging
 import time
@@ -19,19 +19,24 @@ app = Flask(__name__)
 app._requestid = 1
 
 ch = logging.StreamHandler()
-ch.setLevel(logging.WARNING)
+app.logger.addHandler(ch)
+
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 
-config.add_log_handler(ch)
 common.add_log_handler(ch)
 
-config_file = os.getenv('LAUNCHER_CONFIG')
+config_file = os.getenv('LAUNCHER_CONFIG', 'settings.ini')
 assert config_file is not None and os.path.isfile(config_file), "invalid LAUNCHER_CONFIG"
 
 app.iniconfig = FlaskIni()
 with app.app_context():
     app.iniconfig.read(config_file)
+
+print(app.iniconfig.get('default', 'log_level', fallback='ERROR'), logging.getLevelName(app.iniconfig.get('default', 'log_level', fallback='ERROR')))
+
+app.logger.setLevel(logging.getLevelName(
+                    app.iniconfig.get('default', 'log_level', fallback='ERROR')))
 
 redis = RedisDatabase(app.iniconfig.get('redis','host'),
                       app.iniconfig.get('redis','port',fallback=6379),

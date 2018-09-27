@@ -1,5 +1,8 @@
 ## Unreleased
 
+## Fixes and improvements
+* default `settings.ini`in current directory
+
 ## [v0.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.4.2) (2018-09-21)
 
 ## Fixes and improvements
