@@ -1,7 +1,19 @@
 ## Unreleased
 
-## Fixes and improvements
-* default `settings.ini`in current directory
+## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
+
+### Breaking changes
+* workers are now dedicated to a single pool
+
+### New features
+* new tool `runworker` for activity monitoring/relaunching of workers
+* add `workeradmin` redis message queue for interaction with workers, and corresponding new REST service in launcher
+* each worker can manage and switch between multiple configurations
+* possibility to pass private key directly in configurations
+
+### Fixes and improvements
+* default `settings.ini` in current directory
+* introduce `--resource` as simpler alternative to `--option` 
 
 ## [v0.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.4.2) (2018-09-21)
 

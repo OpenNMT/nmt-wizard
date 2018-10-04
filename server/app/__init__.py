@@ -8,7 +8,7 @@ import logging
 import time
 from redis.exceptions import ConnectionError
 
-VERSION = "0.4.0-ce"
+VERSION = "1.0.0-ce"
 def append_version(v):
     global VERSION
     VERSION += ":" + v

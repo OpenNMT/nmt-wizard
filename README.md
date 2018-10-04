@@ -145,6 +145,14 @@ The server has the following HTTP routes:
 | `PUT`     | `task/beat/{task_id}` | | Provides a `beat` back to the launcher to notify the task activity and announce the next beat to expect |
 | `GET`<br>`POST` | `task/file/{task_id}` | | Gets or set a file associated to a task |
 | `GET`<br>`PATCH`<br>`POST` | `task/log/{task_id}` | | Gets, appends or sets the log associated to a task |
+| `GET`     | `service/listconfig/{service}` | | List all configurations associated to a given service | 
+| `GET`     | `service/selectconfig/{service}/{configname}` | | Select a named configuration associated to a given service | 
+| `POST`     | `service/addconfig/{service}/{configname}` | `config` | Register a new named configuration for a given service | 
+| `GET`     | `service/delconfig/{service}/{configname}` | | Delete a new named configuration for a given service | 
+| `GET`     | `service/restart/{service}` | | Restart a service | 
+| `GET`     | `service/disable/{service}/{resource}` | `message`| Disable a resource for a given service  | 
+| `GET`     | `service/enable/{service}/{resource}` | | Enable a disabled resource for a given service  |
+
 
 The server uses Flask. See the [Flask documentation](http://flask.pocoo.org/docs/0.12/deploying/) to deploy it for production. For development purpose, it can be run as follows (single thread):
 
