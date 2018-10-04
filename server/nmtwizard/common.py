@@ -230,7 +230,8 @@ def ssh_connect_with_retry(hostname,
                            key_filename=None,
                            pkey=None,
                            delay=0,
-                           retry=0,
+                           retry=3,
+                           retry_delay=5,
                            login_cmd=None):
     """Wrap the SSH connect method with a delay and retry mechanism. This is
     useful when connecting to an instance that was freshly started.
@@ -239,9 +240,9 @@ def ssh_connect_with_retry(hostname,
     start = time.time()
     client = paramiko.client.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    if delay > 0:
+        time.sleep(delay)
     while True:
-        if delay > 0:
-            time.sleep(delay)
         try:
             client.load_system_host_keys()
             if pkey is not None:
@@ -266,8 +267,9 @@ def ssh_connect_with_retry(hostname,
             if retry < 0:
                 raise e
             else:
-                logger.warning("Failed to connect to %s via SSH (%s), retrying...",
-                               hostname, str(e))
+                logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
+                               hostname, str(e), retry_delay)
+                time.sleep(retry_delay)
 
 def fuse_s3_bucket(client, corpus):
     if not program_exists(client, "s3fs"):
