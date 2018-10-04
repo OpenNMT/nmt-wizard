@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
 
 def get_service(service):
-    app.logger.info("Hello world!")
     """Wrapper to fail on invalid service."""
     def_string = redis.hget("admin:service:"+service, "def")
     if def_string is None:

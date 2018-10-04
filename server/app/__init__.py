@@ -33,8 +33,6 @@ app.iniconfig = FlaskIni()
 with app.app_context():
     app.iniconfig.read(config_file)
 
-print(app.iniconfig.get('default', 'log_level', fallback='ERROR'), logging.getLevelName(app.iniconfig.get('default', 'log_level', fallback='ERROR')))
-
 app.logger.setLevel(logging.getLevelName(
                     app.iniconfig.get('default', 'log_level', fallback='ERROR')))
 
