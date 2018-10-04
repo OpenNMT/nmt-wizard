@@ -236,7 +236,16 @@ class Worker(object):
             elif status == 'running':
                 self._logger.debug('- checking activity of task: %s', task_id)
                 data = json.loads(self._redis.hget(keyt, 'job'))
-                status = service.status(task_id, data)
+                try:
+                    status = service.status(task_id, data)
+                except Exception as e:
+                    self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
+                    self._redis.hincrby(keyt, 'status_fail', 1)
+                    if self._redis.hget(keyt, 'status_fail') > 5:
+                        task.terminate(self._redis, task_id, phase='lost_connection')
+                        return
+                else:
+                    self._redis.hdel(keyt, 'status_fail')
                 if status == 'dead':
                     self._logger.info('%s: task no longer running on %s, request termination',
                                       task_id, service.name)
