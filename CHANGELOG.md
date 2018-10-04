@@ -1,9 +1,5 @@
 ## Unreleased
 
-### Fixes and improvements
-* chained translation tasks are now dispatched on multiple gpus
-* (worker) retry 5 times failed status, and correctly terminate
-
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 
 ### Breaking changes
@@ -18,6 +14,8 @@
 ### Fixes and improvements
 * default `settings.ini` in current directory
 * introduce `--resource` as simpler alternative to `--option` 
+* chained translation tasks are now dispatched on multiple gpus
+* (worker) retry 5 times failed status, and correctly terminate
 
 ## [v0.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v0.4.2) (2018-09-21)
 
@@ -33,7 +31,7 @@
 
 ### New features
 * Possibly chain training and translation tasks
-* (admin) add `stop by admin` feature (see [here](http://devwiki.systran.fr/index.php/PN9_Guide#Stop_worker))
+* (admin) add `stop by admin` feature
 
 ## Fixes and improvements
 * when running chained training - update queued time to be close to terminate time of parent task
