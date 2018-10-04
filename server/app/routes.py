@@ -311,19 +311,23 @@ def launch(service):
             content_translate = deepcopy(content)
             content_translate["priority"] = priority+1
             content_translate["ngpus"] = min(ngpus, 1)
-            content_translate["docker"]["command"] = ["trans"]
-            content_translate["docker"]["command"].append('-i')
-            for f in totranslate:
-                content_translate["docker"]["command"].append(f[0])
-            content_translate["docker"]["command"].append('-o')
-            for f in totranslate:
-                content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
-            change_parent_task(content_translate["docker"]["command"], task_id)
-            trans_task_id = build_task_id(content_translate, xxyy, task_id)
-            task.create(redis, taskfile_dir,
-                        trans_task_id, "trans", task_id, resource, service, content_translate, (),
-                        content_translate["priority"], content_translate["ngpus"])
-            task_ids.append(trans_task_id)
+            file_per_gpu = int(len(totranslate)/ngpus+0.99999)
+            while len(totranslate) > 0:
+                content_translate["docker"]["command"] = ["trans"]
+                content_translate["docker"]["command"].append('-i')
+                subset_totranslate = totranslate[:file_per_gpu]
+                totranslate = totranslate[file_per_gpu:]
+                for f in subset_totranslate:
+                    content_translate["docker"]["command"].append(f[0])
+                content_translate["docker"]["command"].append('-o')
+                for f in subset_totranslate:
+                    content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
+                change_parent_task(content_translate["docker"]["command"], task_id)
+                trans_task_id = build_task_id(content_translate, xxyy, task_id)
+                task.create(redis, taskfile_dir,
+                            trans_task_id, "trans", task_id, resource, service, content_translate, (),
+                            content_translate["priority"], content_translate["ngpus"])
+                task_ids.append(trans_task_id)
         iterations -= 1
         if iterations > 0:
             parent_task_id = task_id

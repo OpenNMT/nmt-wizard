@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* chained translation tasks are now dispatched on multiple gpus
+
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 
 ### Breaking changes
