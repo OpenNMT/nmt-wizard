@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* Fix translation tasks not launch for iterations 2+
+
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 
 ### Breaking changes
