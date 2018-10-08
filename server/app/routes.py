@@ -184,6 +184,12 @@ def server_restart(service):
     configresult = post_adminrequest(app, service, "restart")
     return flask.jsonify(configresult)
 
+@app.route("/service/stop/<string:service>", methods=["GET"])
+@filter_request("GET/service/stop", "stop:config")
+def server_stop(service):
+    configresult = post_adminrequest(app, service, "stop")
+    return flask.jsonify(configresult)
+
 @app.route("/service/enable/<string:service>/<string:resource>", methods=["GET"])
 @filter_request("GET/service/enable", "edit:config")
 def server_enable(service, resource):

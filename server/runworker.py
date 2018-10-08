@@ -144,6 +144,9 @@ while True:
     log_fh.write("\n")
     log_fh.write("RUNNING TIME: %f\n" % (stop-start))
 
+    if p1.returncode == 55:
+        break
+
     if stop-start < args.fast_restart_delay:
         count_fast_fail += 1
     else:

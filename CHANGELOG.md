@@ -1,5 +1,8 @@
 ## Unreleased
 
+### New features
+* add `stop` admin command - requires `stop:config`
+
 ### Fixes and improvements
 * Fix translation tasks not launch for iterations 2+
 * Fix split of subsets for chained translation tasks and pure-CPU training
