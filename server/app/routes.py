@@ -311,7 +311,10 @@ def launch(service):
             content_translate = deepcopy(content)
             content_translate["priority"] = priority+1
             content_translate["ngpus"] = min(ngpus, 1)
-            file_per_gpu = int(len(totranslate)/ngpus+0.99999)
+            if ngpus == 0:
+                file_per_gpu = len(totranslate)
+            else:
+                file_per_gpu = (len(totranslate)+ngpus-1) / ngpus
             subset_idx = 0
             while subset_idx * file_per_gpu < len(totranslate):
                 content_translate["docker"]["command"] = ["trans"]

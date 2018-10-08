@@ -2,6 +2,7 @@
 
 ### Fixes and improvements
 * Fix translation tasks not launch for iterations 2+
+* Fix split of subsets for chained translation tasks and pure-CPU training
 
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 
