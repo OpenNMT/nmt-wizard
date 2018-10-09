@@ -243,7 +243,7 @@ class Worker(object):
                 except Exception as e:
                     self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
                     self._redis.hincrby(keyt, 'status_fail', 1)
-                    if self._redis.hget(keyt, 'status_fail') > 5:
+                    if self._redis.hget(keyt, 'status_fail') > 4:
                         task.terminate(self._redis, task_id, phase='lost_connection')
                         return
                 else:
@@ -254,7 +254,7 @@ class Worker(object):
                     task.terminate(self._redis, task_id, phase='exited')
                 else:
                     task.work_queue(self._redis, task_id, service.name,
-                                    delay=service.is_notifying_activity and 120 or 30)
+                                    delay=service.is_notifying_activity and 600 or 120)
 
             elif status == 'terminating':
                 data = self._redis.hget(keyt, 'job')
