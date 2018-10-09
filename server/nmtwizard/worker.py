@@ -34,16 +34,18 @@ class Worker(object):
 
         while True:
             counter_beat += 1
+            # every 1000 * 0.01s (10s) - check&reset beat of the worker
             if counter_beat > 1000:
                 counter_beat = 0
                 if self._redis.exists(self._worker_id):
                     self._redis.hset(self._worker_id, "beat_time", time.time())
-                    self._redis.expire(self._worker_id, 600)
+                    self._redis.expire(self._worker_id, 1200)
                 else:
                     self._logger.info('stopped by key expiration/removal')
                     sys.exit(0)
             workeradmin.process(self._logger, self._redis, self._service)
 
+            # process one message from the queue
             message = pubsub.get_message()
             if message:
                 channel = message['channel']
@@ -62,52 +64,52 @@ class Worker(object):
                         if service in self._services:
                             self._logger.info('%s: move to work queue', task_id)
                             task.work_queue(self._redis, task_id, service)
-            else:
-                for service in self._services:
-                    task_id = task.work_unqueue(self._redis, service)
-                    if task_id is not None:
-                        try:
-                            self._advance_task(task_id)
-                        except RuntimeWarning:
-                            self._logger.warning(
-                                '%s: failed to acquire a lock, retrying', task_id)
-                            task.work_queue(self._redis, task_id, service)
-                        except Exception as e:
-                            self._logger.error('%s: %s', task_id, str(e))
-                            with self._redis.acquire_lock(task_id):
-                                task.set_log(self._redis, self._taskfile_dir, task_id, str(e))
-                                task.terminate(self._redis, task_id, phase="launch_error")
-                    else:
-                        if counter > self._refresh_counter:
-                            resources = self._services[service].list_resources()
-                            for resource in resources:                                    
-                                keyr = 'gpu_resource:%s:%s' % (service, resource)
-                                key_busy = 'busy:%s:%s' % (service, resource)
-                                key_reserved = 'reserved:%s:%s' % (service, resource)
-                                if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
-                                    if self._redis.exists(key_reserved) and self._redis.ttl('queue:'+self._redis.get(key_reserved))>10:
-                                        self._redis.expire('queue:'+self._redis.get(key_reserved), 5)
-                                        break
-                            if self._redis.exists('queued:%s' % service):
-                                resources = self._services[service].list_resources()
-                                self._logger.debug('checking processes on : %s', service)
-                                availableResource = False
-                                for resource in resources:                                    
-                                    keyr = 'gpu_resource:%s:%s' % (service, resource)
-                                    key_busy = 'busy:%s:%s' % (service, resource)
-                                    key_reserved = 'reserved:%s:%s' % (service, resource)
-                                    # try dequeuing only if resource not busy, not reserved, and is pure cpu
-                                    # or has cpu available
-                                    if not self._redis.exists(key_busy) and (
-                                            resources[resource]==0 or self._redis.hlen(keyr) < resources[resource]):
-                                        if not self._redis.exists(key_reserved):
-                                            availableResource = True
-                                        break
-                                if availableResource:
-                                    self._logger.debug('resources available on %s - trying dequeuing', service)
-                                    self._service_unqueue(self._services[service])
-                if counter > self._refresh_counter:
-                    counter = 0
+
+            # process one element from work queue
+            task_id = task.work_unqueue(self._redis, self._service)
+            if task_id is not None:
+                try:
+                    self._advance_task(task_id)
+                except RuntimeWarning:
+                    self._logger.warning(
+                        '%s: failed to acquire a lock, retrying', task_id)
+                    task.work_queue(self._redis, task_id, self._service)
+                except Exception as e:
+                    self._logger.error('%s: %s', task_id, str(e))
+                    with self._redis.acquire_lock(task_id):
+                        task.set_log(self._redis, self._taskfile_dir, task_id, str(e))
+                        task.terminate(self._redis, task_id, phase="launch_error")
+
+            # every 0.01s * refresh_counter - check if we can find some free resource
+            if counter > self._refresh_counter:
+                resources = self._services[self._service].list_resources()
+                for resource in resources:                                    
+                    keyr = 'gpu_resource:%s:%s' % (self._service, resource)
+                    key_busy = 'busy:%s:%s' % (self._service, resource)
+                    key_reserved = 'reserved:%s:%s' % (self._service, resource)
+                    if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
+                        if self._redis.exists(key_reserved) and self._redis.ttl('queue:'+self._redis.get(key_reserved))>10:
+                            self._redis.expire('queue:'+self._redis.get(key_reserved), 5)
+                            break
+                if self._redis.exists('queued:%s' % self._service):
+                    resources = self._services[self._service].list_resources()
+                    self._logger.debug('checking processes on : %s', self._service)
+                    availableResource = False
+                    for resource in resources:                                    
+                        keyr = 'gpu_resource:%s:%s' % (self._service, resource)
+                        key_busy = 'busy:%s:%s' % (self._service, resource)
+                        key_reserved = 'reserved:%s:%s' % (self._service, resource)
+                        # try dequeuing only if resource not busy, not reserved, and is pure cpu
+                        # or has cpu available
+                        if not self._redis.exists(key_busy) and (
+                                resources[resource]==0 or self._redis.hlen(keyr) < resources[resource]):
+                            if not self._redis.exists(key_reserved):
+                                availableResource = True
+                            break
+                    if availableResource:
+                        self._logger.debug('resources available on %s - trying dequeuing', self._service)
+                        self._service_unqueue(self._services[self._service])
+                counter = 0
 
             counter += 1
             time.sleep(0.01)

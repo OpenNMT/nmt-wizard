@@ -6,6 +6,8 @@
 ### Fixes and improvements
 * Fix translation tasks not launch for iterations 2+
 * Fix split of subsets for chained translation tasks and pure-CPU training
+* Improve reactivity of worker that could let a resource idle for one hour
+* Increase "dead-worker" detection to 20 minutes of unchanged beat
 
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 
