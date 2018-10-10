@@ -412,5 +412,6 @@ class Worker(object):
                         best_task_queued_time = queued_time
 
             if best_task_id:
+                self._logger.info('selected %s to be launched on %s', task_id, service.name)
                 task.work_queue(self._redis, best_task_id, service.name)
                 self._redis.lrem(queue, best_task_id)
