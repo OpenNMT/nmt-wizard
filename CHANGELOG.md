@@ -9,6 +9,7 @@
 * Improve reactivity of worker that could let a resource idle for one hour
 * Increase "dead-worker" detection to 20 minutes of unchanged beat
 * Reduce running task checking interval to every 5min after first check
+* Fix workeradmin tasks taking all bandwidth
 
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 

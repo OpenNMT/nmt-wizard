@@ -43,7 +43,8 @@ class Worker(object):
                 else:
                     self._logger.info('stopped by key expiration/removal')
                     sys.exit(0)
-            workeradmin.process(self._logger, self._redis, self._service)
+            if counter_beat % 100 == 0:
+                workeradmin.process(self._logger, self._redis, self._service)
 
             # process one message from the queue
             message = pubsub.get_message()
