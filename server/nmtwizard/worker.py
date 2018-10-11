@@ -34,7 +34,7 @@ class Worker(object):
 
         while True:
             counter_beat += 1
-            # every 1000 * 0.01s (10s) - check&reset beat of the worker
+            # every 1000 * 0.01s (10s) - check & reset beat of the worker
             if counter_beat > 1000:
                 counter_beat = 0
                 if self._redis.exists(self._worker_id):
@@ -43,6 +43,8 @@ class Worker(object):
                 else:
                     self._logger.info('stopped by key expiration/removal')
                     sys.exit(0)
+
+            # every 100 * 0.01s (1s) - check worker administration command
             if counter_beat % 100 == 0:
                 workeradmin.process(self._logger, self._redis, self._service)
 
@@ -52,6 +54,7 @@ class Worker(object):
                 channel = message['channel']
                 data = message['data']
                 if data == 'expired':
+                    # task expired, not beat was received
                     if channel.startswith('__keyspace@0__:beat:'):
                         task_id = channel[20:]
                         service = self._redis.hget('task:'+task_id, 'service')
@@ -59,6 +62,7 @@ class Worker(object):
                             self._logger.info('%s: task expired', task_id)
                             with self._redis.acquire_lock(task_id):
                                 task.terminate(self._redis, task_id, phase='expired')
+                    # expired in the queue - comes back in the work queue
                     elif channel.startswith('__keyspace@0__:queue:'):
                         task_id = channel[21:]
                         service = self._redis.hget('task:'+task_id, 'service')
@@ -84,14 +88,16 @@ class Worker(object):
             # every 0.01s * refresh_counter - check if we can find some free resource
             if counter > self._refresh_counter:
                 resources = self._services[self._service].list_resources()
-                for resource in resources:                                    
+                for resource in resources:
                     keyr = 'gpu_resource:%s:%s' % (self._service, resource)
                     key_busy = 'busy:%s:%s' % (self._service, resource)
                     key_reserved = 'reserved:%s:%s' % (self._service, resource)
                     if not self._redis.exists(key_busy) and self._redis.hlen(keyr) < resources[resource]:
-                        if self._redis.exists(key_reserved) and self._redis.ttl('queue:'+self._redis.get(key_reserved))>10:
+                        if self._redis.exists(key_reserved) and self._redis.ttl('queue:'+self._redis.get(key_reserved)) > 10:
                             self._redis.expire('queue:'+self._redis.get(key_reserved), 5)
                             break
+
+                # if there are some queued tasks, look for free resources
                 if self._redis.exists('queued:%s' % self._service):
                     resources = self._services[self._service].list_resources()
                     self._logger.debug('checking processes on : %s', self._service)
