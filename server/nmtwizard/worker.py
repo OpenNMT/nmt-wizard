@@ -101,21 +101,8 @@ class Worker(object):
                 if self._redis.exists('queued:%s' % self._service):
                     resources = self._services[self._service].list_resources()
                     self._logger.debug('checking processes on : %s', self._service)
-                    availableResource = False
-                    for resource in resources:                                    
-                        keyr = 'gpu_resource:%s:%s' % (self._service, resource)
-                        key_busy = 'busy:%s:%s' % (self._service, resource)
-                        key_reserved = 'reserved:%s:%s' % (self._service, resource)
-                        # try dequeuing only if resource not busy, not reserved, and is pure cpu
-                        # or has cpu available
-                        if not self._redis.exists(key_busy) and (
-                                resources[resource]==0 or self._redis.hlen(keyr) < resources[resource]):
-                            if not self._redis.exists(key_reserved):
-                                availableResource = True
-                            break
-                    if availableResource:
-                        self._logger.debug('resources available on %s - trying dequeuing', self._service)
-                        self._service_unqueue(self._services[self._service])
+                    self._service_unqueue(self._services[self._service])
+
                 counter = 0
 
             counter += 1
@@ -388,19 +375,44 @@ class Worker(object):
             queue = 'queued:%s' % service.name
             count = self._redis.llen(queue)
             idx = 0
-            # Pop a task waiting for a resource on this service, check if it can run (dependency)
-            # and queue it for a retry.
+
+            preallocated_task_count = {}
+            preallocated_task_resource = {}
+            avail_resource = {}
+            resources = service.list_resources()
+            reserved = {}
+
+            # list free cpu/gpus on each node
+            for resource in resources:
+                keyr = 'gpu_resource:%s:%s' % (self._service, resource)
+                keyc = 'ncpus:%s:%s' % (self._service, resource)
+                available_cpus = int(self._redis.get(keyc))
+                current_gpu_usage = 0
+                gpu_capacity = resources[resource]
+                for k, v in six.iteritems(self._redis.hgetall(keyr)):
+                    if v in preallocated_task_count:
+                        preallocated_task_count[v] += 1
+                    else:
+                        preallocated_task_count[v] = 1
+                        preallocated_task_resource[v] = resource
+                    current_gpu_usage += 1
+                available_gpus = gpu_capacity - current_gpu_usage
+                avail_resource[resource] = (available_cpus, available_gpus)
+                key_reserved = 'reserved:%s:%s' % (service.name, resource)
+                reserved[resource] = self._redis.get(key_reserved)
+
+            # Go through the task, find if there are tasks that can be launched and queue the best one
             best_task_id = None
             best_task_priority = -10000
             best_task_queued_time = 0
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)
+                
                 if next_task_id is not None:
                     next_keyt = 'task:%s' % next_task_id
                     parent = self._redis.hget(next_keyt, 'parent')
-                    priority = int(self._redis.hget(next_keyt, 'priority'))
-                    queued_time = float(self._redis.hget(next_keyt, 'queued_time'))
+                    # check parent dependency
                     if parent:
                         keyp = 'task:%s' % parent
                         if self._redis.exists(keyp):
@@ -412,6 +424,32 @@ class Worker(object):
                                     # as possible to terminate time of parent task
                                     self._redis.hset(next_keyt, "queued_time", time.time())
                                 continue
+
+                    ngpus = int(self._redis.hget(next_keyt, 'ngpus'))
+                    ncpus = int(self._redis.hget(next_keyt, 'ncpus'))
+
+                    foundResource = False
+                    if next_task_id in preallocated_task_count:
+                        # if task is pre-allocated, can only continue on the same node
+                        r = preallocated_task_resource[next_task_id]
+                        ngpus -= preallocated_task_count[next_task_id]
+                        avail_r = avail_resource[r]
+                        foundResource = (ngpus == 0 or avail_r[1] != 0) and (ngpus != 0 or ncpus <= avail_r[1])
+                    else:
+                        # can the task be launched on any node
+                        for r, v in six.iteritems(avail_resource):
+                            # cannot launch a new task on a reserved node
+                            if reserved[r]:
+                                continue
+                            if ((ngpus > 0 and resources[r] >= ngpus and v[1] > 0) or
+                                (ngpus == 0 and v[0] >= ncpus)):
+                                foundResource = True
+                                break
+                    if not foundResource:
+                        continue
+
+                    priority = int(self._redis.hget(next_keyt, 'priority'))
+                    queued_time = float(self._redis.hget(next_keyt, 'queued_time'))
                     if priority > best_task_priority or (
                         priority == best_task_priority and best_task_queued_time > queued_time):
                         best_task_priority = priority
