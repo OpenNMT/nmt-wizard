@@ -2,6 +2,7 @@
 
 ### New features
 * add `stop` admin command - requires `stop:config`
+* finer-grain route permission checks
 
 ### Fixes and improvements
 * Fix translation tasks not launch for iterations 2+

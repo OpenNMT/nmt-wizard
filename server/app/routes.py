@@ -8,6 +8,7 @@ import time
 from copy import deepcopy
 from functools import wraps
 
+from flask import abort, make_response, jsonify
 from app import app, redis, get_version, ch, taskfile_dir
 from nmtwizard import common, task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task, remove_config_option
@@ -20,7 +21,7 @@ def get_service(service):
     def_string = redis.hget("admin:service:"+service, "def")
     if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
-        flask.abort(flask.make_response(response, 404))
+        abort(flask.make_response(response, 404))
     return pickle.loads(def_string)
 
 def _usagecapacity(service):
@@ -86,7 +87,7 @@ def task_request(func):
     @wraps(func)
     def func_wrapper(*args, **kwargs):
         if not task.exists(redis, kwargs['task_id']):
-            flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % kwargs['task_id']), 404))
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % kwargs['task_id']), 404))
         return func(*args, **kwargs)
     return func_wrapper
 
@@ -103,26 +104,35 @@ def filter_request(route, ability=None):
         return func_wrapper
     return wrapper
 
+has_ability_funcs = []
+def has_ability(g, ability, entity):
+    for f in has_ability_funcs:
+        if not f(g, ability, entity):
+            return False
+    return True
+
 @app.route("/service/list", methods=["GET"])
 @filter_request("GET/service/list")
 def list_services():
     res = {}
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
-        service_def = get_service(service)                
-        usage, queued, capacity, busy, detail = _usagecapacity(service_def)
-        pids = []
-        for keyw in redis.scan_iter("admin:worker:%s:*" % service):
-            pids.append(keyw[len("admin:worker:%s:" % service):])
-        pid = ",".join(pids)
-        name = service_def.display_name
-        if len(pids) == 0:
-            busy = "yes"
-            pid = "**NO WORKER**"
-        res[service] = { 'name': name, 'pid': pid,
-                         'usage': usage, 'queued': queued,
-                         'capacity': capacity, 'busy': busy,
-                         'detail': detail }
+        pool_entity = service[0:2].upper()
+        if has_ability(flask.g, "", pool_entity):
+            service_def = get_service(service)                
+            usage, queued, capacity, busy, detail = _usagecapacity(service_def)
+            pids = []
+            for keyw in redis.scan_iter("admin:worker:%s:*" % service):
+                pids.append(keyw[len("admin:worker:%s:" % service):])
+            pid = ",".join(pids)
+            name = service_def.display_name
+            if len(pids) == 0:
+                busy = "yes"
+                pid = "**NO WORKER**"
+            res[service] = { 'name': name, 'pid': pid,
+                             'usage': usage, 'queued': queued,
+                             'capacity': capacity, 'busy': busy,
+                             'detail': detail }
     return flask.jsonify(res)
 
 @app.route("/service/describe/<string:service>", methods=["GET"])
@@ -134,6 +144,9 @@ def describe(service):
 @app.route("/service/listconfig/<string:service>", methods=["GET"])
 @filter_request("GET/service/listconfig", "edit:config")
 def server_listconfig(service):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     current_configuration = redis.hget("admin:service:%s" % service, "current_configuration")
     configurations = redis.hget("admin:service:%s" % service, "configurations")
     return flask.jsonify({
@@ -155,20 +168,26 @@ def post_adminrequest(app, service, action, configname="base", value=True):
         time.sleep(1)
     if configresult is None:
         redis.delete("admin:configresult:%s:%s:%s:%s" % (service, action, configname, identifier))
-        flask.abort(flask.make_response(flask.jsonify(message="request time-out"), 408))
+        abort(flask.make_response(flask.jsonify(message="request time-out"), 408))
     elif configresult != "ok":
-        flask.abort(flask.make_response(flask.jsonify(message=configresult), 400))
+        abort(flask.make_response(flask.jsonify(message=configresult), 400))
     return configresult
 
 @app.route("/service/selectconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/selectconfig", "edit:config")
 def server_selectconfig(service, configname):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     configresult = post_adminrequest(app, service, "select", configname)
     return flask.jsonify(configresult)
 
 @app.route("/service/setconfig/<string:service>/<string:configname>", methods=["POST"])
 @filter_request("GET/service/setconfig", "edit:config")
 def server_setconfig(service, configname):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     config = flask.request.form.get('config')
     configresult = post_adminrequest(app, service, "set", configname, config)
     return flask.jsonify(configresult)
@@ -176,34 +195,49 @@ def server_setconfig(service, configname):
 @app.route("/service/delconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/delconfig", "edit:config")
 def server_delconfig(service, configname):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     configresult = post_adminrequest(app, service, "del", configname)
     return flask.jsonify(configresult)
 
 @app.route("/service/restart/<string:service>", methods=["GET"])
 @filter_request("GET/service/restart", "edit:config")
 def server_restart(service):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     configresult = post_adminrequest(app, service, "restart")
     return flask.jsonify(configresult)
 
 @app.route("/service/stop/<string:service>", methods=["GET"])
 @filter_request("GET/service/stop", "stop:config")
 def server_stop(service):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     configresult = post_adminrequest(app, service, "stop")
     return flask.jsonify(configresult)
 
 @app.route("/service/enable/<string:service>/<string:resource>", methods=["GET"])
 @filter_request("GET/service/enable", "edit:config")
 def server_enable(service, resource):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     keyr = "busy:%s:%s" % (service, resource)
     if redis.exists(keyr):
         redis.delete("busy:%s:%s" % (service, resource))
         return flask.jsonify("ok")
     else:
-        flask.abort(flask.make_response(flask.jsonify(message="resource was not disabled"), 400))
+        abort(flask.make_response(flask.jsonify(message="resource was not disabled"), 400))
 
 @app.route("/service/disable/<string:service>/<string:resource>", methods=["GET"])
 @filter_request("GET/service/disable", "edit:config")
 def server_disable(service, resource):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "edit:config", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
     message = flask.request.args.get('message')
     if message is None:
         message = "DISABLED"
@@ -220,20 +254,24 @@ def check(service):
     try:
         details = service_module.check(service_options)
     except ValueError as e:
-        flask.abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
     except Exception as e:
-        flask.abort(flask.make_response(flask.jsonify(message=str(e)), 500))
+        abort(flask.make_response(flask.jsonify(message=str(e)), 500))
     else:
         return flask.jsonify(details)
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
-@filter_request("POST/task/launch")
+@filter_request("POST/task/launch", "train")
 def launch(service):
+    pool_entity = service[0:2].upper()
+    if not has_ability(flask.g, "train", pool_entity):
+        abort(make_response(jsonify(message="insufficient credentials for train (entity %s)" % pool_entity), 403))
+
     content = flask.request.form.get('content')
     if content is not None:
         content = json.loads(content)
     else:
-        flask.abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+        abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
     files = {}
     for k in flask.request.files:
@@ -250,23 +288,23 @@ def launch(service):
     elif "buildvocab" in content["docker"]["command"]: task_type = "vocab"
 
     if task_type == '????':
-        flask.abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
+        abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
-        flask.abort(flask.make_response(flask.jsonify(message="invalid options field"), 400))
+        abort(flask.make_response(flask.jsonify(message="invalid options field"), 400))
     if 'docker' not in content:
-        flask.abort(flask.make_response(flask.jsonify(message="missing docker field"), 400))
+        abort(flask.make_response(flask.jsonify(message="missing docker field"), 400))
     if ('image' not in content['docker']
         or 'registry' not in content['docker']
         or 'tag' not in content['docker']
         or 'command' not in content['docker']):
-        flask.abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
+        abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
         repository = content['docker']['image']
         p = repository.find("/")
         if p == -1:
-            flask.abort(flask.make_response(flask.jsonify(message="image should be repository/name"), 400))
+            abort(flask.make_response(flask.jsonify(message="image should be repository/name"), 400))
         repository = repository[:p]
         registry = None
         for r in service_module._config['docker']['registries']:
@@ -275,25 +313,25 @@ def launch(service):
                 registry = r
                 break
         if registry is None:
-            flask.abort(flask.make_response(
+            abort(flask.make_response(
                 flask.jsonify(message="cannot find registry for repository %s" % repository), 400))
         content['docker']['registry'] = registry
     elif content['docker']['registry'] not in service_module._config['docker']['registries']:
-        flask.abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
+        abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
     resource = service_module.get_resource_from_options(content["options"])
 
     iterations = 1
     if "iterations" in content:
         iterations = content["iterations"]
         if (task_type != "train" and iterations != 1) or iterations < 1:
-            flask.abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
+            abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
     ngpus = 1
     if "ngpus" in content:
         ngpus = content["ngpus"]
     # check that we have a resource able to run such a request
     if _count_maxgpu(service_module) < ngpus:
-        flask.abort(flask.make_response(flask.jsonify(message="no resource available on %s for %d gpus"
+        abort(flask.make_response(flask.jsonify(message="no resource available on %s for %d gpus"
                                             % (service, ngpus)), 400))
 
     if "totranslate" in content:
@@ -363,14 +401,24 @@ def status(task_id):
 def del_task(task_id):
     response = task.delete(redis, taskfile_dir, task_id)
     if isinstance(response, list) and not response[0]:
-        flask.abort(flask.make_response(flask.jsonify(message=response[1]), 400))        
+        abort(flask.make_response(flask.jsonify(message=response[1]), 400))        
     return flask.jsonify(message="deleted %s" % task_id)
 
 @app.route("/task/list/<string:pattern>", methods=["GET"])
 @filter_request("GET/task/list")
 def list_tasks(pattern):
     ltask = []
-    for task_key in task.scan_iter(redis, pattern):
+    prefix = pattern
+    suffix = ''
+    if prefix.endswith('*'):
+        prefix = prefix[:-1]
+        suffix = '*'
+    p = has_ability(flask.g, '', prefix)
+    if p == False:
+        abort(make_response(jsonify(message="insufficient credentials for list tasks starting with %s" % prefix[0:2]), 403))
+    elif p != True:
+        prefix = p
+    for task_key in task.scan_iter(redis, prefix + suffix):
         task_id = task.id(task_key)
         info = task.info(redis, taskfile_dir, task_id,
                 ["queued_time", "alloc_resource", "alloc_lgpu", "resource", "content",
@@ -391,7 +439,7 @@ def terminate(task_id):
     with redis.acquire_lock(task_id):
         current_status = task.info(redis, taskfile_dir, task_id, "status")
         if current_status is None:
-            flask.abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
         elif current_status == "stopped":
             return flask.jsonify(message="%s already stopped" % task_id)
         phase = flask.request.args.get('phase')
@@ -406,7 +454,7 @@ def task_beat(task_id):
         if duration is not None:
             duration = int(duration)
     except ValueError:
-        flask.abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
+        abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
     container_id = flask.request.args.get('container_id')
     task.beat(redis, task_id, duration, container_id)
     return flask.jsonify(200)
@@ -416,7 +464,7 @@ def task_beat(task_id):
 def get_file(task_id, filename):
     content = task.get_file(redis, taskfile_dir, task_id, filename)
     if content is None:
-        flask.abort(flask.make_response(
+        abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
     return flask.send_file(io.BytesIO(content), attachment_filename=filename, mimetype="application/octet-stream")
 
@@ -434,7 +482,7 @@ def post_file(task_id, filename):
 def get_log(task_id):
     content = task.get_log(redis, taskfile_dir, task_id)
     if content is None:
-        flask.abort(flask.make_response(
+        abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))
     response = flask.make_response(content)
     return response
