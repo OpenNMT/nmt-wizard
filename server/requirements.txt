@@ -7,3 +7,4 @@ redis
 flask_ini
 shutil
 hashlib
+semver
