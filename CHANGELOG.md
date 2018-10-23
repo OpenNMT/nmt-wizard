@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* Fix possible error when `process_request` is called multiple times
+
 ## [v1.1.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.0) (2018-10-23)
 
 ### New features

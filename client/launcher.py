@@ -243,11 +243,11 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
         if args.options == '{}' and args.resource is not None:
-            args.options = { "server": args.resource }
+            options = { "server": args.resource }
         else:
-            args.options = getjson(args.options)
+            options = getjson(args.options)
         r = requests.get(os.path.join(args.url, "service/check", args.service),
-                         json=args.options, auth=auth)
+                         json=options, auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         res = r.json()
@@ -300,9 +300,9 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             raise ValueError("ERROR: ngpus must be >= 0")
 
         if args.options == '{}' and args.resource is not None:
-            args.options = { "server": args.resource }
+            options = { "server": args.resource }
         else:
-            args.options = getjson(args.options)
+            options = getjson(args.options)
 
         content = {
             "docker": {
@@ -313,7 +313,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             },
             "wait_after_launch": args.wait_after_launch,
             "trainer_id": args.trainer_id,
-            "options": args.options,
+            "options": options,
             "ngpus": args.gpus
         }
 
