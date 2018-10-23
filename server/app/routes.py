@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+import semver
 from copy import deepcopy
 from functools import wraps
 
@@ -340,6 +341,15 @@ def launch(service):
     else:
         totranslate = None
 
+    docker_version = content['docker']['tag']
+    if docker_version.startswith('v'):
+        docker_version = docker_version[1:]
+    try:
+        chain_prepr_train = task_type == "train" and semver.match(docker_version, ">=1.4.0")
+    except ValueError as err:
+        # could not match docker_version - not valid semver
+        chain_prepr_train = False
+
     priority = content.get("priority", 0)
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
@@ -347,10 +357,35 @@ def launch(service):
     task_ids = []
 
     while iterations > 0:
+        if chain_prepr_train:
+            prepr_task_id = build_task_id(content, xxyy, parent_task_id)
+
+            idx = 0
+            prepr_command = []
+            train_command = content["docker"]["command"]
+            while train_command[idx] != 'train':
+                prepr_command.append(train_command[idx])
+                idx += 1
+
+            # create preprocess command, don't push the model on the catalog, and generate a pseudo model
+            prepr_command.append("--no_push")
+            prepr_command.append("preprocess")
+            prepr_command.append("--build_model")
+
+            content["docker"]["command"] = prepr_command
+            # launch preprocess task on cpus only
+            task.create(redis, taskfile_dir,
+                        prepr_task_id, task_type, parent_task_id, resource, service, content, files, priority, 0)
+            task_ids.append("%s\t%s\tngpus: %d" % ("prepr", prepr_task_id, 0))
+            remove_config_option(train_command)
+            change_parent_task(train_command, prepr_task_id)
+            parent_task_id = prepr_task_id
+            content["docker"]["command"] = train_command
+
         task_id = build_task_id(content, xxyy, parent_task_id)
         task.create(redis, taskfile_dir,
                     task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
-        task_ids.append(task_id)
+        task_ids.append("%s\t%s\tngpus: %d" % (task_type, task_id, ngpus))
         remove_config_option(content["docker"]["command"])
         if totranslate:
             content_translate = deepcopy(content)
@@ -376,7 +411,7 @@ def launch(service):
                 task.create(redis, taskfile_dir,
                             trans_task_id, "trans", task_id, resource, service, content_translate, (),
                             content_translate["priority"], content_translate["ngpus"])
-                task_ids.append(trans_task_id)
+                task_ids.append("%s\t%s\tngpus: %d" % ("trans", trans_task_id, content_translate["ngpus"]))
                 subset_idx += 1
         iterations -= 1
         if iterations > 0:
