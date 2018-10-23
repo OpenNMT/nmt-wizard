@@ -1,8 +1,11 @@
 ## Unreleased
 
+## [v1.1.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.0) (2018-10-23)
+
 ### New features
 * add `stop` admin command - requires `stop:config`
 * finer-grain route permission checks
+* split training tasks into prepr and train for more efficient GPU resource handling.
 
 ### Fixes and improvements
 * Fix translation tasks not launch for iterations 2+
@@ -12,6 +15,7 @@
 * Reduce running task checking interval to every 5min after first check
 * Fix workeradmin tasks taking all bandwidth
 * Improve management of CPU-tasks
+* Fix parsing options
 
 ## [v1.0.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.0.0) (2018-10-04)
 

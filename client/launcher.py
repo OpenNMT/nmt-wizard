@@ -11,7 +11,7 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
-VERSION = "1.0.0-ce"
+VERSION = "1.1.0-ce"
 def append_version(v):
     global VERSION
     VERSION += ":" + v
@@ -33,7 +33,7 @@ reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:(
 logger = None
 
 def getjson(config):
-    if config is None:
+    if config is None or type(config) == dict:
         return None
     if not config.startswith('@'):
         return json.loads(config)
