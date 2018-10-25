@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* Fix error when worker restarts with pure cpu-tasks running
+
 ## [v1.1.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.1) (2018-10-23)
 
 ### Fixes and improvements

@@ -153,7 +153,6 @@ for resource in resources:
             status = redis.hget('task:'+task_id, 'status')
             if status == 'running' or status == 'terminating':
                 redis.decr(keyc, int(redis.hget('task:'+task_id, 'ncpus')))
-                redis.rpush(task_id)            
 
 # define ttl policy for a task
 def ttl_policy(task_map):
