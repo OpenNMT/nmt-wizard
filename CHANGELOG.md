@@ -1,7 +1,12 @@
 ## Unreleased
 
+## [v1.1.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.2) (2018-10-25)
+
 ### Fixes and improvements
 * Fix error when worker restarts with pure cpu-tasks running
+* (client) Add `--nochainprepr` to disable chained preprocessing and training
+* (client) Fix `prepr` task type and display in ls
+* (worker) Increasing logs in debug mode
 
 ## [v1.1.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.1) (2018-10-23)
 
