@@ -139,6 +139,9 @@ parser_launch.add_argument('-I', '--iterations', type=int, default=1,
                                         help='for training tasks, iterate several tasks in a row')
 parser_launch.add_argument('-P', '--priority', type=int, default=0,
                                         help='task priority - highest better')
+parser_launch.add_argument('--nochainprepr', action='store_true',
+                                        help='don\'t split prepr and train')
+
 parser_launch.add_argument('docker_command', type=str, nargs='*',
                                         help='Docker command')
 parser_list_tasks = subparsers.add_parser('lt',
@@ -321,6 +324,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             content["name"] = args.name
         if args.iterations:
             content["iterations"] = args.iterations
+        if args.nochainprepr:
+            content["nochainprepr"] = True
         if args.priority:
             content["priority"] = args.priority
         if 'totranslate' in args and args.totranslate:

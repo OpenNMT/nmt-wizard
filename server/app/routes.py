@@ -349,7 +349,9 @@ def launch(service):
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
     try:
-        chain_prepr_train = task_type == "train" and semver.match(docker_version, ">=1.4.0")
+        chain_prepr_train = (not content.get("nochainprepr", False) and
+                             task_type == "train" and
+                             semver.match(docker_version, ">=1.4.0"))
     except ValueError as err:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
