@@ -356,6 +356,8 @@ class Worker(object):
     def _release_resource(self, service, resource, task_id, ncpus = 0):
         """remove the task from resource queue
         """
+        self._logger.debug('releasing resource:%s on service:%s for %s (ncpus: %d)',
+                           resource, service, task_id, ncpus)
         keyr = 'gpu_resource:%s:%s' % (service.name, resource)
         with self._redis.acquire_lock(keyr):
             for k, v in six.iteritems(self._redis.hgetall(keyr)):
@@ -400,6 +402,8 @@ class Worker(object):
                 avail_resource[resource] = (available_cpus, available_gpus)
                 key_reserved = 'reserved:%s:%s' % (service.name, resource)
                 reserved[resource] = self._redis.get(key_reserved)
+                self._logger.debug("\tresource %s - reserved: %s - free gpus: %d, cpus: %d",
+                                    resource, reserved[resource] or "False", available_gpus, available_cpus)
 
             # Go through the task, find if there are tasks that can be launched and queue the best one
             best_task_id = None
@@ -411,6 +415,7 @@ class Worker(object):
                 
                 if next_task_id is not None:
                     next_keyt = 'task:%s' % next_task_id
+                    #self._logger.debug("\tcheck task: %s", next_task_id)
                     parent = self._redis.hget(next_keyt, 'parent')
                     # check parent dependency
                     if parent:
@@ -418,6 +423,7 @@ class Worker(object):
                         if self._redis.exists(keyp):
                             # if the parent task is in the database, check for dependencies
                             parent_status = self._redis.hget(keyp, 'status');
+                            #self._logger.debug("\tparent task: %s - status %s", parent, parent_status)
                             if parent_status != 'stopped':
                                 if parent_status == 'running':
                                     # parent is still running so update queued time to be as close as
@@ -427,7 +433,7 @@ class Worker(object):
 
                     ngpus = int(self._redis.hget(next_keyt, 'ngpus'))
                     ncpus = int(self._redis.hget(next_keyt, 'ncpus'))
-
+                    #self._logger.debug("\tneed ngpus=%d, ncpus=%d", next_keyt, ngpus, ncpus)
                     foundResource = False
                     if next_task_id in preallocated_task_count:
                         # if task is pre-allocated, can only continue on the same node
