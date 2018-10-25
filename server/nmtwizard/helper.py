@@ -156,40 +156,44 @@ def remove_config_option(command):
         i += 1
 
 def _model_name_analysis(model):
-    if model:
-        struct = {}
-        l = model.split("_")
-        if len(l) < 4 or len(l)>5:
-            return
-        struct["trid"] = l.pop(0)
-        struct["xxyy"] = l.pop(0)
-        struct["name"] = l.pop(0)
-        struct["nn"] = l.pop(0)
-        try:
-            int(struct["nn"])
-        except ValueError:
-            if len(l) == 0:
-                l.append(struct["nn"])
-                del struct["nn"]
-        struct["uuid"] = l.pop(0)
-        usplit = struct["uuid"].split('-')
-        if len(usplit) > 1:
-            struct["uuid"] = usplit[0]
-            struct["parent_uuid"] = usplit[-1]
-        return struct
+    task_type = None
+    struct = {}
+    l = model.split("_")
+    if len(l) < 4 or len(l)>5:
+        return
+    struct["trid"] = l.pop(0)
+    struct["xxyy"] = l.pop(0)
+    struct["name"] = l.pop(0)
+    struct["nn"] = l.pop(0)
+    try:
+        int(struct["nn"])
+    except ValueError:
+        if len(l) == 0:
+            l.append(struct["nn"])
+            del struct["nn"]
+    struct["uuid"] = l.pop(0)
+    usplit = struct["uuid"].split('-')
+    if usplit[-1] in ["relea", "vocab", "train", "trans", "prepr"]:
+        task_type = usplit[-1]
+        usplit = usplit[:-1]
+    if len(usplit) > 1:
+        struct["uuid"] = usplit[0]
+        struct["parent_uuid"] = usplit[-1]
+    return struct, task_type
 
-def build_task_id(content, xxyy, parent_task):
+def build_task_id(content, xxyy, task_type, parent_task):
     # let us build a meaningful name for the task
-    # name will be TRID_XXYY_NAME_NN_UUID(:UUID) with:
+    # name will be TRID_XXYY_NAME_NN_UUID(:UUID)-TYPE with:
     # * TRID - the trainer ID
     # * XXYY - the language pair
     # * NAME - user provided or generated name 
     # * NN - the iteration (epoch) - automatically incremented for training task
     # * UUID - one or 2 parts - parent:child or child
+    # * TYPE - trans|prepr|vocab|relea or other 5 letter action
 
     # first find nature of the task - train or not
-    is_train = "train" in content["docker"]["command"]
-    is_buildvocab = "buildvocab" in content["docker"]["command"]
+    is_train = task_type == "train"
+    is_buildvocab = task_type == "vocab"
     trid = 'XXXX'
     if 'trainer_id' in content and content['trainer_id']:
         trid = content['trainer_id']
@@ -197,8 +201,9 @@ def build_task_id(content, xxyy, parent_task):
     name = content["name"] if "name" in content else None
     parent_uuid = ''
     nn = None
+    parent_task_type = None
     if parent_task is not None:
-        struct_name = _model_name_analysis(parent_task)
+        struct_name, parent_task_type = _model_name_analysis(parent_task)
         if name is None and "name" in struct_name:
             name = struct_name["name"]
         if (xxyy is None or xxyy == 'xxyy') and "xxyy" in struct_name:
@@ -208,16 +213,17 @@ def build_task_id(content, xxyy, parent_task):
         if "nn" in struct_name:
             nn = int(struct_name["nn"])
 
-    if is_train or is_buildvocab:
-        if nn is None:
-            if is_train:
-                nn = 1
-            elif is_buildvocab:
-                nn = 0
+    if nn is None:
+        if is_buildvocab:
+            nn = 0
         else:
+            nn = 1
+    else:
+        if task_type == "prepr" or (task_type == "train" and parent_task_type != "prepr"):
             nn += 1
-        if not name:
-            name = _generate_name()
+
+    if not name:
+        name = _generate_name()
 
     the_uuid = str(uuid.uuid4()).replace("-","")
 

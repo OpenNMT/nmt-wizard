@@ -44,8 +44,10 @@ def _usagecapacity(service):
             detail[resource]['reserved'] = reserved
         r_usage = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         count_usage = {}
+        task_type = {}
         ncpus = {}
         for t in r_usage:
+            task_type[t] = redis.hget("task:%s" % t, "type")
             if t in count_usage:
                 count_usage[t] += 1
             else:
@@ -53,9 +55,11 @@ def _usagecapacity(service):
                 ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
         r_usage = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
         for t in r_usage:
+            if t not in task_type:
+                task_type[t] = redis.hget("task:%s" % t, "type")
             count_usage[t] = 0
             ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
-        detail[resource]['usage'] = [ "%s: %d (%d)" % (k, count_usage[k], ncpus[k]) for k in count_usage ]
+        detail[resource]['usage'] = [ "%s %s: %d (%d)" % (task_type[k], k, count_usage[k], ncpus[k]) for k in count_usage ]
         detail[resource]['ncpus'] = servers[resource]['ncpus']
         detail[resource]['avail_cpus'] = int(redis.get("ncpus:%s:%s" % (service.name, resource)))
         usage += len(r_usage)
@@ -358,7 +362,7 @@ def launch(service):
 
     while iterations > 0:
         if chain_prepr_train:
-            prepr_task_id = build_task_id(content, xxyy, parent_task_id)
+            prepr_task_id = build_task_id(content, xxyy, "prepr", parent_task_id)
 
             idx = 0
             prepr_command = []
@@ -375,14 +379,14 @@ def launch(service):
             content["docker"]["command"] = prepr_command
             # launch preprocess task on cpus only
             task.create(redis, taskfile_dir,
-                        prepr_task_id, task_type, parent_task_id, resource, service, content, files, priority, 0)
+                        prepr_task_id, "prepr", parent_task_id, resource, service, content, files, priority, 0)
             task_ids.append("%s\t%s\tngpus: %d" % ("prepr", prepr_task_id, 0))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
             parent_task_id = prepr_task_id
             content["docker"]["command"] = train_command
 
-        task_id = build_task_id(content, xxyy, parent_task_id)
+        task_id = build_task_id(content, xxyy, task_type, parent_task_id)
         task.create(redis, taskfile_dir,
                     task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
         task_ids.append("%s\t%s\tngpus: %d" % (task_type, task_id, ngpus))
@@ -407,7 +411,7 @@ def launch(service):
                 for f in subset_totranslate:
                     content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
                 change_parent_task(content_translate["docker"]["command"], task_id)
-                trans_task_id = build_task_id(content_translate, xxyy, task_id)
+                trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
                 task.create(redis, taskfile_dir,
                             trans_task_id, "trans", task_id, resource, service, content_translate, (),
                             content_translate["priority"], content_translate["ngpus"])
