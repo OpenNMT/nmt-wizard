@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Fixes and improvements
+* (worker) For security, checks that config name matches json config filename
 * (worker) Fix invalid log when redis not directly available at startup
 
 ## [v1.1.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.2) (2018-10-25)

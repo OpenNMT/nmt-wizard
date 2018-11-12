@@ -34,9 +34,13 @@ def load_service(config_path, base_config=None):
     """
     with open(config_path) as config_file:
         config = json.load(config_file)
+    name = config["name"]
+
+    if not os.path.basename(config_path).startswith(name):
+        raise ValueError("config name (%s) does not match filename (%s)" % (config_path, name))
+
     if base_config is not None:
         merge_config(config, base_config, config_path)
-    name = config["name"]
     if config.get("disabled") == 1:
         return name, None
     if "module" not in config or "docker" not in config or "description" not in config:
