@@ -8,6 +8,7 @@ import time
 import argparse
 import json
 import signal
+import logging
 
 from nmtwizard.redis_database import RedisDatabase
 from redis.exceptions import ConnectionError
@@ -30,7 +31,7 @@ while retry < 10:
         break
     except ConnectionError as e:
         retry += 1
-        logger.warn("cannot connect to redis DB - retrying (%d)" % retry)
+        logging.warn("cannot connect to redis DB - retrying (%d)" % retry)
         time.sleep(1)
 assert retry < 10, "Cannot connect to redis DB - aborting"
 
