@@ -4,6 +4,7 @@ import re
 import logging
 import six
 import io
+import os
 
 import paramiko
 
@@ -47,125 +48,13 @@ def rmprivate(l):
                 p = -1
         return t
 
-python_run = """
-import subprocess
-from threading import Thread, Lock
-import time
-import re
-import os
-
-task_id = "%s"
-cmd = \"\"\"
-%s
-\"\"\".strip().split("\\n")
-log_file = "%s"
-callback_url = "%s"
-myenv = %s
-
-def displaycmd(l):
-    s=""
-    for t in l:
-        p = t.find("[[private:")
-        while p != -1:
-            q = t.find("]]", p)
-            if q != -1:
-                t = t[0:p+9] + t[q:]
-            else:
-                t = t[0:p+9]
-            p = t.find("[[private:", p+11)
-        if s != "":
-            s += " "
-        if re.search(r"[ \\"!{};$]",t):
-            s += chr(39)+t+chr(39)
-        else:
-            s += t
-    return s
-
-def rmprivate(l):
-    r=[]
-    for t in l:
-        p = t.find("[[private:")
-        while p != -1:
-            t = t[0:p] + t[p+10:]
-            q = t.find("]]")
-            if q != -1:
-                t = t[0:q] + t[q+2:]
-                p = t.find("[[private:", q)
-            else:
-                p = -1
-        r.append(t)
-    return r
-
-f = open(log_file, "w")
-f.write("COMMAND: "+displaycmd(cmd)+"\\n")
-
-p1 = subprocess.Popen(rmprivate(cmd),
-                       stdout=subprocess.PIPE, 
-                       stderr=subprocess.STDOUT,
-                       universal_newlines=True,
-                       env=dict(os.environ, **myenv))
-
-current_log = ""
-
-mutex = Lock()
-completed = False
-
-def _update_log_loop():
-    global current_log
-    while True:
-        for i in range(60):
-            time.sleep(1)
-            if completed:
-                return
-        mutex.acquire()
-        copy_log = current_log
-        current_log = ""
-        mutex.release()
-        if copy_log:
-            try:
-                p = subprocess.Popen(["curl", "-X", "PATCH", callback_url+"/task/log/"+task_id, "--data-binary", "@-"],
-                                    stdin=subprocess.PIPE)
-                p.communicate(copy_log)
-            except Exception:
-                pass
-
-if callback_url:
-    log_thread = Thread(target=_update_log_loop)
-    log_thread.daemon = True
-    log_thread.start()
-
-while p1.poll() is None:
-    l = p1.stdout.readline()
-    f.write(l)
-    f.flush()
-    mutex.acquire()
-    current_log += l
-    mutex.release()
-
-completed=True
-
-l = p1.stdout.read()
-f.write(l)
-f.flush()
-
-if p1.returncode == 0:
-    phase = "completed"
-else:
-    phase = "error"
-
-f.close()
-
-if callback_url:
-    mutex.acquire()
-    current_log=""
-    mutex.release()
-    subprocess.call(["curl", "-X", "POST", callback_url+"/task/log/"+task_id, "--data-binary", "@"+log_file])
-    subprocess.call(["curl", "-X", "GET", callback_url+"/task/terminate/"+task_id+"?phase=" + phase])
-"""
+# read the launch_script that will be used to launched and monitor tasks
+curdirname, curfilename = os.path.split(os.path.abspath(__file__))
+with open(os.path.join(curdirname, "launch_script.py")) as f:
+    python_run = f.read()
 
 def add_log_handler(fh):
     logger.addHandler(fh)
-
 
 # Make sure error is processed as binary so won't cause additional exception when decoding
 def _patched_exec_command(self, 
