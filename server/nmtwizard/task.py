@@ -41,6 +41,7 @@ def create(redis, taskfile_dir,
     redis.hset(keyt, "ncpus", ncpus)
     for k in files:
         set_file(redis, taskfile_dir, task_id, files[k], k)
+    set_status(redis, keyt, "launched")
     set_status(redis, keyt, "queued")
     enable(redis, task_id, service)
     service_queue(redis, task_id, service)
