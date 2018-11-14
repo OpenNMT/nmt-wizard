@@ -222,16 +222,18 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             for k in result:
                 res.append(k["task_id"])
         elif not is_json:
-            res = PrettyTable(["Type", "Task ID", "Resource", "Priority", "Launch Date", "Image", "Status", "Message"])
-            for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
-                date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
+            res = PrettyTable(["Task ID", "Resource", "Priority", "Launch Date", "Image", "Status", "Message"])
+            res.align["Task ID"] = "l"
+            for k in sorted(result, key=lambda k: float(float(k.get("launched_time", 0)))):
+                date = datetime.fromtimestamp(math.ceil(float(k.get("launched_time", 0)))).isoformat(' ')
                 resource = k["alloc_resource"] or k["resource"]
                 if "alloc_lgpu" in k and k["alloc_lgpu"] is not None:
                     resource += ':' + k["alloc_lgpu"]
                 p = k["image"].find('/')
                 if p != -1:
                     k["image"] = k["image"][p+1:]
-                res.add_row([k["type"], k["task_id"], resource, int(k["priority"] or 0), 
+                task_id = k["task_id"]
+                res.add_row([task_id, resource, int(k["priority"] or 0), 
                              date, k["image"], k["status"], k.get("message")])
         else:
             res = r.json()
@@ -399,8 +401,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if not is_json:
             print('Delete %d tasks:' % len(result))
             print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % ("TASK_ID", "LAUNCH DATE", "IMAGE", "STATUS", "MESSAGE"))
-            for k in sorted(result, key=lambda k: float(k["queued_time"] or 0)):
-                date = datetime.fromtimestamp(math.ceil(float(k["queued_time"] or 0))).isoformat(' ')
+            for k in sorted(result, key=lambda k: float(k["launched_time"] or 0)):
+                date = datetime.fromtimestamp(math.ceil(float(k["launched_time"] or 0))).isoformat(' ')
                 print("\t%-32s\t%-20s\t%-30s\t%-10s\t%s" % (
                     k["task_id"], date, k["image"], k["status"], k.get("message")))
             if confirm():

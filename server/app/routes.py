@@ -12,7 +12,8 @@ from functools import wraps
 from flask import abort, make_response, jsonify
 from app import app, redis, get_version, ch, taskfile_dir
 from nmtwizard import common, task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, change_parent_task, remove_config_option
+from nmtwizard.helper import build_task_id, shallow_command_analysis
+from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -359,17 +360,27 @@ def launch(service):
     priority = content.get("priority", 0)
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
+    parent_task_type = None
+    if parent_task_id:
+        (parent_struct, parent_task_type) = model_name_analysis(parent_task_id)
+
+    # check that parent model type matches current command
+    if parent_task_type:
+        if (parent_task_type == "trans" or parent_task_type == "relea" or
+            (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
+            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s"
+                                    % (parent_task_type)), 400))
 
     task_ids = []
 
     while iterations > 0:
-        if chain_prepr_train:
+        if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
             prepr_task_id = build_task_id(content, xxyy, "prepr", parent_task_id)
 
             idx = 0
             prepr_command = []
             train_command = content["docker"]["command"]
-            while train_command[idx] != 'train':
+            while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
                 prepr_command.append(train_command[idx])
                 idx += 1
 
@@ -388,37 +399,39 @@ def launch(service):
             parent_task_id = prepr_task_id
             content["docker"]["command"] = train_command
 
-        task_id = build_task_id(content, xxyy, task_type, parent_task_id)
-        task.create(redis, taskfile_dir,
-                    task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
-        task_ids.append("%s\t%s\tngpus: %d" % (task_type, task_id, ngpus))
-        remove_config_option(content["docker"]["command"])
-        if totranslate:
-            content_translate = deepcopy(content)
-            content_translate["priority"] = priority+1
-            content_translate["ngpus"] = min(ngpus, 1)
-            if ngpus == 0:
-                file_per_gpu = len(totranslate)
-            else:
-                file_per_gpu = (len(totranslate)+ngpus-1) / ngpus
-            subset_idx = 0
-            while subset_idx * file_per_gpu < len(totranslate):
-                content_translate["docker"]["command"] = ["trans"]
-                content_translate["docker"]["command"].append('-i')
-                subset_totranslate = totranslate[subset_idx*file_per_gpu:
-                                                 (subset_idx+1)*file_per_gpu]
-                for f in subset_totranslate:
-                    content_translate["docker"]["command"].append(f[0])
-                content_translate["docker"]["command"].append('-o')
-                for f in subset_totranslate:
-                    content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
-                change_parent_task(content_translate["docker"]["command"], task_id)
-                trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
-                task.create(redis, taskfile_dir,
-                            trans_task_id, "trans", task_id, resource, service, content_translate, (),
-                            content_translate["priority"], content_translate["ngpus"])
-                task_ids.append("%s\t%s\tngpus: %d" % ("trans", trans_task_id, content_translate["ngpus"]))
-                subset_idx += 1
+        if task_type != "prepr":
+            task_id = build_task_id(content, xxyy, task_type, parent_task_id)
+            task.create(redis, taskfile_dir,
+                        task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
+            task_ids.append("%s\t%s\tngpus: %d" % (task_type, task_id, ngpus))
+            parent_task_type = task_type[:5]
+            remove_config_option(content["docker"]["command"])
+            if totranslate:
+                content_translate = deepcopy(content)
+                content_translate["priority"] = priority+1
+                content_translate["ngpus"] = min(ngpus, 1)
+                if ngpus == 0:
+                    file_per_gpu = len(totranslate)
+                else:
+                    file_per_gpu = (len(totranslate)+ngpus-1) / ngpus
+                subset_idx = 0
+                while subset_idx * file_per_gpu < len(totranslate):
+                    content_translate["docker"]["command"] = ["trans"]
+                    content_translate["docker"]["command"].append('-i')
+                    subset_totranslate = totranslate[subset_idx*file_per_gpu:
+                                                     (subset_idx+1)*file_per_gpu]
+                    for f in subset_totranslate:
+                        content_translate["docker"]["command"].append(f[0])
+                    content_translate["docker"]["command"].append('-o')
+                    for f in subset_totranslate:
+                        content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
+                    change_parent_task(content_translate["docker"]["command"], task_id)
+                    trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
+                    task.create(redis, taskfile_dir,
+                                trans_task_id, "trans", task_id, resource, service, content_translate, (),
+                                content_translate["priority"], content_translate["ngpus"])
+                    task_ids.append("%s\t%s\tngpus: %d" % ("trans", trans_task_id, content_translate["ngpus"]))
+                    subset_idx += 1
         iterations -= 1
         if iterations > 0:
             parent_task_id = task_id
@@ -462,7 +475,7 @@ def list_tasks(pattern):
     for task_key in task.scan_iter(redis, prefix + suffix):
         task_id = task.id(task_key)
         info = task.info(redis, taskfile_dir, task_id,
-                ["queued_time", "alloc_resource", "alloc_lgpu", "resource", "content",
+                ["launched_time", "alloc_resource", "alloc_lgpu", "resource", "content",
                  "status", "message", "type", "iterations", "priority"])
         if info["content"] is not None and info["content"] != "":
             content = json.loads(info["content"])

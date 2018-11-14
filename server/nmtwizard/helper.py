@@ -155,7 +155,7 @@ def remove_config_option(command):
             return
         i += 1
 
-def _model_name_analysis(model):
+def model_name_analysis(model):
     task_type = None
     struct = {}
     l = model.split("_")
@@ -171,14 +171,19 @@ def _model_name_analysis(model):
         if len(l) == 0:
             l.append(struct["nn"])
             del struct["nn"]
-    struct["uuid"] = l.pop(0)
-    usplit = struct["uuid"].split('-')
+    uuid = l.pop(0)
+    usplit = uuid.split(':')
     if usplit[-1] in ["relea", "vocab", "train", "trans", "prepr"]:
         task_type = usplit[-1]
-        usplit = usplit[:-1]
+        uuid = uuid[:-6]
+    else:
+        task_type = "train"
+    usplit = uuid.split('-')
     if len(usplit) > 1:
         struct["uuid"] = usplit[0]
         struct["parent_uuid"] = usplit[-1]
+    else:
+        struct["uuid"] = uuid
     return struct, task_type
 
 def build_task_id(content, xxyy, task_type, parent_task):
@@ -203,7 +208,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
     nn = None
     parent_task_type = None
     if parent_task is not None:
-        struct_name, parent_task_type = _model_name_analysis(parent_task)
+        struct_name, parent_task_type = model_name_analysis(parent_task)
         if name is None and "name" in struct_name:
             name = struct_name["name"]
         if (xxyy is None or xxyy == 'xxyy') and "xxyy" in struct_name:
@@ -231,5 +236,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
         task_id = '%s_%s_%s_%s' % (trid, xxyy, name, the_uuid)
     else:
         task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
-    task_id = task_id[0:41-len(parent_uuid)] + parent_uuid
+    task_id = task_id[0:47-len(parent_uuid)] + parent_uuid 
+    if task_type != "train":
+        task_id += ':' + task_type
     return task_id
