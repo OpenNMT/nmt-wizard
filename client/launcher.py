@@ -127,8 +127,8 @@ parser_launch.add_argument('--docker_registry', default='auto',
                                         help='docker registry (as configured on server side) - default is `auto`')
 parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
                                         help='Docker image (can be prefixed by docker_registry:)')
-parser_launch.add_argument('-t', '--docker_tag', default="latest",
-                                        help='Docker image tag (default is latest)')
+parser_launch.add_argument('-t', '--docker_tag',
+                                        help='Docker image tag (is infered from docker_image if missing)')
 parser_launch.add_argument('-n', '--name',
                                         help='Friendly name for the model, for subsequent tasks, inherits'
                                              ' from previous')
