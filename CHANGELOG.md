@@ -5,6 +5,7 @@
 * (worker) Fix invalid log when redis not directly available at startup
 * model/task name are 6 characters longer and now include postfix (:`trans`/`prepr`/`relea`/`vocab`)
 * tasks are now sorted by launch date
+* Introduce extension function for routes
 
 ## [v1.1.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.2) (2018-10-25)
 
