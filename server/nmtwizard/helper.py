@@ -155,12 +155,21 @@ def remove_config_option(command):
             return
         i += 1
 
+model_types = [
+    "trans",
+    "train",
+    "preprocess",
+    "vocab",
+    "release"
+]
+model_type_map = { t[0:5]:t for t in model_types }
+
 def model_name_analysis(model):
     task_type = None
     struct = {}
     l = model.split("_")
-    if len(l) < 4 or len(l)>5:
-        return
+    if len(l) < 4 or len(l)>6:
+        return None, None
     struct["trid"] = l.pop(0)
     struct["xxyy"] = l.pop(0)
     struct["name"] = l.pop(0)
@@ -172,9 +181,9 @@ def model_name_analysis(model):
             l.append(struct["nn"])
             del struct["nn"]
     uuid = l.pop(0)
-    usplit = uuid.split(':')
-    if usplit[-1] in ["relea", "vocab", "train", "trans", "prepr"]:
-        task_type = usplit[-1]
+    usplit = uuid.split('_')
+    if usplit[-1] in model_types:
+        task_type = usplit[-1][:5]
         uuid = uuid[:-6]
     else:
         task_type = "train"
@@ -238,5 +247,5 @@ def build_task_id(content, xxyy, task_type, parent_task):
         task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
     task_id = task_id[0:47-len(parent_uuid)] + parent_uuid 
     if task_type != "train":
-        task_id += ':' + task_type
+        task_id += '_' + model_type_map[task_type]
     return task_id
