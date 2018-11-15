@@ -95,6 +95,7 @@ def disable(redis, task_id, service=None):
         service = redis.hget('task:'+task_id, 'service')
     """Marks a task as disabled."""
     redis.srem("active:"+service, task_id)
+    redis.delete("beat:"+task_id)
 
 def list_active(redis, service):
     """Returns all active tasks (i.e. non stopped)."""
