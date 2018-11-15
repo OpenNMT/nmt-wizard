@@ -99,7 +99,6 @@ class Worker(object):
 
                 # if there are some queued tasks, look for free resources
                 if self._redis.exists('queued:%s' % self._service):
-                    resources = self._services[self._service].list_resources()
                     self._logger.debug('checking processes on : %s', self._service)
                     self._service_unqueue(self._services[self._service])
 
@@ -430,6 +429,10 @@ class Worker(object):
                                     # as possible to terminate time of parent task
                                     self._redis.hset(next_keyt, "queued_time", time.time())
                                 continue
+                            else:
+                                if self._redis.hget(keyp, 'message') != 'completed':
+                                    task.terminate(self._redis, next_task_id, phase='dependency_error')
+                                    continue
 
                     ngpus = int(self._redis.hget(next_keyt, 'ngpus'))
                     ncpus = int(self._redis.hget(next_keyt, 'ncpus'))
