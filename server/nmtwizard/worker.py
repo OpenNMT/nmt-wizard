@@ -263,7 +263,8 @@ class Worker(object):
                     except Exception:
                         self._logger.warning('%s: failed to terminate', task_id)
                 resource = self._redis.hget(keyt, 'alloc_resource')
-                self._release_resource(service, resource, task_id, ncpus)
+                if resource:
+                    self._release_resource(service, resource, task_id, ncpus)
                 task.set_status(self._redis, keyt, 'stopped')
                 task.disable(self._redis, task_id)
 
@@ -356,7 +357,7 @@ class Worker(object):
         """remove the task from resource queue
         """
         self._logger.debug('releasing resource:%s on service:%s for %s (ncpus: %d)',
-                           resource, service, task_id, ncpus)
+                           resource, service.name, task_id, ncpus)
         keyr = 'gpu_resource:%s:%s' % (service.name, resource)
         with self._redis.acquire_lock(keyr):
             for k, v in six.iteritems(self._redis.hgetall(keyr)):
