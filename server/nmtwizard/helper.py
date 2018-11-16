@@ -168,7 +168,12 @@ def model_name_analysis(model):
     task_type = None
     struct = {}
     l = model.split("_")
-    if len(l) < 4 or len(l)>6:
+    if l[-1] in model_types:
+        task_type = l[-1][:5]
+        l.pop(-1)
+    else:
+        task_type = "train"
+    if len(l) < 4 or len(l)>5:
         return None, None
     struct["trid"] = l.pop(0)
     struct["xxyy"] = l.pop(0)
@@ -181,12 +186,6 @@ def model_name_analysis(model):
             l.append(struct["nn"])
             del struct["nn"]
     uuid = l.pop(0)
-    usplit = uuid.split('_')
-    if usplit[-1] in model_types:
-        task_type = usplit[-1][:5]
-        uuid = uuid[:-6]
-    else:
-        task_type = "train"
     usplit = uuid.split('-')
     if len(usplit) > 1:
         struct["uuid"] = usplit[0]
