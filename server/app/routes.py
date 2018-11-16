@@ -127,25 +127,30 @@ def post_function(method, *args):
 @app.route("/service/list", methods=["GET"])
 @filter_request("GET/service/list")
 def list_services():
+    minimal = flask.request.args.get('container_id', False)
+    minimal = not(minimal is False or minimal == "" or minimal == "0")
     res = {}
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
         pool_entity = service[0:2].upper()
         if has_ability(flask.g, "", pool_entity):
-            service_def = get_service(service)                
-            usage, queued, capacity, busy, detail = _usagecapacity(service_def)
-            pids = []
-            for keyw in redis.scan_iter("admin:worker:%s:*" % service):
-                pids.append(keyw[len("admin:worker:%s:" % service):])
-            pid = ",".join(pids)
-            name = service_def.display_name
-            if len(pids) == 0:
-                busy = "yes"
-                pid = "**NO WORKER**"
-            res[service] = { 'name': name, 'pid': pid,
-                             'usage': usage, 'queued': queued,
-                             'capacity': capacity, 'busy': busy,
-                             'detail': detail }
+            if minimal:
+                res[service] = { 'name': name }
+            else:
+                service_def = get_service(service)                
+                usage, queued, capacity, busy, detail = _usagecapacity(service_def)
+                pids = []
+                for keyw in redis.scan_iter("admin:worker:%s:*" % service):
+                    pids.append(keyw[len("admin:worker:%s:" % service):])
+                pid = ",".join(pids)
+                name = service_def.display_name
+                if len(pids) == 0:
+                    busy = "yes"
+                    pid = "**NO WORKER**"
+                res[service] = { 'name': name, 'pid': pid,
+                                 'usage': usage, 'queued': queued,
+                                 'capacity': capacity, 'busy': busy,
+                                 'detail': detail }
     return flask.jsonify(res)
 
 @app.route("/service/describe/<string:service>", methods=["GET"])

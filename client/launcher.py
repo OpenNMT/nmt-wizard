@@ -183,7 +183,12 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
     res = None
     result = None
     if cmd == "ls":
-        result = serviceList
+        r = requests.get(os.path.join(args.url, "service/list"), auth=auth)
+        if r.status_code != 200:
+            launcher.logger.error('incorrect result from \'service/list\' service: %s', r.text)
+            sys.exit(1)
+        result = r.json()
+
         if not is_json:
             busymsg = []
             res = PrettyTable(["Service Name", "Usage", "Queued", "Capacity", "Busy", "Description"])
@@ -446,7 +451,7 @@ if __name__ == "__main__":
             logger.error('missing launcher_url')
             sys.exit(1)
 
-    r = requests.get(os.path.join(args.url, "service/list"))
+    r = requests.get(os.path.join(args.url, "service/list", params={"minimal": True}))
     if r.status_code != 200:
         logger.error('incorrect result from \'service/list\' service: %s', r.text)
         sys.exit(1)

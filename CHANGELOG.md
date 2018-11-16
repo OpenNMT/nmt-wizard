@@ -8,6 +8,7 @@
 * introduce extension function for routes
 * fix too slow propagation of stopped tasks
 * optimize task stopping
+* (client) optimize initial handshaking to check connection and authentication
 
 ## [v1.1.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.1.2) (2018-10-25)
 
