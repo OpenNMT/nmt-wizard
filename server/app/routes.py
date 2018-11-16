@@ -119,6 +119,10 @@ def has_ability(g, ability, entity):
 
 # extension functions
 post_functions = {}
+def post_function(method, *args):
+    if method in post_functions:
+        return post_functions[method](*args)
+    return args
 
 @app.route("/service/list", methods=["GET"])
 @filter_request("GET/service/list")
@@ -443,6 +447,8 @@ def launch(service):
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
+    (task_ids,) = post_function('POST/task/launch', task_ids)
+
     return flask.jsonify(task_ids)
 
 @app.route("/task/status/<string:task_id>", methods=["GET"])
@@ -537,8 +543,7 @@ def post_file(task_id, filename):
 @filter_request("GET/task/log")
 def get_log(task_id):
     content = task.get_log(redis, taskfile_dir, task_id)
-    if 'getlog' in post_functions:
-        content = post_functions['getlog'](task_id, content)
+    (task_id, content) = post_function('GET/task/log', task_id, content)
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))
@@ -557,8 +562,7 @@ def append_log(task_id):
 def post_log(task_id):
     content = flask.request.get_data()
     task.set_log(redis, taskfile_dir, task_id, content)
-    if 'postlog' in post_functions:
-        post_functions['postlog'](task_id, content)
+    (task_id, content) = post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
 
 @app.route("/status", methods=["GET"])
