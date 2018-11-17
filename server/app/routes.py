@@ -111,9 +111,9 @@ def filter_request(route, ability=None):
     return wrapper
 
 has_ability_funcs = []
-def has_ability(g, ability, entity):
+def has_ability(g, ability, entity, accessall=True):
     for f in has_ability_funcs:
-        if not f(g, ability, entity):
+        if not f(g, ability, entity, accessall):
             return False
     return True
 
@@ -127,23 +127,25 @@ def post_function(method, *args):
 @app.route("/service/list", methods=["GET"])
 @filter_request("GET/service/list")
 def list_services():
-    minimal = flask.request.args.get('container_id', False)
-    minimal = not(minimal is False or minimal == "" or minimal == "0")
+    minimal = flask.request.args.get('minimal', False)
+    minimal = not(minimal is False or minimal == "" or minimal == "0" or minimal == "False")
+    showall = flask.request.args.get('all', False)
+    showall = not(showall is False or showall == "" or showall == "0" or showall == "False")
     res = {}
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
         pool_entity = service[0:2].upper()
-        if has_ability(flask.g, "", pool_entity):
+        if has_ability(flask.g, "", pool_entity, showall):
+            service_def = get_service(service)                
+            name = service_def.display_name
             if minimal:
                 res[service] = { 'name': name }
             else:
-                service_def = get_service(service)                
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
                 pids = []
                 for keyw in redis.scan_iter("admin:worker:%s:*" % service):
                     pids.append(keyw[len("admin:worker:%s:" % service):])
                 pid = ",".join(pids)
-                name = service_def.display_name
                 if len(pids) == 0:
                     busy = "yes"
                     pid = "**NO WORKER**"

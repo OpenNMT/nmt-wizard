@@ -99,6 +99,8 @@ parser_list_services = subparsers.add_parser('ls',
                                         help='list available services')
 parser_list_services.add_argument('-v', '--verbose', help='detail resource name, and running tasks',
                                   action='store_true')
+parser_list_services.add_argument('-a', '--all', help='show all visible pools, default show only user pool',
+                                  action='store_true')
 parser_describe = subparsers.add_parser('describe',
                                         help='list available options for the service')
 parser_describe.add_argument('-s', '--service', help="service name")
@@ -183,7 +185,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
     res = None
     result = None
     if cmd == "ls":
-        r = requests.get(os.path.join(args.url, "service/list"), auth=auth)
+        params = { 'all': args.all }
+        r = requests.get(os.path.join(args.url, "service/list"), auth=auth, params=params)
         if r.status_code != 200:
             launcher.logger.error('incorrect result from \'service/list\' service: %s', r.text)
             sys.exit(1)
@@ -195,7 +198,10 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             res.align["Service Name"] = "l"
             res.align["Description"] = "l"            
             for k in result:
-                res.add_row(["%s [%s]" % (k, result[k]['pid']),
+                name = k
+                if 'pid' in result[k]:
+                    name += " [%s]" % result[k]['pid']
+                res.add_row([name,
                              result[k]['usage'],
                              result[k]['queued'],
                              result[k]['capacity'],
