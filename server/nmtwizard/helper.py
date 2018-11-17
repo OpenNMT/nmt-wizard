@@ -248,3 +248,10 @@ def build_task_id(content, xxyy, task_type, parent_task):
     if task_type != "train":
         task_id += '_' + model_type_map[task_type]
     return task_id
+
+def boolean_param(value):
+    return not(value is None or
+               value is False or
+               value == "" or
+               value == "0" or
+               value == "False")

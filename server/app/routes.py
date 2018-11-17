@@ -12,7 +12,7 @@ from functools import wraps
 from flask import abort, make_response, jsonify
 from app import app, redis, get_version, ch, taskfile_dir
 from nmtwizard import common, task
-from nmtwizard.helper import build_task_id, shallow_command_analysis
+from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 
 logger = logging.getLogger(__name__)
@@ -127,10 +127,8 @@ def post_function(method, *args):
 @app.route("/service/list", methods=["GET"])
 @filter_request("GET/service/list")
 def list_services():
-    minimal = flask.request.args.get('minimal', False)
-    minimal = not(minimal is False or minimal == "" or minimal == "0" or minimal == "False")
-    showall = flask.request.args.get('all', False)
-    showall = not(showall is False or showall == "" or showall == "0" or showall == "False")
+    minimal = boolean_param(flask.request.args.get('minimal'))
+    showall = boolean_param(flask.request.args.get('all'))
     res = {}
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
