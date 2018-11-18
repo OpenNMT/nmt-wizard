@@ -384,6 +384,7 @@ def launch(service):
                                     % (parent_task_type)), 400))
 
     task_ids = []
+    task_create = []
 
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
@@ -403,8 +404,9 @@ def launch(service):
 
             content["docker"]["command"] = prepr_command
             # launch preprocess task on cpus only
-            task.create(redis, taskfile_dir,
-                        prepr_task_id, "prepr", parent_task_id, resource, service, content, files, priority, 0)
+            task_create.append((redis, taskfile_dir,
+                        prepr_task_id, "prepr", parent_task_id, resource, service, deepcopy(content),
+                        files, priority, 0, 2, {}))
             task_ids.append("%s\t%s\tngpus: %d" % ("prepr", prepr_task_id, 0))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
@@ -413,8 +415,9 @@ def launch(service):
 
         if task_type != "prepr":
             task_id = build_task_id(content, xxyy, task_type, parent_task_id)
-            task.create(redis, taskfile_dir,
-                        task_id, task_type, parent_task_id, resource, service, content, files, priority, ngpus)
+            task_create.append((redis, taskfile_dir,
+                        task_id, task_type, parent_task_id, resource, service, deepcopy(content),
+                        files, priority, ngpus, 2, {}))
             task_ids.append("%s\t%s\tngpus: %d" % (task_type, task_id, ngpus))
             parent_task_type = task_type[:5]
             remove_config_option(content["docker"]["command"])
@@ -439,9 +442,9 @@ def launch(service):
                         content_translate["docker"]["command"].append(f[1].replace('<MODEL>', task_id))
                     change_parent_task(content_translate["docker"]["command"], task_id)
                     trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
-                    task.create(redis, taskfile_dir,
-                                trans_task_id, "trans", task_id, resource, service, content_translate, (),
-                                content_translate["priority"], content_translate["ngpus"])
+                    task_create.append((redis, taskfile_dir,
+                                trans_task_id, "trans", task_id, resource, service, deepcopy(content_translate),
+                                (), content_translate["priority"], content_translate["ngpus"], 2, {}))
                     task_ids.append("%s\t%s\tngpus: %d" % ("trans", trans_task_id, content_translate["ngpus"]))
                     subset_idx += 1
         iterations -= 1
@@ -452,7 +455,10 @@ def launch(service):
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    (task_ids,) = post_function('POST/task/launch', task_ids)
+    (task_ids,task_create) = post_function('POST/task/launch', task_ids, task_create)
+
+    for tc in task_create:
+        task.create(*tc)
 
     return flask.jsonify(task_ids)
 
