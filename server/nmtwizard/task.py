@@ -25,10 +25,9 @@ def exists(redis, task_id):
     return redis.exists("task:" + task_id)
 
 def create(redis, taskfile_dir,
-           task_id, task_type, parent_task, resource, service, content, files, priority=0, ngpus=1, ncpus=None):
+           task_id, task_type, parent_task, resource, service, content,
+           files, priority, ngpus, ncpus, generic_map):
     """Creates a new task and enables it."""
-    if ncpus is None:
-        ncpus = 2
     keyt = "task:" + task_id
     redis.hset(keyt, "type", task_type)
     if parent_task:
@@ -39,6 +38,8 @@ def create(redis, taskfile_dir,
     redis.hset(keyt, "priority", priority)
     redis.hset(keyt, "ngpus", ngpus)
     redis.hset(keyt, "ncpus", ncpus)
+    for k in generic_map:
+        redis.hset(keyt, k, generic_map[k])
     for k in files:
         set_file(redis, taskfile_dir, task_id, files[k], k)
     set_status(redis, keyt, "launched")
