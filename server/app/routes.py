@@ -173,7 +173,7 @@ def server_listconfig(service):
                          })
 
 
-def post_adminrequest(app, service, action, configname="base", value=True):
+def post_adminrequest(app, service, action, configname="base", value="1"):
     identifier = "%d.%d" % (os.getpid(), app._requestid)
     app._requestid += 1
     redis.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
