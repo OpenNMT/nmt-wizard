@@ -137,7 +137,8 @@ class SSHService(Service):
                docker_tag,
                docker_command,
                docker_files,
-               wait_after_launch):
+               wait_after_launch,
+               auth_token):
         options['server'] = resource
         params = _get_params(self._config, options) 
         client = common.ssh_connect_with_retry(
@@ -148,6 +149,9 @@ class SSHService(Service):
             key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
             login_cmd=params['login_cmd'])
         try:
+            callback_url = self._config.get('callback_url')
+            if auth_token:
+                callback_url = callback_url.replace("://","://"+auth_token+":x@")
             task = common.launch_task(
                 task_id,
                 client,
@@ -161,7 +165,7 @@ class SSHService(Service):
                 docker_files,
                 wait_after_launch,
                 self._config.get('storages'),
-                self._config.get('callback_url'),
+                callback_url,
                 self._config.get('callback_interval'),
                 requirements=self._config.get("requirements"))
         finally:

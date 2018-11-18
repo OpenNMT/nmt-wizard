@@ -77,7 +77,8 @@ class EC2Service(Service):
                docker_tag,
                docker_command,
                docker_files,
-               wait_after_launch):
+               wait_after_launch,
+               auth_token):
         ec2_client = self._session.client("ec2")
         response = _run_instance(ec2_client, resource)
         if response is None:
@@ -102,6 +103,9 @@ class EC2Service(Service):
                 retry=self._config["maxSshConnectionRetry"])
             common.fuse_s3_bucket(client, self._config["corpus"])
             gpu_id = 1 if common.has_gpu_support(client) else 0
+            callback_url = self._config.get('callback_url')
+            if auth_token:
+                callback_url = callback_url.replace("://","://"+auth_token+":x@")
             task = common.launch_task(
                 task_id,
                 client,
@@ -115,7 +119,7 @@ class EC2Service(Service):
                 docker_files,
                 wait_after_launch,
                 self._config.get('storages'),
-                self._config.get('callback_url'),
+                callback_url,
                 self._config.get('callback_interval'))
         except Exception as e:
             if self._config.get("terminateOnError", True):

@@ -203,7 +203,8 @@ class Worker(object):
                         content['docker']['tag'],
                         content['docker']['command'],
                         task.file_list(self._redis, self._taskfile_dir, task_id),
-                        content['wait_after_launch'])
+                        content['wait_after_launch'],
+                        self._redis.hget(keyt, 'token'))
                 except EnvironmentError as e:
                     # the resource is not available and will be set busy
                     self._block_resource(resource, service, str(e))
