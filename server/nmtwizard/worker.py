@@ -366,7 +366,7 @@ class Worker(object):
             key_reserved = 'reserved:%s:%s' % (service.name, resource)
             if self._redis.get(key_reserved) == task_id:
                 self._redis.delete(key_reserved)
-            self._redis.lrem('cpu_resource:%s:%s' % (service.name, resource), task_id)
+            self._redis.lrem('cpu_resource:%s:%s' % (service.name, resource), 0, task_id)
             if ncpus != 0:
                 self._redis.incr('ncpus:%s:%s' % (service.name, resource), ncpus)
 
@@ -469,4 +469,4 @@ class Worker(object):
             if best_task_id:
                 self._logger.info('selected %s to be launched on %s', best_task_id, service.name)
                 task.work_queue(self._redis, best_task_id, service.name)
-                self._redis.lrem(queue, best_task_id)
+                self._redis.lrem(queue, 0, best_task_id)

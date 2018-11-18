@@ -56,7 +56,7 @@ def terminate(redis, task_id, phase):
 
     # remove from service queue if it was there
     service = redis.hget(keyt, "service")
-    redis.lrem('queued:'+service, task_id)
+    redis.lrem('queued:'+service, 0, task_id)
 
     redis.hset(keyt, "message", phase)
     set_status(redis, keyt, "terminating")
@@ -80,7 +80,7 @@ def work_unqueue(redis, service):
 def service_queue(redis, task_id, service):
     """Queue the task on the service queue."""
     with redis.acquire_lock('service:'+service):
-        redis.lrem('queued:'+service, task_id)
+        redis.lrem('queued:'+service, 0, task_id)
         redis.lpush('queued:'+service, task_id)
         redis.delete('queue:'+task_id)
 
@@ -141,7 +141,7 @@ def change(redis, task_id, service, priority, ngpus):
                 disable(redis, task_id, prev_service)
                 enable(redis, task_id, service)
                 redis.hset(keyt, "service", service)
-                redis.lrem('queued:'+prev_service, task_id)
+                redis.lrem('queued:'+prev_service, 0, task_id)
                 redis.lpush('queued:'+service, task_id)
         if priority:
             redis.hset(keyt, "priority", priority)
