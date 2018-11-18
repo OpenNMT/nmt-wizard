@@ -434,7 +434,7 @@ def launch_task(task_id,
                 raise RuntimeError("error retrieving files: %s, %s" % (cmd_get_files, stderr.read()))
 
     if callback_url is not None:
-        exit_status, stdout, stderr = run_command(client, "curl -m 5 -s -X POST '%s/task/log/%s'"
+        exit_status, stdout, stderr = run_command(client, "curl -m 5 -s -X PATCH '%s/task/log/%s'"
                                                           " --data-ascii 'Initialization complete...'" %
                                                     (callback_url, task_id))
         if exit_status != 0:
