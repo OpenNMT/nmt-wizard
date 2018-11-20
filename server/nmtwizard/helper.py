@@ -104,7 +104,7 @@ nouns = ["Aardvark", "Aardwolf", "Albatross", "Alligator", "Alpaca", "Anaconda",
     "Lemongrass", "Lentil", "Lettuce", "Lilac", "Lime", "Lobelia", "Loosestrife", "Lupine", "Lychee", "Mandarin", "Mangetout",
     "Mango", "Marigold", "Marjoram", "Marrow", "Melon", "Mushroom", "Narcissus", "Nasturtium", "Nectarine", "Nicotiana", "Okra",
     "Oleander", "Onion", "Onions", "Orange", "Oregano", "Pansy", "Papaya", "Paprika", "Parrot", "Parsley", "Parsnip", "Passion",
-    "Pea", "Peach", "Pear", "Peony", "Pepper", "Petunias", "Pineapple", "Pinks", "Plum", "Poppy", "Potato", "Primrose", "Pumpkin",
+    "Pea", "Peach", "Pear", "Peony", "Pepper", "Petunia", "Pineapple", "Plum", "Poppy", "Potato", "Primrose", "Pumpkin",
     "Quandong", "Quince", "Radicchio", "Radish", "Raspberry", "Rhododendron", "Rhubarb", "Rosemary", "Rutabaga", "Sage", "Salsify",
     "Salvia", "Scabiosa", "Scallion", "Scilla", "Sedum", "Shallot", "Skirret", "Snowdrops", "Spinach", "Sprout", "Squash",
     "Strawberry", "Sunchokes", "Sweetcorn", "Taro", "Thyme", "Tomato", "Topinambur", "Tubers", "Tulip", "Turnip", "Vinca",
@@ -113,7 +113,7 @@ nouns = ["Aardvark", "Aardwolf", "Albatross", "Alligator", "Alpaca", "Anaconda",
 def _generate_name():
     while True:
         name = random.choice(adjectives)+random.choice(nouns)
-        if len(name) <= 14 :
+        if len(name) <= 15 :
             return name
 
 def shallow_command_analysis(command):
