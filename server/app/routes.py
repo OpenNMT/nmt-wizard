@@ -457,13 +457,13 @@ def launch(service):
             parent_task_id = task_id
             change_parent_task(content["docker"]["command"], parent_task_id)
 
-    if len(task_ids) == 1:
-        task_ids = task_ids[0]
-
     (task_ids,task_create) = post_function('POST/task/launch', task_ids, task_create)
 
     for tc in task_create:
         task.create(*tc)
+
+    if len(task_ids) == 1:
+        task_ids = task_ids[0]
 
     return flask.jsonify(task_ids)
 
