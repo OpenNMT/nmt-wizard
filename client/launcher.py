@@ -11,7 +11,7 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
-VERSION = "1.1.2-ce"
+VERSION = "1.2.0"
 def append_version(v):
     global VERSION
     VERSION += ":" + v
