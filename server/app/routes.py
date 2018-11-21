@@ -243,6 +243,7 @@ def server_enable(service, resource):
     pool_entity = service[0:2].upper()
     if not has_ability(flask.g, "edit:config", pool_entity):
         abort(make_response(jsonify(message="insufficient credentials for edit:config (entity %s)" % pool_entity), 403))
+    service_module = get_service(service)
     if resource not in service_module.list_resources():
         abort(make_response(jsonify(message="unknown resource '%s' in '%s'" % (resource, service)), 400))
     keyr = "busy:%s:%s" % (service, resource)
