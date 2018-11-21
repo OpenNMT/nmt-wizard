@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import semver
+from collections import Counter
 from copy import deepcopy
 from functools import wraps
 
@@ -28,9 +29,9 @@ def get_service(service):
 
 def _usagecapacity(service):
     """calculate the current usage of the service."""
-    usage = 0
+    usage_gpu = 0
     usage_cpu = 0
-    capacity = 0
+    capacity_gpus = 0
     capacity_cpus = 0
     busy = 0
     detail = {}
@@ -39,39 +40,45 @@ def _usagecapacity(service):
         detail[resource] = { 'busy': '', 'reserved': '' }
         r_capacity = service.list_resources()[resource]
         detail[resource]['capacity'] = r_capacity
-        capacity += r_capacity
+        capacity_gpus += r_capacity
+        detail[resource]['ncpus'] = servers[resource]['ncpus']
+        capacity_cpus += servers[resource]['ncpus']
         reserved = redis.get("reserved:%s:%s" % (service.name, resource))
         if reserved:
             detail[resource]['reserved'] = reserved
-        r_usage = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
-        count_usage = {}
+        count_map_gpu = Counter()
         task_type = {}
-        ncpus = {}
+        count_map_cpu = {}
+        count_used_gpus = 0
+        count_used_cpus = 0
+        r_usage = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage:
             task_type[t] = redis.hget("task:%s" % t, "type")
-            if t in count_usage:
-                count_usage[t] += 1
-            else:
-                count_usage[t] = 1
-                ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
+            count_map_gpu[t] += 1
+            count_used_gpus += 1
+            if t not in count_map_cpu:
+                count_map_cpu[t] = int(redis.hget("task:%s" % t, "ncpus"))
+                count_used_cpus += count_map_cpu[t]
         r_usage = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
         for t in r_usage:
-            if t not in task_type:
-                task_type[t] = redis.hget("task:%s" % t, "type")
-            count_usage[t] = 0
-            ncpus[t] = int(redis.hget("task:%s" % t, "ncpus"))
-        detail[resource]['usage'] = [ "%s %s: %d (%d)" % (task_type[k], k, count_usage[k], ncpus[k]) for k in count_usage ]
-        detail[resource]['ncpus'] = servers[resource]['ncpus']
+            task_type[t] = redis.hget("task:%s" % t, "type")
+            if t not in count_map_cpu:
+                count_map_cpu[t] = int(redis.hget("task:%s" % t, "ncpus"))
+                count_used_cpus += count_map_cpu[t]
+        detail[resource]['usage'] = [ "%s %s: %d (%d)" % (task_type[k],
+                                                          k,
+                                                          count_map_gpu[k],
+                                                          count_map_cpu[k]) for k in count_map_gpu ]
         detail[resource]['avail_cpus'] = int(redis.get("ncpus:%s:%s" % (service.name, resource)))
-        usage += len(r_usage)
-        capacity_cpus += servers[resource]['ncpus']
-        usage_cpu += sum([ncpus[k] for k in count_usage])
+        detail[resource]['avail_gpus'] = r_capacity-count_used_gpus
         err = redis.get("busy:%s:%s" % (service.name, resource))
         if err:
             detail[resource]['busy'] = err
             busy = busy + 1
+        usage_cpu += count_used_cpus
+        usage_gpu += count_used_gpus
     queued = redis.llen("queued:"+service.name)
-    return "%d (%d)" % (usage, usage_cpu), queued, "%d (%d)" % (capacity, capacity_cpus), busy, detail
+    return "%d (%d)" % (usage_gpu, usage_cpu), queued, "%d (%d)" % (capacity_gpus, capacity_cpus), busy, detail
 
 def _count_maxgpu(service):
     aggr_resource = {}
