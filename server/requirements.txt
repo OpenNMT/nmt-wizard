@@ -3,7 +3,7 @@ enum34
 flask
 ovh
 paramiko
-redis
+redis>=3.0.0
 flask_ini
 shutil
 hashlib
