@@ -207,8 +207,8 @@ class Worker(object):
                     self._redis.hdel(keyt, 'alloc_resource')
                     # set the task as queued again
                     self._release_resource(service, resource, task_id,
-                                           self._redis.hget(keyt, 'ngpus'),
-                                           self._redis.hget(keyt, 'ncpus'))
+                                           int(self._redis.hget(keyt, 'ngpus')),
+                                           int(self._redis.hget(keyt, 'ncpus')))
                     task.set_status(self._redis, keyt, 'queued')
                     task.service_queue(self._redis, task_id, service.name)
                     self._logger.info('could not launch [%s] %s on %s: blocking resource', str(e), task_id, resource)
