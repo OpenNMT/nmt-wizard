@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.2.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.0) (2018-11-22)
+
+### Breaking changes
+* server code is now requiring `redis-py>=3.0.0`
+
 ### Fixes and improvements
 * (worker) For security, checks that config name matches json config filename
 * (worker) Fix invalid log when redis not directly available at startup
