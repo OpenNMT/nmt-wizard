@@ -51,19 +51,20 @@ def _usagecapacity(service):
         count_map_cpu = {}
         count_used_gpus = 0
         count_used_cpus = 0
-        r_usage = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
-        for t in r_usage:
+        r_usage_gpu = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
+        for t in r_usage_gpu:
             task_type[t] = redis.hget("task:%s" % t, "type")
             count_map_gpu[t] += 1
             count_used_gpus += 1
             if t not in count_map_cpu:
                 count_map_cpu[t] = int(redis.hget("task:%s" % t, "ncpus"))
                 count_used_cpus += count_map_cpu[t]
-        r_usage = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
-        for t in r_usage:
+        r_usage_cpu = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
+        for t in r_usage_cpu:
             task_type[t] = redis.hget("task:%s" % t, "type")
             if t not in count_map_cpu:
                 count_map_cpu[t] = int(redis.hget("task:%s" % t, "ncpus"))
+                count_map_gpu[t] = 0
                 count_used_cpus += count_map_cpu[t]
         detail[resource]['usage'] = [ "%s %s: %d (%d)" % (task_type[k],
                                                           k,

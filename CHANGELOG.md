@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.2.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.1) (2018-11-22)
+
+### Fixes and improvements
+* (launcher) fix incorrect reporting of CPU-only tasks
+
 ## [v1.2.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.0) (2018-11-22)
 
 ### Breaking changes
