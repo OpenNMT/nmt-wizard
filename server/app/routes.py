@@ -581,12 +581,14 @@ def get_log(task_id):
     response = flask.make_response(content)
     return response
 
+max_log_size = int(app.iniconfig.get('default', 'max_log_size', fallback=None))
+
 @app.route("/task/log/<string:task_id>", methods=["PATCH"])
 @filter_request("PATCH/task/log")
 @task_request
 def append_log(task_id):
     content = flask.request.get_data()
-    task.append_log(redis, taskfile_dir, task_id, content)
+    task.append_log(redis, taskfile_dir, task_id, content, max_log_size)
     return flask.jsonify(200)
 
 @app.route("/task/log/<string:task_id>", methods=["POST"])
@@ -594,7 +596,7 @@ def append_log(task_id):
 @task_request
 def post_log(task_id):
     content = flask.request.get_data()
-    task.set_log(redis, taskfile_dir, task_id, content)
+    content = task.set_log(redis, taskfile_dir, task_id, content, max_log_size)
     (task_id, content) = post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
 

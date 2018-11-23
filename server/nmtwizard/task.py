@@ -204,18 +204,31 @@ def file_list(redis, taskfile_dir, task_id):
         return []
     return os.listdir(task_dir)
 
-def set_file(redis, taskfile_dir, task_id, content, filename):
+disclaimer = '\n\n[FILE TRUNCATED]\n'
+
+def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
     with open(os.path.join(taskdir, filename), "wb") as fh:
+        if limit and len(content) >= limit:
+            content = content[:limit-len(disclaimer)] + disclaimer
         fh.write(content)
+    return content
 
-def append_file(redis, taskfile_dir, task_id, content, filename):
+def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
-    with open(os.path.join(taskdir, filename), "ab") as fh:
+    filepath = os.path.join(taskdir, filename)
+    current_size = 0
+    if os.path.isfile(filepath):
+        current_size = os.stat(filepath).st_size
+    if current_size >= limit:
+        return
+    if limit and len(content)+current_size >= limit:
+        content = content[:limit-len(disclaimer)] + disclaimer
+    with open(filepath, "ab") as fh:
         fh.write(content)
 
 def get_file(redis, taskfile_dir, task_id, filename):
@@ -228,8 +241,8 @@ def get_file(redis, taskfile_dir, task_id, filename):
 def get_log(redis, taskfile_dir, task_id):
     return get_file(redis, taskfile_dir, task_id, "log")
 
-def append_log(redis, taskfile_dir, task_id, content):
-    return append_file(redis, taskfile_dir, task_id, content, "log")
+def append_log(redis, taskfile_dir, task_id, content, limit=None):
+    return append_file(redis, taskfile_dir, task_id, content, "log", limit)
 
-def set_log(redis, taskfile_dir, task_id, content):
-    return set_file(redis, taskfile_dir, task_id, content, "log")
+def set_log(redis, taskfile_dir, task_id, content, limit=None):
+    return set_file(redis, taskfile_dir, task_id, content, "log", limit)

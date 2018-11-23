@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.2.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.2) (2018-11-23)
+
+### Fixes and improvements
+* (launcher) `max_log_size` option in setting file for setting maximum limit to log file
+
 ## [v1.2.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.1) (2018-11-22)
 
 ### Fixes and improvements
