@@ -23,13 +23,15 @@ parser.add_argument('config', type=str,
                     help="path to config file for the service")
 args = parser.parse_args()
 
-assert os.path.isfile(args.config) and args.config.endswith(".json"), "`config` must be path to JSON service configuration file"
+assert os.path.isfile(args.config) and args.config.endswith(".json"), \
+    "`config` must be path to JSON service configuration file"
 assert os.path.isfile('settings.ini'), "missing `settings.ini` file in current directory"
 assert os.path.isfile('logging.conf'), "missing `logging.conf` file in current directory"
 
 services, base_config = config.load_service_config(args.config)
 assert len(services) == 1, "workers are now dedicated to one single service"
 service = next(iter(services))
+
 
 def md5file(fp):
     """Returns the MD5 of the file fp."""
@@ -38,6 +40,7 @@ def md5file(fp):
         for l in f.readlines():
             m.update(l)
     return m.hexdigest()
+
 
 current_configuration = None
 configurations = {}
@@ -49,7 +52,8 @@ if os.path.isdir("configurations"):
         if filename.startswith(service+"_") and filename.endswith(".json"):
             file_path = os.path.join("configurations", filename)
             with open(file_path) as f:
-                configurations[filename[len(service)+1:-5]] = (os.path.getmtime(file_path), f.read())
+                configurations[filename[len(service)+1:-5]] = (os.path.getmtime(file_path),
+                                                               f.read())
             config_service_md5[md5file(file_path)] = filename[len(service)+1:-5]
     current_configuration_md5 = md5file(args.config)
     if current_configuration_md5 in config_service_md5:
@@ -154,6 +158,7 @@ for resource in resources:
             if status == 'running' or status == 'terminating':
                 redis.decr(keyc, int(redis.hget('task:'+task_id, 'ncpus')))
 
+
 # define ttl policy for a task
 def ttl_policy(task_map):
     s = task_map['service']
@@ -168,14 +173,15 @@ def ttl_policy(task_map):
                 return ttl_rule['ttl']
     return 0
 
+
 def graceful_exit(signum, frame):
     logger.info('received interrupt - stopping')
     redis.delete(keyw)
     sys.exit(0)
 
+
 signal.signal(signal.SIGTERM, graceful_exit)
 signal.signal(signal.SIGINT, graceful_exit)
-
 
 # TODO: start multiple workers here?
 worker = Worker(redis, services,

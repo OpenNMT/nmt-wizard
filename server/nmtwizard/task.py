@@ -4,9 +4,12 @@ import os
 import shutil
 
 ttl_policy_func = None
+
+
 def set_ttl_policy(func):
     global ttl_policy_func
     ttl_policy_func = func
+
 
 def set_status(redis, keyt, status):
     """Sets the status and save the time of change."""
@@ -20,9 +23,11 @@ def set_status(redis, keyt, status):
             print('Apply %d ttl on %s' % (ttl, keyt))
             redis.expire(keyt, ttl)
 
+
 def exists(redis, task_id):
     """Checks if a task exist."""
     return redis.exists("task:" + task_id)
+
 
 def create(redis, taskfile_dir,
            task_id, task_type, parent_task, resource, service, content,
@@ -47,6 +52,7 @@ def create(redis, taskfile_dir,
     enable(redis, task_id, service)
     service_queue(redis, task_id, service)
 
+
 def terminate(redis, task_id, phase):
     """Requests task termination (assume it is locked)."""
     if phase is None:
@@ -63,6 +69,7 @@ def terminate(redis, task_id, phase):
     set_status(redis, keyt, "terminating")
     work_queue(redis, task_id)
 
+
 def work_queue(redis, task_id, service=None, delay=0):
     if service is None:
         service = redis.hget('task:'+task_id, 'service')
@@ -74,9 +81,11 @@ def work_queue(redis, task_id, service=None, delay=0):
         redis.set('queue:'+task_id, delay)
         redis.expire('queue:'+task_id, int(delay))
 
+
 def work_unqueue(redis, service):
     """Pop a task from the work queue."""
     return redis.rpop('work:'+service)
+
 
 def service_queue(redis, task_id, service):
     """Queue the task on the service queue."""
@@ -85,11 +94,13 @@ def service_queue(redis, task_id, service):
         redis.lpush('queued:'+service, task_id)
         redis.delete('queue:'+task_id)
 
+
 def enable(redis, task_id, service=None):
     if service is None:
         service = redis.hget('task:'+task_id, 'service')
     """Marks a task as enabled."""
     redis.sadd("active:"+service, task_id)
+
 
 def disable(redis, task_id, service=None):
     if service is None:
@@ -98,9 +109,11 @@ def disable(redis, task_id, service=None):
     redis.srem("active:"+service, task_id)
     redis.delete("beat:"+task_id)
 
+
 def list_active(redis, service):
     """Returns all active tasks (i.e. non stopped)."""
     return redis.smembers("active:"+service)
+
 
 def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""
@@ -114,7 +127,7 @@ def info(redis, taskfile_dir, task_id, fields):
         with redis.acquire_lock(keyt):
             fields = redis.hkeys(keyt)
             fields.append("ttl")
-            r=info(redis, taskfile_dir, task_id, fields)
+            r = info(redis, taskfile_dir, task_id, fields)
             r['files'] = file_list(redis, taskfile_dir, task_id)
             return r
     r = {}
@@ -127,6 +140,7 @@ def info(redis, taskfile_dir, task_id, fields):
         return r[field]
     r["current_time"] = int(time.time())
     return r
+
 
 def change(redis, task_id, service, priority, ngpus):
     """ move a task to another service or change priority/ngpus, assume service exists
@@ -148,7 +162,8 @@ def change(redis, task_id, service, priority, ngpus):
             redis.hset(keyt, "priority", priority)
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
-    return (True,"")
+    return (True, "")
+
 
 def delete(redis, taskfile_dir, task_id):
     """Delete a given task."""
@@ -166,12 +181,15 @@ def delete(redis, taskfile_dir, task_id):
             shutil.rmtree(task_dir)
     return True
 
+
 # TODO: create iterator returning directly task_id
 def scan_iter(redis, pattern):
     return redis.scan_iter('task:' + pattern)
 
+
 def id(task_key):
     return task_key[5:]
+
 
 def beat(redis, task_id, duration, container_id):
     """Sends an update event to the task and add an expiration time
@@ -197,6 +215,7 @@ def beat(redis, task_id, duration, container_id):
         if container_id is not None:
             redis.hset(keyt, "container_id", container_id)
 
+
 def file_list(redis, taskfile_dir, task_id):
     """Returns the list of files attached to a task"""
     task_dir = os.path.join(taskfile_dir, task_id)
@@ -204,7 +223,9 @@ def file_list(redis, taskfile_dir, task_id):
         return []
     return os.listdir(task_dir)
 
+
 disclaimer = '\n\n[FILE TRUNCATED]\n'
+
 
 def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
@@ -215,6 +236,7 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
             content = content[:limit-len(disclaimer)] + disclaimer
         fh.write(content)
     return content
+
 
 def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
@@ -231,6 +253,7 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     with open(filepath, "ab") as fh:
         fh.write(content)
 
+
 def get_file(redis, taskfile_dir, task_id, filename):
     path = os.path.join(taskfile_dir, task_id, filename)
     if not os.path.isfile(path):
@@ -238,11 +261,14 @@ def get_file(redis, taskfile_dir, task_id, filename):
     with open(path, "rb") as fh:
         return fh.read()
 
+
 def get_log(redis, taskfile_dir, task_id):
     return get_file(redis, taskfile_dir, task_id, "log")
 
+
 def append_log(redis, taskfile_dir, task_id, content, limit=None):
     return append_file(redis, taskfile_dir, task_id, content, "log", limit)
+
 
 def set_log(redis, taskfile_dir, task_id, content, limit=None):
     return set_file(redis, taskfile_dir, task_id, content, "log", limit)

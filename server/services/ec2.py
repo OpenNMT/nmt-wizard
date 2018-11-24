@@ -38,7 +38,7 @@ class EC2Service(Service):
 
     def list_resources(self):
         return {
-            name:self._config['maxInstancePerTemplate']
+            name: self._config['maxInstancePerTemplate']
             for name in self._launch_template_names}
 
     def get_resource_from_options(self, options):
@@ -105,7 +105,7 @@ class EC2Service(Service):
             gpu_id = 1 if common.has_gpu_support(client) else 0
             callback_url = self._config.get('callback_url')
             if auth_token:
-                callback_url = callback_url.replace("://","://"+auth_token+":x@")
+                callback_url = callback_url.replace("://", "://"+auth_token+":x@")
             task = common.launch_task(
                 task_id,
                 client,

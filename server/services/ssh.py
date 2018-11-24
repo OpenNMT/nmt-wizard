@@ -6,12 +6,14 @@ from nmtwizard.service import Service
 
 logger = logging.getLogger(__name__)
 
+
 def _hostname(server):
     if 'name' in server:
         return server['name']
     if server['port'] == 22:
         return server['host']
     return "%s:%s" % (server['host'], server['port'])
+
 
 def _get_params(config, options):
     params = {}
@@ -24,7 +26,7 @@ def _get_params(config, options):
 
     params['server'] = options['server']
 
-    servers = {_hostname(server):server for server in config['variables']['server_pool']}
+    servers = {_hostname(server): server for server in config['variables']['server_pool']}
 
     if params['server'] not in servers:
         raise ValueError('server %s not in server_pool list' % params['server'])
@@ -45,6 +47,7 @@ def _get_params(config, options):
     params['host'] = server_cfg['host']
 
     return params
+
 
 class SSHService(Service):
 
@@ -70,12 +73,12 @@ class SSHService(Service):
         return gpus
 
     def list_resources(self):
-        return {_hostname(server):len(server['gpus'])
-                    for server in self._config['variables']['server_pool']}
+        return {_hostname(server): len(server['gpus'])
+                for server in self._config['variables']['server_pool']}
 
     def list_servers(self):
-        return {_hostname(server):server
-                    for server in self._config['variables']['server_pool']}
+        return {_hostname(server): server
+                for server in self._config['variables']['server_pool']}
 
     def get_resource_from_options(self, options):
         if "server" not in options:
@@ -140,7 +143,7 @@ class SSHService(Service):
                wait_after_launch,
                auth_token):
         options['server'] = resource
-        params = _get_params(self._config, options) 
+        params = _get_params(self._config, options)
         client = common.ssh_connect_with_retry(
             params['host'],
             params['port'],
@@ -151,7 +154,7 @@ class SSHService(Service):
         try:
             callback_url = self._config.get('callback_url')
             if auth_token:
-                callback_url = callback_url.replace("://","://"+auth_token+":x@")
+                callback_url = callback_url.replace("://", "://"+auth_token+":x@")
             task = common.launch_task(
                 task_id,
                 client,
@@ -184,8 +187,8 @@ class SSHService(Service):
             login_cmd=params['login_cmd'])
 
         if 'container_id' in params:
-            exit_status, stdout, stderr = common.run_docker_command(client, 'inspect -f {{.State.Status}} %s' %
-                                                                    params['container_id'])
+            exit_status, stdout, stderr = common.run_docker_command(
+                client, 'inspect -f {{.State.Status}} %s' % params['container_id'])
         else:
             exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
 

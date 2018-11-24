@@ -44,10 +44,12 @@ def md5file(fp):
             m.update(l)
     return m.hexdigest()
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('service', type=str,
                     help="name of the service to launch")
-parser.add_argument('--fast_restart_delay', type=int, default=30, help="time interval analysed as fast_restart - default 30")
+parser.add_argument('--fast_restart_delay', type=int, default=30,
+                    help="time interval analysed as fast_restart - default 30")
 args = parser.parse_args()
 
 assert os.path.isdir("configurations"), "missing `configurations` directory"
@@ -65,7 +67,8 @@ assert "%s_base.json" % service in config_service, "missing base configuration f
 
 if os.path.isfile("%s.json" % service):
     current_config_md5 = md5file("%s.json" % service)
-    assert current_config_md5 in config_service_md5, "current configuration file not in `configurations`"
+    assert current_config_md5 in config_service_md5, "current configuration file not " \
+                                                     "in `configurations`"
     print "[%s] ** current configuration is: %s" % (service, config_service_md5[current_config_md5])
     sys.stdout.flush()
 else:
@@ -82,19 +85,20 @@ count_fast_fail = 0
 counter = 0
 
 current_pid = None
+
+
 def graceful_exit(signum, frame):
     if current_pid:
         os.kill(current_pid, signal.SIGTERM)
     sys.exit(0)
 
+
 signal.signal(signal.SIGTERM, graceful_exit)
 signal.signal(signal.SIGINT, graceful_exit)
-
 
 while True:
     with open(config_file) as f:
         config = f.read()
-
 
     start = time.time()
     date = time.strftime('%Y-%m-%d_%H%M%S', time.localtime(start))
@@ -107,10 +111,10 @@ while True:
     log_fh.write("-" * 80)
     log_fh.write("\n")
     log_fh.flush()
- 
+
     print "[%s] ** launching: %s - log %s" % (service, cmdline, logfile)
     sys.stdout.flush()
-    p1 = subprocess.Popen(worker_arg, stdout=log_fh, stderr=subprocess.STDOUT, close_fds=True) 
+    p1 = subprocess.Popen(worker_arg, stdout=log_fh, stderr=subprocess.STDOUT, close_fds=True)
     current_pid = p1.pid
     print "[%s] ** launched with pid: %d" % (service, p1.pid)
     sys.stdout.flush()
@@ -127,7 +131,7 @@ while True:
                 if w is False:
                     p1.kill()
     except Exception as e:
-    	log_fh.write("-" * 80)
+        log_fh.write("-" * 80)
         log_fh.write("\n")
         log_fh.write("INTERRUPTED: "+str(e))
         log_fh.write("\n")
@@ -148,13 +152,14 @@ while True:
     if p1.returncode == 55:
         break
 
-    if stop-start < args.fast_restart_delay:
+    if stop - start < args.fast_restart_delay:
         count_fast_fail += 1
     else:
         count_fast_fail = 0
 
     if count_fast_fail > 10:
-        if md5file("%s.json" % service) != md5file(os.path.join("configurations", "%s_base.json" % service)):
+        if md5file("%s.json" % service) != md5file(os.path.join("configurations",
+                                                                "%s_base.json" % service)):
             shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
             count_fast_fail = 0
             print "[%s] ** 10 fast fails in a row - switching to base configuration..." % service

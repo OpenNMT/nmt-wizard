@@ -3,17 +3,11 @@ from flask_ini import FlaskIni
 import os
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
-
 import logging
 import time
 from redis.exceptions import ConnectionError
 
 VERSION = "1.2.2"
-def append_version(v):
-    global VERSION
-    VERSION += ":" + v
-def get_version():
-    return VERSION
 
 app = Flask(__name__)
 app._requestid = 1
@@ -36,10 +30,10 @@ with app.app_context():
 app.logger.setLevel(logging.getLevelName(
                     app.iniconfig.get('default', 'log_level', fallback='ERROR')))
 
-redis = RedisDatabase(app.iniconfig.get('redis','host'),
-                      app.iniconfig.get('redis','port',fallback=6379),
-                      app.iniconfig.get('redis','db',fallback=0),
-                      app.iniconfig.get('redis', 'password',fallback=None))
+redis = RedisDatabase(app.iniconfig.get('redis', 'host'),
+                      app.iniconfig.get('redis', 'port', fallback=6379),
+                      app.iniconfig.get('redis', 'db', fallback=0),
+                      app.iniconfig.get('redis', 'password', fallback=None))
 
 assert app.iniconfig.get('default', 'taskfile_dir'), "missing taskfile_dir from settings.ini"
 taskfile_dir = app.iniconfig.get('default', 'taskfile_dir')
@@ -56,5 +50,15 @@ while retry < 10:
         time.sleep(1)
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
+
+
+def append_version(v):
+    global VERSION
+    VERSION += ":" + v
+
+
+def get_version():
+    return VERSION
+
 
 from app import routes

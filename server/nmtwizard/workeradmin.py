@@ -7,11 +7,13 @@ import sys
 
 re_badchar = re.compile(r"[^-A-Za-z_0-9]")
 
+
 def result(redis, cmd, message):
     cmd[1] = 'configresult'
     key = ':'.join(cmd)
     redis.set(key, message)
     redis.expire(key, 120)
+
 
 def process(logger, redis, service):
     for cmd_key in redis.scan_iter('admin:config:%s:*' % service):
@@ -72,7 +74,8 @@ def process(logger, redis, service):
                 result(redis, cmd, 'INTERNAL ERROR: missing configuration %s' % cmd[4])
                 logger.info("INTERNAL ERROR: missing configuration (=> %s) - restarting" % cmd[4])
             else:
-                shutil.copyfile("configurations/%s_%s.json" % (service, cmd[4]), "%s.json" % service)
+                shutil.copyfile("configurations/%s_%s.json" % (service, cmd[4]),
+                                "%s.json" % service)
                 result(redis, cmd, 'ok')
                 logger.info("restarting worker after configuration change (=> %s)" % cmd[4])
             sys.exit(0)
@@ -86,4 +89,3 @@ def process(logger, redis, service):
             sys.exit(55)
         else:
             result(redis, cmd, 'ERROR: invalid admin:config action `%s`' % cmd[3])
-

@@ -12,9 +12,10 @@ log_file = "%s"
 callback_url = "%s"
 myenv = %s
 
-def displaycmd(l):
-    s=""
-    for t in l:
+
+def displaycmd(lst):
+    s = ""
+    for t in lst:
         p = t.find("[[private:")
         while p != -1:
             q = t.find("]]", p)
@@ -25,15 +26,16 @@ def displaycmd(l):
             p = t.find("[[private:", p+11)
         if s != "":
             s += " "
-        if re.search(r"[ \"!{};$]",t):
+        if re.search(r"[ \"!{};$]", t):
             s += chr(39)+t+chr(39)
         else:
             s += t
     return s
 
-def rmprivate(l):
-    r=[]
-    for t in l:
+
+def rmprivate(lst):
+    r = []
+    for t in lst:
         p = t.find("[[private:")
         while p != -1:
             t = t[0:p] + t[p+10:]
@@ -46,19 +48,21 @@ def rmprivate(l):
         r.append(t)
     return r
 
+
 f = open(log_file, "w")
 f.write("COMMAND: "+displaycmd(cmd)+"\n")
 
 p1 = subprocess.Popen(rmprivate(cmd),
-                       stdout=subprocess.PIPE, 
-                       stderr=subprocess.STDOUT,
-                       universal_newlines=True,
-                       env=dict(os.environ, **myenv))
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT,
+                      universal_newlines=True,
+                      env=dict(os.environ, **myenv))
 
 current_log = ""
 
 mutex = Lock()
 completed = False
+
 
 def _update_log_loop():
     global current_log
@@ -73,29 +77,32 @@ def _update_log_loop():
         mutex.release()
         if copy_log:
             try:
-                p = subprocess.Popen(["curl", "-X", "PATCH", callback_url+"/task/log/"+task_id, "--data-binary", "@-"],
-                                    stdin=subprocess.PIPE)
+                p = subprocess.Popen(["curl", "-X", "PATCH", callback_url+"/task/log/"+task_id,
+                                      "--data-binary", "@-"],
+                                     stdin=subprocess.PIPE)
                 p.communicate(copy_log)
             except Exception:
                 pass
+
 
 if callback_url:
     log_thread = Thread(target=_update_log_loop)
     log_thread.daemon = True
     log_thread.start()
 
+
 while p1.poll() is None:
-    l = p1.stdout.readline()
-    f.write(l)
+    line = p1.stdout.readline()
+    f.write(line)
     f.flush()
     mutex.acquire()
-    current_log += l
+    current_log += line
     mutex.release()
 
-completed=True
+completed = True
 
-l = p1.stdout.read()
-f.write(l)
+line = p1.stdout.read()
+f.write(line)
 f.flush()
 
 if p1.returncode == 0:
@@ -107,7 +114,9 @@ f.close()
 
 if callback_url:
     mutex.acquire()
-    current_log=""
+    current_log = ""
     mutex.release()
-    subprocess.call(["curl", "-X", "POST", callback_url+"/task/log/"+task_id, "--data-binary", "@"+log_file])
-    subprocess.call(["curl", "-X", "GET", callback_url+"/task/terminate/"+task_id+"?phase=" + phase])
+    subprocess.call(["curl", "-X", "POST", callback_url+"/task/log/"+task_id,
+                     "--data-binary", "@"+log_file])
+    subprocess.call(["curl", "-X", "GET",
+                     callback_url+"/task/terminate/"+task_id+"?phase=" + phase])

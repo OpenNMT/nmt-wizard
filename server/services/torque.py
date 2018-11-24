@@ -8,6 +8,7 @@ from nmtwizard.service import Service
 
 logger = logging.getLogger(__name__)
 
+
 def _get_params(config, options):
     server_cfg = config['variables']
 
@@ -32,6 +33,7 @@ def _get_params(config, options):
     params['log_dir'] = server_cfg['log_dir']
     params['torque_install_path'] = server_cfg['torque_install_path']
     return params
+
 
 class TorqueService(Service):
 
@@ -212,6 +214,7 @@ class TorqueService(Service):
         client.exec_command(
             '%s %s' % (os.path.join(params['torque_install_path'], "qdel"), params['qsub_id']))
         client.close()
+
 
 def init(config):
     return TorqueService(config)

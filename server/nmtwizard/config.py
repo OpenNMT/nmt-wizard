@@ -12,6 +12,7 @@ _BASE_CONFIG_NAME = "default.json"
 def add_log_handler(fh):
     logger.addHandler(fh)
 
+
 def merge_config(a, b, name):
     assert type(a) == type(b), "default and %s config file are not compatible" % name
     if isinstance(a, dict):
@@ -20,6 +21,7 @@ def merge_config(a, b, name):
                 a[k] = b[k]
             elif isinstance(a[k], dict):
                 merge_config(a[k], b[k], name)
+
 
 def load_service(config_path, base_config=None):
     """Loads a service configuration.
@@ -47,6 +49,7 @@ def load_service(config_path, base_config=None):
         raise ValueError("invalid service definition in %s" % config_path)
     service = importlib.import_module(config["module"]).init(config)
     return name, service
+
 
 def load_service_config(filename):
     """Load configured service given a json file and corresponding default.json

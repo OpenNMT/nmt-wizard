@@ -10,9 +10,10 @@ import paramiko
 
 logger = logging.getLogger(__name__)
 
-def displaycmd(l):
-    s=""
-    for t in l:
+
+def displaycmd(lst):
+    s = ""
+    for t in lst:
         p = t.find("[[private:")
         while p != -1:
             q = t.find("]]", p)
@@ -23,20 +24,21 @@ def displaycmd(l):
             p = t.find("[[private:", p)
         if s != "":
             s += " "
-        if re.search(r"[ \"!{};$]",t):
-            s += chr(39)+t+chr(39)
+        if re.search(r"[ \"!{};$]", t):
+            s += chr(39) + t + chr(39)
         else:
             s += t
     return s
 
-def rmprivate(l):
-    if isinstance(l, list):
-        r=[]
-        for t in l:
+
+def rmprivate(lst):
+    if isinstance(lst, list):
+        r = []
+        for t in lst:
             r.append(rmprivate(t))
         return r
     else:
-        t = l
+        t = lst
         p = t.find("[[private:")
         while p != -1:
             t = t[0:p] + t[p+10:]
@@ -48,24 +50,26 @@ def rmprivate(l):
                 p = -1
         return t
 
+
 # read the launch_script that will be used to launched and monitor tasks
 curdirname, curfilename = os.path.split(os.path.abspath(__file__))
 with open(os.path.join(curdirname, "launch_script.py")) as f:
     python_run = f.read()
 
+
 def add_log_handler(fh):
     logger.addHandler(fh)
 
+
 # Make sure error is processed as binary so won't cause additional exception when decoding
-def _patched_exec_command(self, 
-                          command, 
-                          bufsize=-1, 
-                          timeout=None, 
-                          get_pty=False, 
-                          stdin_binary=False, 
-                          stdout_binary=False, 
+def _patched_exec_command(self,
+                          command,
+                          bufsize=-1,
+                          timeout=None,
+                          get_pty=False,
+                          stdin_binary=False,
+                          stdout_binary=False,
                           stderr_binary=True):
-    
     chan = self._transport.open_session()
     if get_pty:
         chan.get_pty()
@@ -76,7 +80,9 @@ def _patched_exec_command(self,
     stderr = chan.makefile_stderr('rb' if stdin_binary else 'r', bufsize)
     return stdin, stdout, stderr
 
+
 paramiko.SSHClient.exec_command = _patched_exec_command
+
 
 def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True):
     if sudo:
@@ -98,20 +104,25 @@ def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True)
     exit_status = stdout.channel.recv_exit_status()
     return exit_status, stdout, stderr
 
+
 def run_docker_command(client, cmd):
     docker_cmd = 'docker %s' % cmd
     return run_command(client, docker_cmd)
+
 
 def run_and_check_command(client, cmd, stdin_content=None, sudo=False):
     exit_status, _, _ = run_command(
         client, cmd, stdin_content=stdin_content, sudo=sudo)
     return exit_status == 0
 
+
 def program_exists(client, program):
     return run_and_check_command(client, "command -v %s" % program)
 
+
 def has_gpu_support(client):
     return run_and_check_command(client, "nvidia-smi")
+
 
 def ssh_connect_with_retry(hostname,
                            port,
@@ -136,7 +147,8 @@ def ssh_connect_with_retry(hostname,
             client.load_system_host_keys()
             if pkey is not None:
                 private_key_file = io.StringIO()
-                private_key_file.write('-----BEGIN RSA PRIVATE KEY-----\n%s\n-----END RSA PRIVATE KEY-----\n' % pkey)
+                private_key_file.write('-----BEGIN RSA PRIVATE KEY-----\n%s\n'
+                                       '-----END RSA PRIVATE KEY-----\n' % pkey)
                 private_key_file.seek(0)
                 pkey = paramiko.RSAKey.from_private_key(private_key_file)
             client.connect(
@@ -159,6 +171,7 @@ def ssh_connect_with_retry(hostname,
                 logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
                                hostname, str(e), retry_delay)
                 time.sleep(retry_delay)
+
 
 def fuse_s3_bucket(client, corpus):
     if not program_exists(client, "s3fs"):
@@ -183,6 +196,7 @@ def fuse_s3_bucket(client, corpus):
     if status != 0:
         raise RuntimeError('failed to fuse S3 bucket: %s' % stderr.read())
 
+
 def check_environment(client, lgpu, log_dir, docker_registries, requirements, check=True):
     """Check that the environment contains all the tools necessary to launch a task
        and meets requirement
@@ -201,7 +215,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
         if not program_exists(client, "nvidia-docker"):
             raise EnvironmentError("nvidia-docker not available")
 
-    usage = { 'gpus':[], 'disk':[] }
+    usage = {'gpus': [], 'disk': []}
     for gpu_id in lgpu:
         gpu_id = int(gpu_id)
         exit_status, stdout, stderr = run_command(
@@ -219,13 +233,13 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
         m = re.search(b'Free *: (.*) MiB *\n', out)
         if m:
             mem = int(m.group(1).decode('utf-8'))
-        usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem':mem})
+        usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem': mem})
         if check and requirements:
             if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
                 raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
                                        % (gpu_id, mem, requirements["free_gpu_memory"]))
 
-    if requirements and "free_disk_space" in requirements:    
+    if requirements and "free_disk_space" in requirements:
         for path, space_G in six.iteritems(requirements["free_disk_space"]):
             exit_status, stdout, stderr = run_command(
                 client,
@@ -236,11 +250,12 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
             out = stdout.read().strip()
             m = re.search(b'([0-9]+)G', out)
             if check and (m is None or int(m.group(1).decode('utf-8')) < space_G):
-                raise EnvironmentError("not enough free diskspace on %s: %s/%dG"
-                               % (path, out, space_G))
-            usage['disk'].append({'path':path, 'free': out, 'required': space_G})
+                raise EnvironmentError("not enough free diskspace on %s: %s/%dG" %
+                                       (path, out, space_G))
+            usage['disk'].append({'path': path, 'free': out, 'required': space_G})
 
     return usage
+
 
 def cmd_connect_private_registry(docker_registry):
     if docker_registry['type'] == "aws":
@@ -253,11 +268,13 @@ def cmd_connect_private_registry(docker_registry):
     password = docker_registry['credentials']['password']
     return ('docker login --username %s --password %s') % (username, password)
 
+
 def cmd_docker_pull(image_ref, docker_path=None):
     path = ""
     if docker_path is not None:
         path = docker_path + "/"
     return '%sdocker pull %s' % (path, image_ref)
+
 
 def cmd_docker_run(gpu_id, docker_options, task_id,
                    docker_image, image_ref, callback_url, callback_interval,
@@ -277,7 +294,7 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
         docker_cmd = 'docker' if gpu_id == '0' else 'nvidia-docker'
         docker_path = docker_options.get('path')
         if docker_path:
-            docker_cmd = docker_path +'/' + docker_cmd
+            docker_cmd = docker_path + '/' + docker_cmd
 
         # launch the task
         cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
@@ -326,7 +343,8 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
                 arg = '/root/tmp/%s%s' % (task_id, arg[10:])
             cmd += '_o_' + arg
 
-        return cmd.replace("\n","\\\\n").replace("_o_","\n"), str(env).replace("'",'"')
+        return cmd.replace("\n", "\\\\n").replace("_o_", "\n"), str(env).replace("'", '"')
+
 
 def update_log(task_id,
                client,
@@ -336,6 +354,7 @@ def update_log(task_id,
     cmd = 'curl -X POST "%s/task/log/%s" --data-binary "@%s"' % (
                 callback_url, task_id, log_file)
     _, stdout, stderr = run_command(client, cmd)
+
 
 def launch_task(task_id,
                 client,
@@ -369,10 +388,10 @@ def launch_task(task_id,
     gpu_id = ",".join([gpu_id for gpu_id in lgpu])
     logger.info("launching task - %s / %s", task_id, gpu_id)
     logger.debug("check environment for task %s", task_id)
-    check_environment(client, lgpu, log_dir,
-                      {the_docker_registry:
-                              docker_options['registries'][the_docker_registry]},
-                       requirements)
+    check_environment(
+        client, lgpu, log_dir,
+        {the_docker_registry: docker_options['registries'][the_docker_registry]},
+        requirements)
 
     image_ref = ""
     if docker_options.get('dev') != 1:
@@ -420,7 +439,8 @@ def launch_task(task_id,
                 exit_status, stdout, stderr = run_command(client, cmd_mkdir)
                 if exit_status != 0:
                     s = stderr.read()
-                    raise RuntimeError("error build task tmp sub-dir: %s, %s" % (cmd_mkdir, stderr.read()))
+                    raise RuntimeError("error build task tmp sub-dir: %s, %s" %
+                                       (cmd_mkdir, stderr.read()))
             logger.info("retrieve file %s -> %s/%s", f, mount_tmpdir, task_id)
             cmd_get_files = 'curl "%s/task/file/%s/%s" > %s/%s/%s' % (
                 callback_url,
@@ -431,19 +451,23 @@ def launch_task(task_id,
                 f)
             exit_status, stdout, stderr = run_command(client, cmd_get_files)
             if exit_status != 0:
-                raise RuntimeError("error retrieving files: %s, %s" % (cmd_get_files, stderr.read()))
+                raise RuntimeError("error retrieving files: %s, %s" %
+                                   (cmd_get_files, stderr.read()))
 
     if callback_url is not None:
-        exit_status, stdout, stderr = run_command(client, "curl -m 5 -s -X PATCH '%s/task/log/%s'"
-                                                          " --data-ascii 'Initialization complete...'" %
-                                                    (callback_url, task_id))
+        exit_status, stdout, stderr = run_command(
+            client,
+            "curl -m 5 -s -X PATCH '%s/task/log/%s' --data-ascii 'Initialization complete...'" %
+            (callback_url, task_id))
         if exit_status != 0:
             raise RuntimeError("cannot send beat back (%s) - aborting" % stderr.read())
 
     cmd, env = cmd_docker_run(lgpu, docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
                               storages, docker_command, log_dir)
-    cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id), callback_url or '', env) + "'"
+
+    cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
+                                               callback_url or '', env) + "'"
 
     # get the process group id
     cmd += ' & ps -o pgid -p $!'
