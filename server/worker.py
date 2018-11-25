@@ -121,10 +121,10 @@ for task_id in task.list_active(redis, service):
         else:
             task.work_queue(redis, task_id, service)
     # check integrity of tasks
-    if redis.hget(task_id, 'priority') is None:
-        redis.hset(task_id, 'priority', 0)
-    if redis.hget(task_id, 'queued_time') is None:
-        redis.hset(task_id, 'queued_time', time.time())
+    if redis.hget('task:'+task_id, 'priority') is None:
+        redis.hset('task:'+task_id, 'priority', 0)
+    if redis.hget('task:'+task_id, 'queued_time') is None:
+        redis.hset('task:'+task_id, 'queued_time', time.time())
 
 # Desallocate all resources that are not anymore associated to a running task
 resources = services[service].list_resources()

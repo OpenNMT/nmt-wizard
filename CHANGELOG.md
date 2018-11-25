@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.2.3](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.3) (2018-11-25)
+
+### Fixes and improvements
+* (worker) fix integrity checking at worker restart
+
 ## [v1.2.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.2) (2018-11-23)
 
 ### Fixes and improvements
