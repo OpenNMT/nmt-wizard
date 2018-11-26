@@ -7,7 +7,7 @@ import logging
 import time
 from redis.exceptions import ConnectionError
 
-VERSION = "1.2.3"
+VERSION = "1.2.4"
 
 app = Flask(__name__)
 app._requestid = 1
