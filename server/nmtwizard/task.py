@@ -118,11 +118,7 @@ def list_active(redis, service):
 def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""
     keyt = "task:" + task_id
-    field = None
-    if not isinstance(fields, list):
-        field = fields
-        fields = [field]
-    if not fields:
+    if fields is None:
         # only if we want all information - add a lock on the resource
         with redis.acquire_lock(keyt):
             fields = redis.hkeys(keyt)
@@ -130,6 +126,10 @@ def info(redis, taskfile_dir, task_id, fields):
             r = info(redis, taskfile_dir, task_id, fields)
             r['files'] = file_list(redis, taskfile_dir, task_id)
             return r
+    field = None
+    if not isinstance(fields, list):
+        field = fields
+        fields = [field]
     r = {}
     for f in fields:
         if f != "ttl":

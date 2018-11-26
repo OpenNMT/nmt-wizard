@@ -536,9 +536,11 @@ def launch(service):
 @filter_request("GET/task/status")
 @task_request
 def status(task_id):
-    fields = flask.request.args.get('fields', '').split(',')
-    if fields == ['']:
-        fields = ''
+    fields = flask.request.args.get('fields', None)
+    if fields is not None and fields != '':
+        fields = fields.split(',')
+    else:
+        fields = None
     response = task.info(redis, taskfile_dir, task_id, fields)
     return flask.jsonify(response)
 
