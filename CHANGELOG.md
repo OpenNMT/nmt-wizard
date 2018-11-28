@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [v1.2.5](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.5) (2018-11-28)
+
 ### Fixes and improvements
 * (worker) fix retry on ssh connection
 * (worker) more robust environment checking before launching task
