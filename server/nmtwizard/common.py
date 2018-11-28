@@ -169,7 +169,7 @@ def ssh_connect_with_retry(hostname,
         except Exception as e:
             retry -= 1
             if retry < 0:
-                raise e
+                raise EnvironmentError('cannot connect to node: %s', str(e))
             else:
                 logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
                                hostname, str(e), retry_delay)
@@ -460,10 +460,10 @@ def launch_task(task_id,
     if callback_url is not None:
         exit_status, stdout, stderr = run_command(
             client,
-            "curl -m 5 -s -X PATCH '%s/task/log/%s' --data-ascii 'Initialization complete...'" %
-            (callback_url, task_id))
+            "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
+            "--data-ascii 'Initialization complete...'" % (callback_url, task_id))
         if exit_status != 0:
-            raise RuntimeError("cannot send beat back (%s) - aborting" % stderr.read())
+            raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
 
     cmd, env = cmd_docker_run(lgpu, docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
