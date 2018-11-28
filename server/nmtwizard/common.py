@@ -140,17 +140,20 @@ def ssh_connect_with_retry(hostname,
     start = time.time()
     client = paramiko.client.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.load_system_host_keys()
+    if pkey is not None:
+        private_key_file = io.StringIO()
+        private_key_file.write('-----BEGIN RSA PRIVATE KEY-----\n%s\n'
+                               '-----END RSA PRIVATE KEY-----\n' % pkey)
+        private_key_file.seek(0)
+        try:
+            pkey = paramiko.RSAKey.from_private_key(private_key_file)
+        except Exception as e:
+            raise RuntimeError("cannot parse private key (%s)" % str(e))
     if delay > 0:
         time.sleep(delay)
     while True:
         try:
-            client.load_system_host_keys()
-            if pkey is not None:
-                private_key_file = io.StringIO()
-                private_key_file.write('-----BEGIN RSA PRIVATE KEY-----\n%s\n'
-                                       '-----END RSA PRIVATE KEY-----\n' % pkey)
-                private_key_file.seek(0)
-                pkey = paramiko.RSAKey.from_private_key(private_key_file)
             client.connect(
                 hostname,
                 port=port,

@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* (launcher) fix retry on ssh connection
+
 ## [v1.2.4](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.4) (2018-11-26)
 
 ### Fixes and improvements
