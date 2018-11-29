@@ -299,8 +299,6 @@ class Worker(object):
                     best_resource = name
                     br_remaining = remaining_gpus
                     br_available_gpus = available_gpus
-                    if available_gpus == 0:
-                        break
             return best_resource, br_available_gpus
         elif resource not in resources:
             raise ValueError('resource %s does not exist for service %s' % (resource, service.name))
@@ -330,11 +328,11 @@ class Worker(object):
                 return False, False
             if ngpus == 0:
                 available_cpus = int(self._redis.get(keyc))
-                self._logger.debug('**** 0 GPU required - reserving %s', resource)
-                if ncpus <= available_cpus:
+                if ncpus <= available_cpus and available_cpus >= -br_remaining:
+                    self._logger.debug('**** 0 GPU required - reserving %s', resource)
                     self._redis.rpush('cpu_resource:%s:%s' % (service.name, resource), task_id)
                     self._redis.decr(keyc, ncpus)
-                    return 0, 0
+                    return 0, -available_cpus-1
                 else:
                     return False, False
             if not check_reserved and self._redis.get(key_reserved) is not None:

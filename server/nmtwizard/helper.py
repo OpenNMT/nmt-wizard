@@ -27,7 +27,7 @@ adjectives = [
     "Foreign", "Formal", "Former", "Free", "Freezing", "Frequent", "Fresh", "Friendly", "Full",
     "Fun",
     "Funny", "Future", "General", "Gentle", "Gifted", "Gigantic", "Glad", "Glamorous",
-    "Global", "Gold", "Good", "Gorgeous", "Grand", "Gray", "Great", "Green",
+    "Global", "Gold", "Golden", "Good", "Gorgeous", "Grand", "Gray", "Great", "Green",
     "Grumpy", "Guilty", "Hallowed", "Handsome", "Happy", "Healthy", "Heavy",
     "Helpful", "Helpless", "High", "Hissing", "Historical", "Hollow", "Honest",
     "Howling", "Huge", "Hungry", "Icy", "Ideal", "Immediate", "Immense", "Important",
