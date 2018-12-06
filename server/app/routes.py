@@ -15,6 +15,7 @@ from app import app, redis, get_version, ch, taskfile_dir
 from nmtwizard import common, task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
+from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -35,10 +36,8 @@ def get_service(service):
 
 def _usagecapacity(service):
     """calculate the current usage of the service."""
-    usage_gpu = 0
-    usage_cpu = 0
-    capacity_gpus = 0
-    capacity_cpus = 0
+    usage_xpu = Capacity()
+    capacity_xpus = Capacity()
     busy = 0
     detail = {}
     servers = service.list_servers()
@@ -46,65 +45,53 @@ def _usagecapacity(service):
         detail[resource] = {'busy': '', 'reserved': ''}
         r_capacity = service.list_resources()[resource]
         detail[resource]['capacity'] = r_capacity
-        capacity_gpus += r_capacity
-        detail[resource]['ncpus'] = servers[resource]['ncpus']
-        capacity_cpus += servers[resource]['ncpus']
+        capacity_xpus += r_capacity
         reserved = redis.get("reserved:%s:%s" % (service.name, resource))
         if reserved:
             detail[resource]['reserved'] = reserved
+
         count_map_gpu = Counter()
+        count_map_cpu = Counter()
         task_type = {}
-        count_map_cpu = {}
-        count_used_gpus = 0
-        count_used_cpus = 0
+        count_used_xpus = Capacity()
+
         r_usage_gpu = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_gpu:
-            task_type[t] = redis.hget("task:%s" % t, "type")
+            if t not in task_type:
+                task_type[t] = redis.hget("task:%s" % t, "type")
             count_map_gpu[t] += 1
-            count_used_gpus += 1
-            if t not in count_map_cpu:
-                count_map_cpu[t] = int(redis.hget("task:%s" % t, "ncpus"))
-                count_used_cpus += count_map_cpu[t]
-        r_usage_cpu = redis.lrange("cpu_resource:%s:%s" % (service.name, resource), 0, -1)
+            count_used_xpus.incr_ngpus(1)
+
+        r_usage_cpu = redis.hgetall("cpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_cpu:
-            task_type[t] = redis.hget("task:%s" % t, "type")
-            if t not in count_map_cpu:
-                count_map_cpu[t] = int(redis.hget("task:%s" % t, "ncpus"))
-                count_map_gpu[t] = 0
-                count_used_cpus += count_map_cpu[t]
+            if t not in task_type:
+                task_type[t] = redis.hget("task:%s" % t, "type")
+            count_map_cpu[t] += 1
+            count_used_xpus.incr_ncpus(1)
+
         detail[resource]['usage'] = ["%s %s: %d (%d)" % (task_type[k],
                                                          k,
                                                          count_map_gpu[k],
                                                          count_map_cpu[k]) for k in count_map_gpu]
-        detail[resource]['avail_cpus'] = int(redis.get("ncpus:%s:%s" % (service.name, resource)))
-        detail[resource]['avail_gpus'] = r_capacity-count_used_gpus
+        detail[resource]['avail_gpus'] = r_capacity.ngpus - count_used_xpus.ngpus
+        detail[resource]['avail_cpus'] = r_capacity.ncpus - count_used_xpus.ncpus
         err = redis.get("busy:%s:%s" % (service.name, resource))
         if err:
             detail[resource]['busy'] = err
             busy = busy + 1
-        usage_cpu += count_used_cpus
-        usage_gpu += count_used_gpus
+        usage_xpu += count_used_xpus
     queued = redis.llen("queued:"+service.name)
-    return ("%d (%d)" % (usage_gpu, usage_cpu), queued,
-            "%d (%d)" % (capacity_gpus, capacity_cpus),
+    return ("%d (%d)" % (usage_xpu.ngpus, usage_xpu.ncpus), queued,
+            "%d (%d)" % (capacity_xpus.ngpus, capacity_xpus.ncpus),
             busy, detail)
 
 
-def _count_maxgpu(service):
-    aggr_resource = {}
-    max_gpu = -1
+def _find_compatible_resource(service_module, ngpus, ncpus):
     for resource in service.list_resources():
         capacity = service.list_resources()[resource]
-        p = resource.find(':')
-        if p != -1:
-            resource = resource[0:p]
-        if resource not in aggr_resource:
-            aggr_resource[resource] = 0
-        aggr_resource[resource] += capacity
-        if aggr_resource[resource] > max_gpu:
-            max_gpu = aggr_resource[resource]
-    return max_gpu
-
+        if ngpus <= capacity.ngpus and (ncpus is None or ncpus <= capacity.ncpus):
+            return True
+    return False
 
 def task_request(func):
     """minimal check on the request to check that tasks exists"""
@@ -408,11 +395,12 @@ def launch(service):
     ngpus = 1
     if "ngpus" in content:
         ngpus = content["ngpus"]
+    ncpus = content.get("ncpus")
     # check that we have a resource able to run such a request
-    if _count_maxgpu(service_module) < ngpus:
+    if _find_compatible_resource(service_module, ngpus, ncpus):
         abort(flask.make_response(
-                    flask.jsonify(message="no resource available on %s for %d gpus" %
-                                  (service, ngpus)), 400))
+                    flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
+                                  (service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
         totranslate = content["totranslate"]

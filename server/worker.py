@@ -138,27 +138,20 @@ servers = services[service].list_servers()
 redis.delete('admin:resources:'+service)
 for resource in resources:
     redis.lpush('admin:resources:'+service, resource)
-    keyc = 'ncpus:%s:%s' % (service, resource)
-    redis.set(keyc, servers[resource]['ncpus'])
-    keyr = 'gpu_resource:%s:%s' % (service, resource)
-    running_tasks = redis.hgetall(keyr)
-    gtasks = {}
+    keycr = 'cpu_resource:%s:%s' % (service, resource)
+    keygr = 'gpu_resource:%s:%s' % (service, resource)
+    running_tasks = redis.hgetall(keygr)
     for g, task_id in six.iteritems(running_tasks):
         with redis.acquire_lock(task_id):
             status = redis.hget('task:'+task_id, 'status')
             if not(status == 'running' or status == 'terminating'):
-                redis.hdel(keyr, g)
-            elif task_id not in gtasks:
-                redis.decr(keyc, int(redis.hget('task:'+task_id, 'ncpus')))
-                gtasks[task_id] = True
-    keyr = 'cpu_resource:%s:%s' % (service, resource)
-    tasks = redis.lrange(keyr, 0, -1)
-    redis.ltrim(keyr, 0, -1)
-    for task_id in tasks:
+                redis.hdel(keygr, g)
+    running_tasks = redis.hgetall(keygr)
+    for c, task_id in six.iteritems(running_tasks):
         with redis.acquire_lock(task_id):
             status = redis.hget('task:'+task_id, 'status')
             if status == 'running' or status == 'terminating':
-                redis.decr(keyc, int(redis.hget('task:'+task_id, 'ncpus')))
+                redis.hdel(keycr, c)
 
 
 # define ttl policy for a task

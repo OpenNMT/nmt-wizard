@@ -5,6 +5,7 @@ Docker-based tasks.
 import logging
 import abc
 import six
+from nmtwizard.capacity import Capacity
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -33,7 +34,10 @@ class Service(object):
         """Total capacity of the service (i.e. the total number of tasks that
         can run at the same time).
         """
-        return sum(six.itervalues(self.list_resources()))
+        tc = Capacity()
+        for v in six.itervalues(self.list_resources()):
+            tc += v
+        return tc
 
     @abc.abstractmethod
     def list_resources(self):

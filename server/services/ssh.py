@@ -3,6 +3,7 @@ import paramiko
 
 from nmtwizard import common
 from nmtwizard.service import Service
+from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def _get_params(config, options):
     if params['server'] not in servers:
         raise ValueError('server %s not in server_pool list' % params['server'])
     params['gpus'] = servers[params['server']]['gpus']
-    params['ncpus'] = servers[params['server']]['ncpus']
+    params['cpus'] = servers[params['server']]['cpus']
 
     server_cfg = servers[params['server']]
 
@@ -57,10 +58,12 @@ class SSHService(Service):
                 server['gpus'] = []
             if 'port' not in server:
                 server['port'] = 22
-            if 'ncpus' not in server or server['ncpus'] == 0:
-                if len(server['gpus']) == 0:
-                    raise ValueError("ncpus and gpus missing in server `%s`" % server)
-                server['ncpus'] = 2 * len(server['gpus'])
+            if 'ncpus' in server:
+                if 'cpus' in server and len(server['cpus']) != server['ncpus']:
+                    raise ValueError("inconsistent ncpus and cpus option for server `%s`" % server)
+                server['cpus'] = range(server['ncpus'])
+            if 'cpus' not in server or len(server['cpus']) == 0:
+                    raise ValueError("cpus cannot be empty for server `%s`" % server)
         super(SSHService, self).__init__(config)
         self._resources = self._list_all_gpus()
         server_pool = config['variables']['server_pool']
@@ -73,7 +76,7 @@ class SSHService(Service):
         return gpus
 
     def list_resources(self):
-        return {_hostname(server): len(server['gpus'])
+        return {_hostname(server): Capacity(len(server['gpus']), len(server['cpus']))
                 for server in self._config['variables']['server_pool']}
 
     def list_servers(self):

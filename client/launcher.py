@@ -140,6 +140,8 @@ parser_launch.add_argument('-r', '--resource',
                            help="alternatively to `options`, resource name to use")
 parser_launch.add_argument('-g', '--gpus', type=int, default=1,
                            help='number of gpus')
+parser_launch.add_argument('-c', '--cpus', type=int,
+                           help='number of cpus - if not provided, will be obtained from pool config')
 parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                            help='if not 0, wait for this number of seconds after launch '
                                 'to check that launch is ok - by default wait for 2 seconds')
@@ -233,8 +235,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                         res.add_row(["  +-- "+r,
                                      "\n".join(result[k]['detail'][r]['usage']),
                                      result[k]['detail'][r]['reserved'],
-                                     '%d (%d)' % (result[k]['detail'][r]['capacity'],
-                                                  result[k]['detail'][r]['ncpus']),
+                                     '%d (%d)' % tuple(result[k]['detail'][r]['capacity']),
                                      'yes' if result[k]['detail'][r]['busy'] else '',
                                      err])
             if len(busymsg):
@@ -351,7 +352,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             "wait_after_launch": args.wait_after_launch,
             "trainer_id": args.trainer_id,
             "options": options,
-            "ngpus": args.gpus
+            "ngpus": args.gpus,
+            "ncpus": args.cpus
         }
 
         if args.name:

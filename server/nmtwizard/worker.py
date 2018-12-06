@@ -6,12 +6,12 @@ import sys
 
 from nmtwizard import task
 from nmtwizard import workeradmin
+from nmtwizard.capacity import Capacity
 
 
 class Worker(object):
 
-    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id,
-                 taskfile_dir):
+    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id, taskfile_dir):
         self._redis = redis
         self._service = next(iter(services))
         self._services = services
@@ -87,23 +87,10 @@ class Worker(object):
 
             # every 0.01s * refresh_counter - check if we can find some free resource
             if counter > self._refresh_counter:
-                resources = self._services[self._service].list_resources()
-                for resource in resources:
-                    keyr = 'gpu_resource:%s:%s' % (self._service, resource)
-                    key_busy = 'busy:%s:%s' % (self._service, resource)
-                    key_reserved = 'reserved:%s:%s' % (self._service, resource)
-                    if not self._redis.exists(key_busy) and \
-                       self._redis.hlen(keyr) < resources[resource]:
-                        if self._redis.exists(key_reserved) and \
-                           self._redis.ttl('queue:'+self._redis.get(key_reserved)) > 10:
-                            self._redis.expire('queue:'+self._redis.get(key_reserved), 5)
-                            break
-
                 # if there are some queued tasks, look for free resources
                 if self._redis.exists('queued:%s' % self._service):
                     self._logger.debug('checking processes on : %s', self._service)
                     self._service_unqueue(self._services[self._service])
-
                 counter = 0
 
             counter += 1
@@ -142,15 +129,13 @@ class Worker(object):
                             self._logger.warning('%s: depending on other task, waiting', task_id)
                             task.service_queue(self._redis, task_id, service.name)
                             return
-                ngpus = int(self._redis.hget(keyt, 'ngpus'))
-                ncpus = int(self._redis.hget(keyt, 'ncpus'))
-                resource, available_gpus = self._allocate_resource(task_id, resource, service,
-                                                                   ngpus, ncpus)
+                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+                resource, available_xpus = self._allocate_resource(task_id, resource, service, nxpus)
                 if resource is not None:
-                    self._logger.info('%s: resource %s reserved (%d/%d)',
-                                      task_id, resource, available_gpus, ngpus)
+                    self._logger.info('%s: resource %s reserved %s/%s',
+                                      task_id, resource, available_xpus, nxpus)
                     self._redis.hset(keyt, 'alloc_resource', resource)
-                    if ngpus == available_gpus:
+                    if nxpus == available_xpus:
                         task.set_status(self._redis, keyt, 'allocated')
                     else:
                         task.set_status(self._redis, keyt, 'allocating')
@@ -160,39 +145,48 @@ class Worker(object):
                     task.service_queue(self._redis, task_id, service.name)
             elif status == 'allocating':
                 resource = self._redis.hget(keyt, 'alloc_resource')
-                keyr = 'gpu_resource:%s:%s' % (service.name, resource)
-                ngpus = int(self._redis.hget(keyt, 'ngpus'))
-                ncpus = int(self._redis.hget(keyt, 'ncpus'))
-                already_allocated_gpus = 0
-                for k, v in six.iteritems(self._redis.hgetall(keyr)):
+                keygr = 'gpu_resource:%s:%s' % (service.name, resource)
+                keycr = 'cpu_resource:%s:%s' % (service.name, resource)
+                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+                already_allocated_xpus = Capacity()
+                for k, v in six.iteritems(self._redis.hgetall(keygr)):
                     if v == task_id:
-                        already_allocated_gpus += 1
+                        already_allocated_xpus.incr_ngpus(1)
+                for k, v in six.iteritems(self._redis.hgetall(keycr)):
+                    if v == task_id:
+                        already_allocated_xpus.incr_ncpus(1)
                 capacity = service.list_resources()[resource]
-                available_gpus, remaining_gpus = self._reserve_resource(
-                    service, resource, capacity, task_id,
-                    ngpus - already_allocated_gpus, ncpus, 0, -1, True)
+                available_xpus, remaining_xpus = self._reserve_resource(
+                                                    service, resource, capacity, task_id,
+                                                    nxpus - already_allocated_xpus, 0, -1, True)
                 self._logger.warning(
-                    'task: %s - resource: %s (capacity %d)- already %d - available %d',
-                    task_id, resource, capacity, already_allocated_gpus, available_gpus)
-                if available_gpus == ngpus - already_allocated_gpus:
+                    'task: %s - resource: %s (capacity %s)- already %s - available %s',
+                    task_id, resource, capacity, already_allocated_xpus, available_xpus)
+                if available_xpus == nxpus - already_allocated_xpus:
                     task.set_status(self._redis, keyt, 'allocated')
                     key_reserved = 'reserved:%s:%s' % (service.name, resource)
                     self._redis.delete(key_reserved)
                     task.work_queue(self._redis, task_id, service.name)
                 else:
                     task.work_queue(self._redis, task_id, service.name,
-                                    delay=service.is_notifying_activity and 120 or 30)
+                                    delay=20)
             elif status == 'allocated':
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
                 self._logger.info('%s: launching on %s', task_id, service.name)
                 try:
-                    keyr = 'gpu_resource:%s:%s' % (service.name, resource)
+                    keygr = 'gpu_resource:%s:%s' % (service.name, resource)
                     lgpu = []
-                    for k, v in six.iteritems(self._redis.hgetall(keyr)):
+                    for k, v in six.iteritems(self._redis.hgetall(keygr)):
                         if v == task_id:
                             lgpu.append(k)
                     self._redis.hset(keyt, 'alloc_lgpu', ",".join(lgpu))
+                    keycr = 'cpu_resource:%s:%s' % (service.name, resource)
+                    lcpu = []
+                    for k, v in six.iteritems(self._redis.hgetall(keycr)):
+                        if v == task_id:
+                            lcpu.append(k)
+                    self._redis.hset(keyt, 'alloc_lcpu', ",".join(lcpu))
                     data = service.launch(
                         task_id,
                         content['options'],
@@ -211,8 +205,8 @@ class Worker(object):
                     self._redis.hdel(keyt, 'alloc_resource')
                     # set the task as queued again
                     self._release_resource(service, resource, task_id,
-                                           int(self._redis.hget(keyt, 'ngpus')),
-                                           int(self._redis.hget(keyt, 'ncpus')))
+                                           Capacity(self._redis.hget(keyt, 'ngpus'),
+                                                    self._redis.hget(keyt, 'ncpus')))
                     task.set_status(self._redis, keyt, 'queued')
                     task.service_queue(self._redis, task_id, service.name)
                     self._logger.info('could not launch [%s] %s on %s: blocking resource',
@@ -255,8 +249,7 @@ class Worker(object):
 
             elif status == 'terminating':
                 data = self._redis.hget(keyt, 'job')
-                ngpus = int(self._redis.hget(keyt, 'ngpus'))
-                ncpus = int(self._redis.hget(keyt, 'ncpus'))
+                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
                 if data is not None:
                     container_id = self._redis.hget(keyt, 'container_id')
                     data = json.loads(data)
@@ -269,7 +262,7 @@ class Worker(object):
                         self._logger.warning('%s: failed to terminate', task_id)
                 resource = self._redis.hget(keyt, 'alloc_resource')
                 if resource:
-                    self._release_resource(service, resource, task_id, ngpus, ncpus)
+                    self._release_resource(service, resource, task_id, nxpus)
                 task.set_status(self._redis, keyt, 'stopped')
                 task.disable(self._redis, task_id)
 
@@ -280,100 +273,122 @@ class Worker(object):
         self._redis.set(keyb, err)
         self._redis.expire(keyb, self._quarantine_time)
 
-    def _allocate_resource(self, task_id, resource, service, ngpus, ncpus):
+    def _allocate_resource(self, task_id, resource, service, nxpus):
         """Allocates a resource for task_id and returns the name of the resource
-        (or None if none where allocated).
+           (or None if none where allocated), and the number of allocated gpus/cpus
         """
         best_resource = None
-        br_remaining = -1
-        br_available_gpus = 0
+        br_remaining_xpus = Capacity(-1, -1)
+        br_available_xpus = Capacity()
         resources = service.list_resources()
         if resource == 'auto':
             for name, capacity in six.iteritems(resources):
-                available_gpus, remaining_gpus = self._reserve_resource(
+                available_xpus, remaining_xpus = self._reserve_resource(
                     service, name, capacity, task_id,
-                    ngpus, ncpus, br_available_gpus, br_remaining)
-                if available_gpus is not False:
+                    nxpus, br_available_xpus, br_remaining_xpus)
+                if available_xpus is not False:
                     if best_resource is not None:
-                        self._release_resource(service, best_resource, task_id, ngpus, ncpus)
+                        self._release_resource(service, best_resource, task_id, nxpus)
                     best_resource = name
-                    br_remaining = remaining_gpus
-                    br_available_gpus = available_gpus
-            return best_resource, br_available_gpus
+                    br_remaining_xpus = remaining_xpus
+                    br_available_xpus = available_xpus
+            return best_resource, br_available_xpus
         elif resource not in resources:
             raise ValueError('resource %s does not exist for service %s' % (resource, service.name))
         else:
-            available_gpus, remaining_gpus = self._reserve_resource(
+            available_xpus, remaining_xpus = self._reserve_resource(
                 service, resource, resources[resource], task_id,
-                ngpus, ncpus, 0, -1)
-            if available_gpus:
-                return resource, available_gpus
+                nxpus, 0, -1)
+            if available_xpus:
+                return resource, available_xpus
         return None, None
 
-    def _reserve_resource(self, service, resource, capacity, task_id, ngpus, ncpus,
-                          br_available_gpus, br_remaining, check_reserved=False):
+    def _reserve_resource(self, service, resource, capacity, task_id, nxpus,
+                          br_available_xpus, br_remaining_xpus, check_reserved=False):
         """Reserves the resource for task_id, if possible. The resource is locked
         while we try to reserve it.
-        Resource should have more gpus available (within ngpus) than br_available_gpus
+        Resource should have more gpus available (within ngpus) than br_available_xpus
         or the same number but a smaller size
         """
-        if capacity < ngpus:
-            return False, False
-        keyr = 'gpu_resource:%s:%s' % (service.name, resource)
-        keyc = 'ncpus:%s:%s' % (service.name, resource)
-        key_busy = 'busy:%s:%s' % (service.name, resource)
-        key_reserved = 'reserved:%s:%s' % (service.name, resource)
-        with self._redis.acquire_lock(keyr):
-            if self._redis.get(key_busy) is not None:
-                return False, False
-            if ngpus == 0:
-                available_cpus = int(self._redis.get(keyc))
-                if ncpus <= available_cpus and available_cpus >= -br_remaining:
-                    self._logger.debug('**** 0 GPU required - reserving %s', resource)
-                    self._redis.rpush('cpu_resource:%s:%s' % (service.name, resource), task_id)
-                    self._redis.decr(keyc, ncpus)
-                    return 0, -available_cpus-1
-                else:
-                    return False, False
-            if not check_reserved and self._redis.get(key_reserved) is not None:
-                return False, False
-            current_usage = self._redis.hlen(keyr)
-            avail_gpu = capacity - current_usage
-            used_gpu = min(avail_gpu, ngpus)
-            remaining_gpus = capacity - used_gpu
-            if (used_gpu > 0 and ((used_gpu > br_available_gpus) or (
-                    used_gpu == br_available_gpus and remaining_gpus < br_remaining))):
-                idx = 1
-                for i in xrange(used_gpu):
-                    while self._redis.hget(keyr, str(idx)) is not None:
-                        idx += 1
-                        assert idx <= capacity, "invalid gpu alloc for %s" % keyr
-                    self._redis.hset(keyr, str(idx), task_id)
-                if used_gpu < ngpus:
-                    self._redis.set(key_reserved, task_id)
-                else:
-                    self._redis.decr(keyc, ncpus)
-                return used_gpu, remaining_gpus
-            else:
+        for idx, val in enumerate(capacity):
+            if val < nxpus[idx]:
                 return False, False
 
-    def _release_resource(self, service, resource, task_id, ngpus, ncpus):
+        keygr = 'gpu_resource:%s:%s' % (service.name, resource)
+        keycr = 'cpu_resource:%s:%s' % (service.name, resource)
+        key_busy = 'busy:%s:%s' % (service.name, resource)
+        key_reserved = 'reserved:%s:%s' % (service.name, resource)
+        with self._redis.acquire_lock(keygr):
+            if self._redis.get(key_busy) is not None:
+                return False, False
+            # if we need gpus
+            used_gpu = 0
+            used_cpu = 0
+            remaining_gpus = 0
+            remaining_cpus = 0
+
+            # allocate GPU first
+            if nxpus.ngpus != 0:
+                current_usage_gpu = self._redis.hlen(keygr)
+                avail_gpu = capacity.ngpus - current_usage_gpu
+                used_gpu = min(avail_gpu, nxpus.ngpus)
+                remaining_gpus = capacity.ngpus - used_gpu
+                if (used_gpu > 0 and ((used_gpu > br_available_xpus.ngpus) or
+                                      (used_gpu == br_available_xpus.ngpus and
+                                       remaining_gpus < br_remaining_xpus.ngpus))):
+                    idx = 1
+                    for i in xrange(used_gpu):
+                        while self._redis.hget(keygr, str(idx)) is not None:
+                            idx += 1
+                            assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
+                        self._redis.hset(keygr, str(idx), task_id)
+                else:
+                    return False, False
+
+            # if we don't need to allocate GPUs anymore, start allocating CPUs
+            if used_gpu == nxpus.ngpus and nxpus.ncpus != 0:
+                current_usage_cpu = self._redis.hlen(keycr)
+                avail_cpu = capacity.ncpus - current_usage_cpu
+                used_cpu = min(avail_cpu, nxpus.ncpus)
+                remaining_cpus = capacity.ncpus - used_cpu
+                if (used_cpu > 0 and (used_gpu != 0 or
+                                      (used_cpu > br_available_xpus.ncpus) or
+                                      (used_cpu == br_available_xpus.ncpus and
+                                       remaining_cpus < br_remaining_xpus.ncpus))):
+                    idx = 1
+                    for i in xrange(used_cpu):
+                        while self._redis.hget(keycr, str(idx)) is not None:
+                            idx += 1
+                            assert idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
+                        self._redis.hset(keycr, str(idx), task_id)
+                else:
+                    return False, False
+
+            if used_gpu < nxpus.ngpus or used_cpu < nxpus.ncpus:
+                self._redis.set(key_reserved, task_id)
+
+            return Capacity(used_gpu, used_cpu), Capacity(remaining_gpus, remaining_cpus)
+
+    def _release_resource(self, service, resource, task_id, nxpus):
         """remove the task from resource queue
         """
-        self._logger.debug('releasing resource:%s on service:%s for %s (ncpus: %d)',
-                           resource, service.name, task_id, ncpus)
-        if ngpus != 0:
-            keyr = 'gpu_resource:%s:%s' % (service.name, resource)
-            with self._redis.acquire_lock(keyr):
-                for k, v in six.iteritems(self._redis.hgetall(keyr)):
+        self._logger.debug('releasing resource:%s on service: %s for %s %s',
+                           resource, service.name, task_id, nxpus)
+        if nxpus.ngpus != 0:
+            keygr = 'gpu_resource:%s:%s' % (service.name, resource)
+            with self._redis.acquire_lock(keygr):
+                for k, v in six.iteritems(self._redis.hgetall(keygr)):
                     if v == task_id:
-                        self._redis.hdel(keyr, k)
-                key_reserved = 'reserved:%s:%s' % (service.name, resource)
-                if self._redis.get(key_reserved) == task_id:
-                    self._redis.delete(key_reserved)
-        if ncpus != 0:
-            self._redis.incr('ncpus:%s:%s' % (service.name, resource), ncpus)
-            self._redis.lrem('cpu_resource:%s:%s' % (service.name, resource), 0, task_id)
+                        self._redis.hdel(keygr, k)
+        if nxpus.ncpus != 0:
+            keycr = 'cpu_resource:%s:%s' % (service.name, resource)
+            with self._redis.acquire_lock(keycr):
+                for k, v in six.iteritems(self._redis.hgetall(keycr)):
+                    if v == task_id:
+                        self._redis.hdel(keycr, k)
+        key_reserved = 'reserved:%s:%s' % (service.name, resource)
+        if self._redis.get(key_reserved) == task_id:
+            self._redis.delete(key_reserved)
 
     def _service_unqueue(self, service):
         """find the best next task to push to the work queue
@@ -391,25 +406,31 @@ class Worker(object):
 
             # list free cpu/gpus on each node
             for resource in resources:
-                keyr = 'gpu_resource:%s:%s' % (self._service, resource)
-                keyc = 'ncpus:%s:%s' % (self._service, resource)
-                available_cpus = int(self._redis.get(keyc))
-                current_gpu_usage = 0
-                gpu_capacity = resources[resource]
-                for k, v in six.iteritems(self._redis.hgetall(keyr)):
+                keygr = 'gpu_resource:%s:%s' % (self._service, resource)
+                keycr = 'cpu_resource:%s:%s' % (self._service, resource)
+                current_xpu_usage = Capacity()
+                capacity = resources[resource]
+                for k, v in six.iteritems(self._redis.hgetall(keygr)):
                     if v in preallocated_task_count:
-                        preallocated_task_count[v] += 1
+                        preallocated_task_count[v].incr_ngpus(1)
                     else:
-                        preallocated_task_count[v] = 1
+                        preallocated_task_count[v] = Capacity(ngpus=1)
                         preallocated_task_resource[v] = resource
-                    current_gpu_usage += 1
-                available_gpus = gpu_capacity - current_gpu_usage
-                avail_resource[resource] = (available_cpus, available_gpus)
+                    current_xpu_usage.incr_ngpus(1)
+                for k, v in six.iteritems(self._redis.hgetall(keycr)):
+                    if v in preallocated_task_count:
+                        preallocated_task_count[v].incr_ncpus(1)
+                    else:
+                        preallocated_task_count[v] = Capacity(ncpus=1)
+                        preallocated_task_resource[v] = resource
+                    current_xpu_usage.incr_ncpus(1)
+                available_xpus = capacity - current_xpu_usage
+                avail_resource[resource] = available_xpus
                 key_reserved = 'reserved:%s:%s' % (service.name, resource)
                 reserved[resource] = self._redis.get(key_reserved)
-                self._logger.debug("\tresource %s - reserved: %s - free gpus: %d, cpus: %d",
+                self._logger.debug("\tresource %s - reserved: %s - free %s",
                                    resource, reserved[resource] or "False",
-                                   available_gpus, available_cpus)
+                                   available_xpus)
 
             # Go through the task, find if there are tasks that can be launched and
             # queue the best one
@@ -442,25 +463,24 @@ class Worker(object):
                                                    phase='dependency_error')
                                     continue
 
-                    ngpus = int(self._redis.hget(next_keyt, 'ngpus'))
-                    ncpus = int(self._redis.hget(next_keyt, 'ncpus'))
+                    nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
 
                     foundResource = False
                     if next_task_id in preallocated_task_count:
                         # if task is pre-allocated, can only continue on the same node
                         r = preallocated_task_resource[next_task_id]
-                        ngpus -= preallocated_task_count[next_task_id]
+                        xgpus -= preallocated_task_count[next_task_id]
                         avail_r = avail_resource[r]
-                        foundResource = (ngpus == 0 or avail_r[1] != 0) and (
-                                            ngpus != 0 or ncpus <= avail_r[1])
+                        foundResource = (nxpus.ngpus == 0 and avail_r.cpus != 0) or (
+                                            nxpus.ngpus != 0 and avail_r.gpus != 0)
                     else:
                         # can the task be launched on any node
                         for r, v in six.iteritems(avail_resource):
                             # cannot launch a new task on a reserved node
                             if reserved[r]:
                                 continue
-                            if ((ngpus > 0 and resources[r] >= ngpus and v[1] > 0) or
-                               (ngpus == 0 and v[0] >= ncpus)):
+                            if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus and v.ngpus > 0) or
+                               (nxpus.ngpus == 0 and v.ncpus >= 0)):
                                 foundResource = True
                                 break
                     if not foundResource:
