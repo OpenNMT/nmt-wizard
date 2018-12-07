@@ -406,6 +406,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             if "service" in result:
                 res += ("SERVICE %s - RESOURCE %s - CONTAINER %s\n" % (
                             result['service'], result.get('resource'), result.get('container_id')))
+            res += "USING GPUs: %s\n" % ", ".join(result.get('alloc_lgpu', []))
+            res += "USING CPUs: %s\n" % ", ".join(result.get('alloc_lcpu', []))
             res += "ATTACHED FILES: %s\n" % ', '.join(result['files'])
             res += "TIMELINE:\n"
             last = -1

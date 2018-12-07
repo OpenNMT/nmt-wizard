@@ -19,7 +19,7 @@ class Capacity(list):
         return self[1]
 
     def __add__(self, other):
-        return Capacity(self.ncpus + other.ncpus, self.ngpus + other.ngpus)
+        return Capacity(self.ngpus + other.ngpus, self.ncpus + other.ncpus)
 
     def __iadd__(self, other):
         self[0] += other.ngpus
@@ -27,7 +27,7 @@ class Capacity(list):
         return self
 
     def __sub__(self, other):
-        return Capacity(self.ncpus - other.ncpus, self.ngpus - other.ngpus)
+        return Capacity(self.ngpus - other.ngpus, self.ncpus - other.ncpus)
 
     def __isub__(self, other):
         self[0] -= other.ngpus

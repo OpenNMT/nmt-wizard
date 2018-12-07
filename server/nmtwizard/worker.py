@@ -158,11 +158,12 @@ class Worker(object):
                 capacity = service.list_resources()[resource]
                 available_xpus, remaining_xpus = self._reserve_resource(
                                                     service, resource, capacity, task_id,
-                                                    nxpus - already_allocated_xpus, 0, -1, True)
-                self._logger.warning(
+                                                    nxpus - already_allocated_xpus,
+                                                    Capacity(), Capacity(-1, -1), True)
+                self._logger.info(
                     'task: %s - resource: %s (capacity %s)- already %s - available %s',
                     task_id, resource, capacity, already_allocated_xpus, available_xpus)
-                if available_xpus == nxpus - already_allocated_xpus:
+                if available_xpus and available_xpus == nxpus - already_allocated_xpus:
                     task.set_status(self._redis, keyt, 'allocated')
                     key_reserved = 'reserved:%s:%s' % (service.name, resource)
                     self._redis.delete(key_reserved)
@@ -278,8 +279,8 @@ class Worker(object):
            (or None if none where allocated), and the number of allocated gpus/cpus
         """
         best_resource = None
-        br_remaining_xpus = Capacity(-1, -1)
         br_available_xpus = Capacity()
+        br_remaining_xpus = Capacity(-1, -1)
         resources = service.list_resources()
         if resource == 'auto':
             for name, capacity in six.iteritems(resources):

@@ -531,6 +531,10 @@ def status(task_id):
     else:
         fields = None
     response = task.info(redis, taskfile_dir, task_id, fields)
+    if response.get("alloc_lgpu") is not None:
+        response["alloc_lgpu"] = response["alloc_lgpu"].split(",")
+    if response.get("alloc_lcpu") is not None:
+        response["alloc_lcpu"] = response["alloc_lcpu"].split(",")
     return flask.jsonify(response)
 
 
@@ -563,8 +567,12 @@ def list_tasks(pattern):
         task_id = task.id(task_key)
         info = task.info(
                 redis, taskfile_dir, task_id,
-                ["launched_time", "alloc_resource", "alloc_lgpu", "resource", "content",
+                ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
                  "status", "message", "type", "iterations", "priority"])
+        if info["alloc_lgpu"] is not None:
+            info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
+        if info["alloc_lcpu"] is not None:
+            info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
         if info["content"] is not None and info["content"] != "":
             content = json.loads(info["content"])
             info["image"] = content['docker']['image']
