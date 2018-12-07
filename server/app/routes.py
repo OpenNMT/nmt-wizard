@@ -69,10 +69,10 @@ def _usagecapacity(service):
             count_map_cpu[t] += 1
             count_used_xpus.incr_ncpus(1)
 
-        detail[resource]['usage'] = ["%s %s: %d (%d)" % (task_type[k],
-                                                         k,
-                                                         count_map_gpu[k],
-                                                         count_map_cpu[k]) for k in count_map_gpu]
+        detail[resource]['usage'] = ["%s %s: %d (%d)" % (task_type[t],
+                                                         t,
+                                                         count_map_gpu[t],
+                                                         count_map_cpu[t]) for t in task_type]
         detail[resource]['avail_gpus'] = r_capacity.ngpus - count_used_xpus.ngpus
         detail[resource]['avail_cpus'] = r_capacity.ncpus - count_used_xpus.ncpus
         err = redis.get("busy:%s:%s" % (service.name, resource))
@@ -86,12 +86,13 @@ def _usagecapacity(service):
             busy, detail)
 
 
-def _find_compatible_resource(service_module, ngpus, ncpus):
+def _find_compatible_resource(service, ngpus, ncpus):
     for resource in service.list_resources():
         capacity = service.list_resources()[resource]
         if ngpus <= capacity.ngpus and (ncpus is None or ncpus <= capacity.ncpus):
             return True
     return False
+
 
 def task_request(func):
     """minimal check on the request to check that tasks exists"""
@@ -397,7 +398,7 @@ def launch(service):
         ngpus = content["ngpus"]
     ncpus = content.get("ncpus")
     # check that we have a resource able to run such a request
-    if _find_compatible_resource(service_module, ngpus, ncpus):
+    if not _find_compatible_resource(service_module, ngpus, ncpus):
         abort(flask.make_response(
                     flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
                                   (service, ngpus, ncpus and str(ncpus) or "-")), 400))

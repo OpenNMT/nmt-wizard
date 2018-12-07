@@ -136,7 +136,7 @@ class SSHService(Service):
     def launch(self,
                task_id,
                options,
-               gpulist,
+               xpulist,
                resource,
                docker_registry,
                docker_image,
@@ -161,7 +161,7 @@ class SSHService(Service):
             task = common.launch_task(
                 task_id,
                 client,
-                gpulist,
+                xpulist,
                 params['log_dir'],
                 self._config['docker'],
                 docker_registry,

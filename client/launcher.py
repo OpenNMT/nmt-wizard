@@ -235,7 +235,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                         res.add_row(["  +-- "+r,
                                      "\n".join(result[k]['detail'][r]['usage']),
                                      result[k]['detail'][r]['reserved'],
-                                     '%d (%d)' % tuple(result[k]['detail'][r]['capacity']),
+                                     '(%d,%d)' % tuple(result[k]['detail'][r]['capacity']),
                                      'yes' if result[k]['detail'][r]['busy'] else '',
                                      err])
             if len(busymsg):
@@ -259,8 +259,9 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                 date = datetime.fromtimestamp(
                     math.ceil(float(k.get("launched_time", 0)))).isoformat(' ')
                 resource = k["alloc_resource"] or k["resource"]
-                if "alloc_lgpu" in k and k["alloc_lgpu"] is not None:
-                    resource += ':' + k["alloc_lgpu"]
+                if k.get("alloc_lgpu") is not None or k.get("alloc_lcpu") is not None:
+                    resource += ':(%d,%d)' % (len(k.get("alloc_lgpu", [])),
+                                              len(k.get("alloc_lcpu", [])))
                 p = k["image"].find('/')
                 if p != -1:
                     k["image"] = k["image"][p+1:]

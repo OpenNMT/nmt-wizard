@@ -145,13 +145,13 @@ class Worker(object):
                     task.service_queue(self._redis, task_id, service.name)
             elif status == 'allocating':
                 resource = self._redis.hget(keyt, 'alloc_resource')
-                keygr = 'gpu_resource:%s:%s' % (service.name, resource)
-                keycr = 'cpu_resource:%s:%s' % (service.name, resource)
                 nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
                 already_allocated_xpus = Capacity()
+                keygr = 'gpu_resource:%s:%s' % (service.name, resource)
                 for k, v in six.iteritems(self._redis.hgetall(keygr)):
                     if v == task_id:
                         already_allocated_xpus.incr_ngpus(1)
+                keycr = 'cpu_resource:%s:%s' % (service.name, resource)
                 for k, v in six.iteritems(self._redis.hgetall(keycr)):
                     if v == task_id:
                         already_allocated_xpus.incr_ncpus(1)
@@ -190,7 +190,7 @@ class Worker(object):
                     data = service.launch(
                         task_id,
                         content['options'],
-                        lgpu,
+                        (lgpu, lcpu),
                         resource,
                         content['docker']['registry'],
                         content['docker']['image'],
@@ -297,8 +297,8 @@ class Worker(object):
             raise ValueError('resource %s does not exist for service %s' % (resource, service.name))
         else:
             available_xpus, remaining_xpus = self._reserve_resource(
-                service, resource, resources[resource], task_id,
-                nxpus, 0, -1)
+                                            service, resource, resources[resource], task_id, nxpus,
+                                            br_remaining_xpus, br_available_xpus)
             if available_xpus:
                 return resource, available_xpus
         return None, None
@@ -327,12 +327,13 @@ class Worker(object):
             remaining_gpus = 0
             remaining_cpus = 0
 
-            # allocate GPU first
+            # allocate GPU first. For GPU we want to minimise the fragmentation, so minimize
+            # br_remainining_xpus.ngpus
             if nxpus.ngpus != 0:
                 current_usage_gpu = self._redis.hlen(keygr)
                 avail_gpu = capacity.ngpus - current_usage_gpu
                 used_gpu = min(avail_gpu, nxpus.ngpus)
-                remaining_gpus = capacity.ngpus - used_gpu
+                remaining_gpus = avail_gpu - used_gpu
                 if (used_gpu > 0 and ((used_gpu > br_available_xpus.ngpus) or
                                       (used_gpu == br_available_xpus.ngpus and
                                        remaining_gpus < br_remaining_xpus.ngpus))):
@@ -346,15 +347,17 @@ class Worker(object):
                     return False, False
 
             # if we don't need to allocate GPUs anymore, start allocating CPUs
+            # for CPU we want to maximize the remaining CPU to avoid loading too much
+            # individual servers
             if used_gpu == nxpus.ngpus and nxpus.ncpus != 0:
                 current_usage_cpu = self._redis.hlen(keycr)
                 avail_cpu = capacity.ncpus - current_usage_cpu
                 used_cpu = min(avail_cpu, nxpus.ncpus)
-                remaining_cpus = capacity.ncpus - used_cpu
+                remaining_cpus = avail_cpu - used_cpu
                 if (used_cpu > 0 and (used_gpu != 0 or
                                       (used_cpu > br_available_xpus.ncpus) or
                                       (used_cpu == br_available_xpus.ncpus and
-                                       remaining_cpus < br_remaining_xpus.ncpus))):
+                                       remaining_cpus > br_remaining_xpus.ncpus))):
                     idx = 1
                     for i in xrange(used_cpu):
                         while self._redis.hget(keycr, str(idx)) is not None:
@@ -406,10 +409,9 @@ class Worker(object):
 
             # list free cpu/gpus on each node
             for resource in resources:
-                keygr = 'gpu_resource:%s:%s' % (self._service, resource)
-                keycr = 'cpu_resource:%s:%s' % (self._service, resource)
                 current_xpu_usage = Capacity()
                 capacity = resources[resource]
+                keygr = 'gpu_resource:%s:%s' % (self._service, resource)
                 for k, v in six.iteritems(self._redis.hgetall(keygr)):
                     if v in preallocated_task_count:
                         preallocated_task_count[v].incr_ngpus(1)
@@ -417,6 +419,7 @@ class Worker(object):
                         preallocated_task_count[v] = Capacity(ngpus=1)
                         preallocated_task_resource[v] = resource
                     current_xpu_usage.incr_ngpus(1)
+                keycr = 'cpu_resource:%s:%s' % (self._service, resource)
                 for k, v in six.iteritems(self._redis.hgetall(keycr)):
                     if v in preallocated_task_count:
                         preallocated_task_count[v].incr_ncpus(1)

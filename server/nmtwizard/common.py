@@ -361,7 +361,7 @@ def update_log(task_id,
 
 def launch_task(task_id,
                 client,
-                lgpu,
+                lxpu,
                 log_dir,
                 docker_options,
                 the_docker_registry,
@@ -388,6 +388,7 @@ def launch_task(task_id,
         * `callback_url`: server to callback for beat of activity
         * `callback_interval`: time between 2 beats
     """
+    (lgpu, lcpu) = lxpu
     gpu_id = ",".join([gpu_id for gpu_id in lgpu])
     logger.info("launching task - %s / %s", task_id, gpu_id)
     logger.debug("check environment for task %s", task_id)

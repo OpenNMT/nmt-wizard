@@ -138,7 +138,6 @@ servers = services[service].list_servers()
 redis.delete('admin:resources:'+service)
 for resource in resources:
     redis.lpush('admin:resources:'+service, resource)
-    keycr = 'cpu_resource:%s:%s' % (service, resource)
     keygr = 'gpu_resource:%s:%s' % (service, resource)
     running_tasks = redis.hgetall(keygr)
     for g, task_id in six.iteritems(running_tasks):
@@ -146,7 +145,8 @@ for resource in resources:
             status = redis.hget('task:'+task_id, 'status')
             if not(status == 'running' or status == 'terminating'):
                 redis.hdel(keygr, g)
-    running_tasks = redis.hgetall(keygr)
+    keycr = 'cpu_resource:%s:%s' % (service, resource)
+    running_tasks = redis.hgetall(keycr)
     for c, task_id in six.iteritems(running_tasks):
         with redis.acquire_lock(task_id):
             status = redis.hget('task:'+task_id, 'status')
