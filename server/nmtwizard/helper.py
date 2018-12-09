@@ -324,6 +324,14 @@ def build_task_id(content, xxyy, task_type, parent_task):
     return task_id
 
 
+def get_cpu_count(config, ngpus, task):
+    if "cpu_allocation" in config:
+        if ngpus > 0:
+            return config["cpu_allocation"].get("gpu_task", 2)
+        return config["cpu_allocation"].get("%s_task" % task, 2)
+    return 2
+
+
 def boolean_param(value):
     return not(value is None or
                value is False or

@@ -15,6 +15,7 @@ from app import app, redis, get_version, ch, taskfile_dir
 from nmtwizard import common, task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
+from nmtwizard.helper import get_cpu_count
 from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
@@ -329,6 +330,10 @@ def launch(service):
         abort(make_response(jsonify(message="insufficient credentials for train "
                                             "(entity %s)" % pool_entity), 403))
 
+    current_configuration_name = redis.hget("admin:service:%s" % service, "current_configuration")
+    configurations = json.loads(redis.hget("admin:service:%s" % service, "configurations"))
+    current_configuration = json.loads(configurations[current_configuration_name][1])
+
     content = flask.request.form.get('content')
     if content is not None:
         content = json.loads(content)
@@ -416,9 +421,12 @@ def launch(service):
         chain_prepr_train = (not content.get("nochainprepr", False) and
                              task_type == "train" and
                              semver.match(docker_version, ">=1.4.0"))
+        trans_as_release = (not content.get("notransasrelease", False) and
+                            semver.match(docker_version, ">=1.8.0"))
     except ValueError as err:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
+        trans_as_release = False
 
     priority = content.get("priority", 0)
 
@@ -455,12 +463,17 @@ def launch(service):
             prepr_command.append("--build_model")
 
             content["docker"]["command"] = prepr_command
+
+            content["ncpus"] = ncpus or \
+                get_cpu_count(current_configuration, 0, "preprocess")
+            content["ncpus"] = 0
+
             # launch preprocess task on cpus only
             task_create.append(
                     (redis, taskfile_dir,
                      prepr_task_id, "prepr", parent_task_id, resource, service,
                      deepcopy(content), files, priority, 0, 2, {}))
-            task_ids.append("%s\t%s\tngpus: %d" % ("prepr", prepr_task_id, 0))
+            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, 2))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
             parent_task_id = prepr_task_id
@@ -468,24 +481,44 @@ def launch(service):
 
         if task_type != "prepr":
             task_id = build_task_id(content, xxyy, task_type, parent_task_id)
+
+            content["ncpus"] = ncpus or \
+                get_cpu_count(current_configuration, ngpus, task_type)
+            content["ngpus"] = ngpus
+
             task_create.append(
                     (redis, taskfile_dir,
                      task_id, task_type, parent_task_id, resource, service, deepcopy(content),
-                     files, priority, ngpus, 2, {}))
-            task_ids.append("%s\t%s\tngpus: %d" % (task_type, task_id, ngpus))
+                     files, priority,
+                     content["ngpus"], content["ncpus"],
+                     {}))
+            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                        task_type, task_id,
+                        content["ngpus"], content["ncpus"]))
             parent_task_type = task_type[:5]
             remove_config_option(content["docker"]["command"])
+
             if totranslate:
                 content_translate = deepcopy(content)
-                content_translate["priority"] = priority+1
-                content_translate["ngpus"] = min(ngpus, 1)
-                if ngpus == 0:
+                content_translate["priority"] = priority + 1
+                if trans_as_release:
+                    content_translate["ngpus"] = 0
+                else:
+                    content_translate["ngpus"] = min(ngpus, 1)
+
+                content_translate["ncpus"] = ncpus or \
+                    get_cpu_count(current_configuration,
+                                  content_translate["ngpus"], "trans")
+
+                if ngpus == 0 or trans_as_release:
                     file_per_gpu = len(totranslate)
                 else:
                     file_per_gpu = (len(totranslate)+ngpus-1) / ngpus
                 subset_idx = 0
                 while subset_idx * file_per_gpu < len(totranslate):
                     content_translate["docker"]["command"] = ["trans"]
+                    if trans_as_release:
+                        content_translate["docker"]["command"].append("--as_release")
                     content_translate["docker"]["command"].append('-i')
                     subset_totranslate = totranslate[subset_idx*file_per_gpu:
                                                      (subset_idx+1)*file_per_gpu]
@@ -501,9 +534,12 @@ def launch(service):
                             (redis, taskfile_dir,
                              trans_task_id, "trans", task_id, resource, service,
                              deepcopy(content_translate),
-                             (), content_translate["priority"], content_translate["ngpus"], 2, {}))
-                    task_ids.append("%s\t%s\tngpus: %d" % ("trans", trans_task_id,
-                                                           content_translate["ngpus"]))
+                             (), content_translate["priority"],
+                             content_translate["ngpus"], content_translate["ncpus"],
+                             {}))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                                           "trans", trans_task_id,
+                                           content_translate["ngpus"], content_translate["ncpus"]))
                     subset_idx += 1
         iterations -= 1
         if iterations > 0:
@@ -531,9 +567,9 @@ def status(task_id):
     else:
         fields = None
     response = task.info(redis, taskfile_dir, task_id, fields)
-    if response.get("alloc_lgpu") is not None:
+    if response.get("alloc_lgpu"):
         response["alloc_lgpu"] = response["alloc_lgpu"].split(",")
-    if response.get("alloc_lcpu") is not None:
+    if response.get("alloc_lcpu"):
         response["alloc_lcpu"] = response["alloc_lcpu"].split(",")
     return flask.jsonify(response)
 
@@ -569,11 +605,11 @@ def list_tasks(pattern):
                 redis, taskfile_dir, task_id,
                 ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
                  "status", "message", "type", "iterations", "priority"])
-        if info["alloc_lgpu"] is not None:
+        if info["alloc_lgpu"]:
             info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
-        if info["alloc_lcpu"] is not None:
+        if info["alloc_lcpu"]:
             info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
-        if info["content"] is not None and info["content"] != "":
+        if info["content"]:
             content = json.loads(info["content"])
             info["image"] = content['docker']['image']
             del info['content']

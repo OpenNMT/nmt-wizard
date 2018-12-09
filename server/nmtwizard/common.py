@@ -279,20 +279,21 @@ def cmd_docker_pull(image_ref, docker_path=None):
     return '%sdocker pull %s' % (path, image_ref)
 
 
-def cmd_docker_run(gpu_id, docker_options, task_id,
+def cmd_docker_run(lxpu, docker_options, task_id,
                    docker_image, image_ref, callback_url, callback_interval,
-                   storages, docker_command, log_dir=None, sep=" "):
+                   storages, docker_command, log_dir=None):
+    (lgpu, lcpu) = lxpu
     env = {}
-    nbgpu = len(gpu_id)
+    nbgpu = len(lgpu)
     nv_gpu = ''
-    if nbgpu == 0 or (nbgpu == 1 and gpu_id[0] == 0):
+    if nbgpu == 0 or (nbgpu == 1 and lgpu[0] == 0):
         gpu_id = '0'
     else:
-        env['NV_GPU'] = str(",".join([str(int(g)-1) for g in gpu_id]))
+        env['NV_GPU'] = ",".join([str(int(g)-1) for g in lgpu])
         gpu_id = ",".join([str(v) for v in range(1, nbgpu+1)])
 
     if docker_options.get('dev') == 1:
-        return "sleep%s35" % sep
+        return "sleep 35"
     else:
         docker_cmd = 'docker' if gpu_id == '0' else 'nvidia-docker'
         docker_path = docker_options.get('path')
@@ -312,6 +313,9 @@ def cmd_docker_run(gpu_id, docker_options, task_id,
                     # specific options for a given image
                     for ks, vs in six.iteritems(v[docker_image]):
                         cmd += '_o_-e_o_%s=%s' % (ks, vs)
+
+        cmd += '_o_-e_o_NB_CPU=%d' % len(lcpu)
+        cmd += '_o_--cpuset-cpus_o_%s' % ",".join([str(v) for v in lcpu])
 
         # mount TMP_DIR used to store potential transfered files
         cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id
@@ -466,7 +470,7 @@ def launch_task(task_id,
         if exit_status != 0:
             raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
 
-    cmd, env = cmd_docker_run(lgpu, docker_options, task_id,
+    cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
                               storages, docker_command, log_dir)
 
