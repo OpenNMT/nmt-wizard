@@ -70,9 +70,16 @@ The configuration file has the following structure:
     "disabled": [01],  // Boolean field to disable/enable the service.
     "storages": {  // Storage configuration as described in single-training-docker.
     },
+    "cpu_allocation": { // define default number of cpu allocated for the different tasks
+          "gpu_task": 2,
+          "preprocess_task": 4,
+          "trans_task": 4,
+          "buildvocab_task": 4,
+          "release_task": 2
+    },
     "callback_url": "http://LAUNCHER_URL",
     "callback_interval": 60,
-    "ttl_policy" : [
+    "ttl_policy" : [ // define the time to live policy for completed task in the database
         { 
             "pattern": {
                 "status": "stopped",
@@ -84,7 +91,7 @@ The configuration file has the following structure:
 }
 ```
 
-where `variables` is a list of possible options for the service. The structure of these options is specific to each service. These options are transformed into simple key/LIST,FIELDS by the `describe` route to enable simple and generic UI selection of multiple variants.
+where `variables` is a list of possible options for the service. The structure of some of these options is specific to each service. Common options are described below.
 
 Template files are provided in `config/templates` and can be used as a basis for configuring services.
 
