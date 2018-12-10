@@ -3,6 +3,7 @@
 ## [v1.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.3.0) (2018-12-10)
 
 * (worker) refactor cpu allocation - are now allocated like gpu
+* (launcher) automatic translation tasks are now by default launched with `--as_release`
 
 ## [v1.2.5](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.5) (2018-11-28)
 
