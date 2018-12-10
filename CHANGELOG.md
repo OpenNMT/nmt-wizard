@@ -1,6 +1,6 @@
 ## Unreleased
 
-## [v1.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.2.5) (2018-12-10)
+## [v1.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.3.0) (2018-12-10)
 
 * (worker) refactor cpu allocation - are now allocated like gpu
 
