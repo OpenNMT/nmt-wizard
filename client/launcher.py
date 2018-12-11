@@ -261,7 +261,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                 date = datetime.fromtimestamp(
                     math.ceil(float(k.get("launched_time", 0)))).isoformat(' ')
                 resource = k["alloc_resource"] or k["resource"]
-                if k.get("alloc_lgpu") is not None or k.get("alloc_lcpu") is not None:
+                if k.get("alloc_lgpu") is not None and k.get("alloc_lcpu") is not None:
                     resource += ':(%d,%d)' % (len(k.get("alloc_lgpu", [])),
                                               len(k.get("alloc_lcpu", [])))
                 p = k["image"].find('/')
