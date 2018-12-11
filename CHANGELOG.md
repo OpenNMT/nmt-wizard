@@ -1,5 +1,9 @@
 ## Unreleased
 
+## [v1.3.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.3.1) (2018-12-11)
+
+* (client) backward compatibility for `lt`
+
 ## [v1.3.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.3.0) (2018-12-10)
 
 * (worker) refactor cpu allocation - are now allocated like gpu
