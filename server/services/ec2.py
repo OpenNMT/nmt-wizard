@@ -13,13 +13,24 @@ from nmtwizard.capacity import Capacity
 logger = logging.getLogger(__name__)
 
 
-def _run_instance(client, launch_template_name, dry_run=False):
+def _run_instance(client, launch_template_name, task_id="None", dry_run=False):
     return client.run_instances(
         MaxCount=1,
         MinCount=1,
         DryRun=dry_run,
         LaunchTemplate={
-            "LaunchTemplateName": launch_template_name})
+            "LaunchTemplateName": launch_template_name},
+        TagSpecifications=[
+            {
+                'ResourceType': 'instance',
+                'Tags': [
+                    {
+                        'Key': 'task_id',
+                        'Value': task_id
+                    },
+                ]
+            }
+        ])
 
 
 def _get_params(templates, options):
@@ -144,7 +155,7 @@ class EC2Service(Service):
         options['server'] = resource
         params = _get_params(self._templates, options)
         ec2_client = self._session.client("ec2")
-        response = _run_instance(ec2_client, params["name"])
+        response = _run_instance(ec2_client, params["name"], task_id=task_id)
         if response is None:
             raise RuntimeError("empty response from boto3.run_instances")
         if not response["Instances"]:
