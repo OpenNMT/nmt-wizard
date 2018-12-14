@@ -329,11 +329,18 @@ def cmd_docker_run(lxpu, docker_options, task_id,
             cmd += '_o_-s_o_%s' % v
 
             # if model storage is not specified, check if there is a default
-            # model storage
-            if '-ms' not in docker_command:
+            # model storage (in read/write or both)
+            if '-ms' not in docker_command and ('-msr' not in docker_command or
+                                                '-msw' not in docker_command):
                 for s in storages:
                     if storages[s].get('default_ms'):
                         docker_command = ['-ms', s + ':'] + docker_command
+                        break
+                    elif storages[s].get('default_msr') and '-msr' not in docker_command:
+                        docker_command = ['-msr', s + ':'] + docker_command
+                        break
+                    elif storages[s].get('default_msw') and '-msw' not in docker_command:
+                        docker_command = ['-msw', s + ':'] + docker_command
                         break
 
         cmd += '_o_-g_o_%s' % gpu_id

@@ -128,7 +128,6 @@ for task_id in task.list_active(redis, service):
 
 # Desallocate all resources that are not anymore associated to a running task
 resources = services[service].list_resources()
-servers = services[service].list_servers()
 
 # TODO:
 # if multiple workers are for same service with different configurations

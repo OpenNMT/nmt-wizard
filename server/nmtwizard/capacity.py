@@ -35,7 +35,11 @@ class Capacity(list):
         return self
 
     def __lt__(self, other):
-        return self.ngpus < other.ngpus and self.ncpus < other.ncpus
+        return (self.ngpus == other.ngpus and self.ncpus < other.ncpus) \
+               or self.ngpus < other.ngpus
+
+    def __le__(self, other):
+        return self == other or self < other
 
     def __eq__(self, other):
         return self.ngpus == other.ngpus and self.ncpus == other.ncpus

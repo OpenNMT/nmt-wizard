@@ -37,6 +37,8 @@ def create(redis, taskfile_dir,
     redis.hset(keyt, "type", task_type)
     if parent_task:
         redis.hset(keyt, "parent", parent_task)
+    if isinstance(resource, list):
+        resource = ",".join(resource)
     redis.hset(keyt, "resource", resource)
     redis.hset(keyt, "service", service)
     redis.hset(keyt, "content", json.dumps(content))

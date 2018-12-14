@@ -35,13 +35,31 @@ def get_service(service):
     return pickle.loads(def_string)
 
 
+def _duplicate_adapt(service, content):
+    """Duplicate content and apply service-specification modifications
+    """
+    dup_content = deepcopy(content)
+    # command = dup_content["docker"]["command"]
+    # if "--no_push" in command and service.temporary_ms:
+    #     new_command = ['-ms', service.temporary_ms+":"]
+    #     idx = 0
+    #     while idx < len(command):
+    #         c = command[idx]
+    #         if c == '-ms' or c == '--model_storage':
+    #             idx += 1
+    #         elif c != '--no_push':
+    #             new_command.append(c)
+    #         idx += 1
+    #     dup_content["docker"]["command"] = new_command
+    return dup_content
+
+
 def _usagecapacity(service):
     """calculate the current usage of the service."""
     usage_xpu = Capacity()
     capacity_xpus = Capacity()
     busy = 0
     detail = {}
-    servers = service.list_servers()
     for resource in service.list_resources():
         detail[resource] = {'busy': '', 'reserved': ''}
         r_capacity = service.list_resources()[resource]
@@ -87,11 +105,13 @@ def _usagecapacity(service):
             busy, detail)
 
 
-def _find_compatible_resource(service, ngpus, ncpus):
+def _find_compatible_resource(service, ngpus, ncpus, request_resource):
     for resource in service.list_resources():
-        capacity = service.list_resources()[resource]
-        if ngpus <= capacity.ngpus and (ncpus is None or ncpus <= capacity.ncpus):
-            return True
+        if request_resource == 'auto' or resource == request_resource or \
+                (isinstance(request_resource, list) and resource in request_resource):
+            capacity = service.list_resources()[resource]
+            if ngpus <= capacity.ngpus and (ncpus is None or ncpus <= capacity.ncpus):
+                return True
     return False
 
 
@@ -390,6 +410,7 @@ def launch(service):
         content['docker']['registry'] = registry
     elif content['docker']['registry'] not in service_module._config['docker']['registries']:
         abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
+
     resource = service_module.get_resource_from_options(content["options"])
 
     iterations = 1
@@ -402,8 +423,9 @@ def launch(service):
     if "ngpus" in content:
         ngpus = content["ngpus"]
     ncpus = content.get("ncpus")
+
     # check that we have a resource able to run such a request
-    if not _find_compatible_resource(service_module, ngpus, ncpus):
+    if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
         abort(flask.make_response(
                     flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
                                   (service, ngpus, ncpus and str(ncpus) or "-")), 400))
@@ -466,14 +488,18 @@ def launch(service):
 
             content["ncpus"] = ncpus or \
                 get_cpu_count(current_configuration, 0, "preprocess")
-            content["ncpus"] = 0
+            content["ngpus"] = 0
+
+            preprocess_resource = service_module.select_resource_from_capacity(
+                                            resource, Capacity(content["ngpus"], content["ncpus"]))
 
             # launch preprocess task on cpus only
             task_create.append(
                     (redis, taskfile_dir,
-                     prepr_task_id, "prepr", parent_task_id, resource, service,
-                     deepcopy(content), files, priority, 0, 2, {}))
-            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, 2))
+                     prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
+                     _duplicate_adapt(service_module, content),
+                     files, priority, 0, content["ncpus"], {}))
+            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
             parent_task_id = prepr_task_id
@@ -486,9 +512,14 @@ def launch(service):
                 get_cpu_count(current_configuration, ngpus, task_type)
             content["ngpus"] = ngpus
 
+            task_resource = service_module.select_resource_from_capacity(
+                                            resource, Capacity(content["ngpus"],
+                                                               content["ncpus"]))
+
             task_create.append(
                     (redis, taskfile_dir,
-                     task_id, task_type, parent_task_id, resource, service, deepcopy(content),
+                     task_id, task_type, parent_task_id, task_resource, service,
+                     _duplicate_adapt(service_module, content),
                      files, priority,
                      content["ngpus"], content["ncpus"],
                      {}))
@@ -509,6 +540,10 @@ def launch(service):
                 content_translate["ncpus"] = ncpus or \
                     get_cpu_count(current_configuration,
                                   content_translate["ngpus"], "trans")
+
+                translate_resource = service_module.select_resource_from_capacity(
+                                                resource, Capacity(content_translate["ngpus"],
+                                                                   content_translate["ncpus"]))
 
                 if ngpus == 0 or trans_as_release:
                     file_per_gpu = len(totranslate)
@@ -532,8 +567,8 @@ def launch(service):
                     trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
                     task_create.append(
                             (redis, taskfile_dir,
-                             trans_task_id, "trans", task_id, resource, service,
-                             deepcopy(content_translate),
+                             trans_task_id, "trans", task_id, translate_resource, service,
+                             _duplicate_adapt(service_module, content_translate),
                              (), content_translate["priority"],
                              content_translate["ngpus"], content_translate["ncpus"],
                              {}))

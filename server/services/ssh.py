@@ -66,7 +66,9 @@ class SSHService(Service):
                     raise ValueError("cpus cannot be empty for server `%s`" % server)
         super(SSHService, self).__init__(config)
         self._resources = self._list_all_gpus()
-        server_pool = config['variables']['server_pool']
+
+    def resource_multitask(self):
+        return True
 
     def _list_all_gpus(self):
         gpus = []
@@ -77,10 +79,6 @@ class SSHService(Service):
 
     def list_resources(self):
         return {_hostname(server): Capacity(len(server['gpus']), len(server['cpus']))
-                for server in self._config['variables']['server_pool']}
-
-    def list_servers(self):
-        return {_hostname(server): server
                 for server in self._config['variables']['server_pool']}
 
     def get_resource_from_options(self, options):

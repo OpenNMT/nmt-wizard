@@ -21,7 +21,7 @@ The configuration file has the following structure:
     "name": "my-service",  // The short name the user will select.
     "description": "My service",  // Display name of the service.
     "module": "services.XXX",  // Name of the Python module managing the service.
-    "variables": {
+    "variables": { // Non-Service specific configurations.
         "key1": [ "value1", "value2" ],
         ...
     },
@@ -65,7 +65,7 @@ The configuration file has the following structure:
         },
         "path": "" // if provided, will be used to select default path for docker command on remote service.
     },
-    "skey1": "svalue1",  // Service specific configurations.
+    "skey1": "svalue1",  // Non-Service specific configurations.
     ...,
     "disabled": [01],  // Boolean field to disable/enable the service.
     "storages": {  // Storage configuration as described in single-training-docker.

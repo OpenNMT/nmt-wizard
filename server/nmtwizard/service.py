@@ -14,6 +14,35 @@ class Service(object):
 
     def __init__(self, config):
         self._config = config
+        self._default_ms = None
+        self._default_msr = None
+        self._default_msw = None
+        self._temporary_ms = None
+        if "storages" in config:
+            for storage_name, storage_desc in six.iteritems(config["storages"]):
+                if storage_desc.get("temporary_ms"):
+                    self._temporary_ms = storage_name
+                elif storage_desc.get("default_ms"):
+                    self._default_ms = storage_name
+                elif storage_desc.get("default_msr"):
+                    self._default_msr = storage_name
+                elif storage_desc.get("default_msw"):
+                    self._default_msw = storage_name
+        # check exclusivity of default_msr/default_msw and default_ms
+        if self._default_ms and (self._default_msr or self._default_msw):
+            raise ValueError('default_ms and default_ms[rw] are exclusive')
+
+    def __getstate__(self):
+        """Return state values to be pickled."""
+        return (self._config, self._resources)
+
+    def __setstate__(self, state):
+        """Restore state from the unpickled state values."""
+        self._config, self._resources = state
+
+    @property
+    def temporary_ms(self):
+        return self._temporary_ms
 
     @property
     def name(self):
@@ -39,6 +68,11 @@ class Service(object):
             tc += v
         return tc
 
+    @property
+    @abc.abstractmethod
+    def resource_multitask(self):
+        raise NotImplementedError()
+
     @abc.abstractmethod
     def list_resources(self):
         """Lists resources covered by the service.
@@ -62,6 +96,19 @@ class Service(object):
           describe().
         """
         raise NotImplementedError()
+
+    def select_resource_from_capacity(self, request_resource, capacity):
+        """Given expected capacity, restrict or not resource list to the capacity
+
+        Args:
+          request_resource: name of a resource, 'auto', or list of resource name
+          capacity: expected capacity - see Capacity
+
+        Returns:
+          New resource name/auto/resource list
+        """
+
+        return request_resource
 
     def describe(self):
         """Describe the service options.

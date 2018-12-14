@@ -50,6 +50,12 @@ def getjson(config):
         return json.load(data)
 
 
+def _truncate_string(s, n=25):
+    if len(s) > n:
+        return s[:22]+"..."
+    return s
+
+
 def find_files_parameters(v, files):
     if isinstance(v, six.string_types) and v.startswith('/') and os.path.exists(v):
         global_basename = os.path.basename(v)
@@ -260,7 +266,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             for k in sorted(result, key=lambda k: float(float(k.get("launched_time", 0)))):
                 date = datetime.fromtimestamp(
                     math.ceil(float(k.get("launched_time", 0)))).isoformat(' ')
-                resource = k["alloc_resource"] or k["resource"]
+                resource = _truncate_string(k["alloc_resource"] or k["resource"])
                 if k.get("alloc_lgpu") is not None and k.get("alloc_lcpu") is not None:
                     resource += ':(%d,%d)' % (len(k.get("alloc_lgpu", [])),
                                               len(k.get("alloc_lcpu", [])))

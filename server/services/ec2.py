@@ -2,10 +2,13 @@ import os
 import logging
 import boto3
 import paramiko
+import six
 
 from botocore.exceptions import ClientError
 from nmtwizard import common
 from nmtwizard.service import Service
+from nmtwizard.ec2_instance_types import ec2_capacity_map
+from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
 
@@ -19,30 +22,87 @@ def _run_instance(client, launch_template_name, dry_run=False):
             "LaunchTemplateName": launch_template_name})
 
 
+def _get_params(templates, options):
+    templateName = options["server"]
+    p = templateName.rfind(":")
+    if p != -1:
+        templateName = templateName[:p]
+    params = {}
+    for t in templates:
+        if t["name"] == templateName:
+            return t
+    raise ValueError('template %s not in template_pool' % templateName)
+
+
 class EC2Service(Service):
 
     def __init__(self, config):
         super(EC2Service, self).__init__(config)
         self._session = boto3.Session(
-            aws_access_key_id=config["awsAccessKeyId"],
-            aws_secret_access_key=config["awsSecretAccessKey"],
-            region_name=config["awsRegion"])
-        self._launch_template_names = self._get_launch_template_names()
-
-    def _get_launch_template_names(self):
+            aws_access_key_id=config["variables"]["awsAccessKeyId"],
+            aws_secret_access_key=config["variables"]["awsSecretAccessKey"],
+            region_name=config["variables"]["awsRegion"])
         ec2_client = self._session.client("ec2")
-        response = ec2_client.describe_launch_templates()
-        if not response or not response["LaunchTemplates"]:
-            raise ValueError('no EC2 launch templates are available to use')
-        return [template["LaunchTemplateName"] for template in response["LaunchTemplates"]]
+        self._templates = []
+        self._resources = {}
+        for template in config['variables']['template_pool']:
+            response = ec2_client.describe_launch_template_versions(
+                DryRun=False,
+                LaunchTemplateName=template['name'],
+                Filters=[
+                    {
+                        'Name': 'is-default-version',
+                        'Values': ["true"]
+                    }
+                ]
+            )
+            if not response or not response["LaunchTemplateVersions"]:
+                raise ValueError('cannot retrieve launch template')
+            template_description = response["LaunchTemplateVersions"][0]
+            if "LaunchTemplateData" not in template_description:
+                raise ValueError('invalid template_description')
+            launch_template_data = template_description["LaunchTemplateData"]
+            if "InstanceType" not in launch_template_data or \
+                    launch_template_data["InstanceType"] not in ec2_capacity_map:
+                raise ValueError('unknown instance type: %s' % launch_template_data["InstanceType"])
+            xpu = ec2_capacity_map[launch_template_data["InstanceType"]]
+            maxInstances = template.get("maxInstances", 1)
+            template["id"] = template_description["LaunchTemplateId"]
+            template["name"] = template_description["LaunchTemplateName"]
+            template["gpus"] = range(xpu.ngpus)
+            template["cpus"] = range(xpu.ncpus)
+            self._templates.append(template)
+            for idx in xrange(maxInstances):
+                self._resources["%s:%d" % (template["name"], idx)] = \
+                    Capacity(len(template["gpus"]), len(template["cpus"]))
+        logger.info("Initialized EC2 - found %d templates.",
+                    len(config['variables']['template_pool']))
+
+    def resource_multitask(self):
+        return False
 
     def list_resources(self):
-        return {
-            name: self._config['maxInstancePerTemplate']
-            for name in self._launch_template_names}
+        return self._resources
 
     def get_resource_from_options(self, options):
-        return options["launchTemplateName"]
+        if "launchTemplateName" not in options:
+            return 'auto'
+        return [r for r in self._resources if r.startswith(options["launchTemplateName"]+":")]
+
+    def select_resource_from_capacity(self, request_resource, request_capacity):
+        min_capacity = None
+        min_capacity_resource = []
+        for resource, capacity in six.iteritems(self._resources):
+            if request_resource == 'auto' or resource == request_resource or \
+                    (isinstance(request_resource, list) and resource in request_resource):
+                if request_capacity <= capacity:
+                    if min_capacity_resource == [] or capacity == min_capacity:
+                        min_capacity_resource.append(resource)
+                        min_capacity = capacity
+                    elif capacity < min_capacity:
+                        min_capacity_resource = [resource]
+                        min_capacity = capacity
+        return min_capacity_resource
 
     def describe(self):
         return {
@@ -50,7 +110,9 @@ class EC2Service(Service):
                 "title": "EC2 Launch Template",
                 "type": "string",
                 "description": "The name of the EC2 launch template to use",
-                "enum": self._launch_template_names}}
+                "enum": [t["name"] for t in self._templates]
+            }
+        }
 
     def check(self, options):
         if "launchTemplateName" not in options:
@@ -70,7 +132,7 @@ class EC2Service(Service):
     def launch(self,
                task_id,
                options,
-               gpulist,
+               xpulist,
                resource,
                docker_registry,
                docker_image,
@@ -79,8 +141,10 @@ class EC2Service(Service):
                docker_files,
                wait_after_launch,
                auth_token):
+        options['server'] = resource
+        params = _get_params(self._templates, options)
         ec2_client = self._session.client("ec2")
-        response = _run_instance(ec2_client, resource)
+        response = _run_instance(ec2_client, params["name"])
         if response is None:
             raise RuntimeError("empty response from boto3.run_instances")
         if not response["Instances"]:
@@ -89,28 +153,36 @@ class EC2Service(Service):
         ec2 = self._session.resource("ec2")
         instance = ec2.Instance(instance_id)
         instance.wait_until_running()
-        logger.info("Instance %s is running.", instance.id)
+        logger.info("EC2 - Instance %s is running.", instance.id)
 
-        key_path = os.path.join(
-            self._config["privateKeysDirectory"], "%s.pem" % instance.key_pair.name)
         client = paramiko.SSHClient()
         try:
             client = common.ssh_connect_with_retry(
                 instance.public_dns_name,
-                self._config["amiUsername"],
-                key_path,
-                delay=self._config["sshConnectionDelay"],
-                retry=self._config["maxSshConnectionRetry"])
-            common.fuse_s3_bucket(client, self._config["corpus"])
-            gpu_id = 1 if common.has_gpu_support(client) else 0
+                22,
+                params['login'],
+                pkey=self._config.get('pkey'),
+                key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
+                delay=self._config["variables"]["sshConnectionDelay"],
+                retry=self._config["variables"]["maxSshConnectionRetry"])
+
+            # mounting corpus and temporary model directories
+            corpus_dir = self._config["corpus"]
+            if not isinstance(corpus_dir, list):
+                corpus_dir = [corpus_dir]
+            for corpus_description in corpus_dir:
+                common.fuse_s3_bucket(client, corpus_description)
+            if self._config["variables"].get("temporary_model_storage"):
+                common.fuse_s3_bucket(client, self._config["variables"]["temporary_model_storage"])
+
             callback_url = self._config.get('callback_url')
             if auth_token:
                 callback_url = callback_url.replace("://", "://"+auth_token+":x@")
             task = common.launch_task(
                 task_id,
                 client,
-                gpu_id,
-                self._config["logDir"],
+                xpulist,
+                params['log_dir'],
                 self._config["docker"],
                 docker_registry,
                 docker_image,
@@ -122,8 +194,9 @@ class EC2Service(Service):
                 callback_url,
                 self._config.get('callback_interval'))
         except Exception as e:
-            if self._config.get("terminateOnError", True):
+            if self._config["variables"].get("terminateOnError", True):
                 instance.terminate()
+                logger.info("Terminated instance (on launch error): %s.", instance_id)
             client.close()
             raise e
         finally:
@@ -146,7 +219,7 @@ class EC2Service(Service):
         ec2 = self._session.resource("ec2")
         instance = ec2.Instance(instance_id)
         instance.terminate()
-        logger.info("Instance %s is terminated.", instance.id)
+        logger.info("Terminated instance (on terminate): %s.", instance_id)
 
 
 def init(config):

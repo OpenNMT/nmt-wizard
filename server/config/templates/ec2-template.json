@@ -2,15 +2,27 @@
     "name": "ec2",
     "description": "Instance on AWS EC2",
     "module": "services.ec2",
-    "awsAccessKeyId": "XXXXX",
-    "awsSecretAccessKey": "XXXXX",
-    "awsRegion": "eu-west-3",
-    "privateKeysDirectory": "credentials",
-    "amiUsername": "ec2-user",
-    "logDir": "/home/ec2-user",
-    "sshConnectionDelay": 10,
-    "maxSshConnectionRetry": 3,
-    "maxInstancePerTemplate": 5,
+    "variables": {
+        "awsAccessKeyId": "XXXXX",
+        "awsSecretAccessKey": "XXXXX",
+        "awsRegion": "us-east-1",
+        "sshConnectionDelay": 10,
+        "maxSshConnectionRetry": 3,
+        "template_pool": [
+            {
+                "name": "P2-1",
+                "maxInstances": 2,
+                "login": "ubuntu",
+                "logDir": "inftraining_logs"
+            },
+            {
+                "name": "cpu_4_instance",
+                "maxInstances": 3,
+                "login": "ubuntu",
+                "logDir": "inftraining_logs"
+            }
+        ]
+    },
     "corpus": {
         "bucket": "pn9-training",
         "mount": "/home/ec2-user/corpus",
