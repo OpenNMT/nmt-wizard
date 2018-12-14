@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.4.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.0) (2018-12-14)
+
+### Fixes and improvements
+* (worker) refactor and improve ec2 service
+
 ## [v1.3.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.3.1) (2018-12-11)
 
 * (client) backward compatibility for `lt`
