@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* (worker) fix issue with CPU allocation making tasks fail when all CPU were allocated
+
 ## [v1.4.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.0) (2018-12-14)
 
 ### Fixes and improvements

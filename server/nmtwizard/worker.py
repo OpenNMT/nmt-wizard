@@ -372,7 +372,7 @@ class Worker(object):
                                       (used_cpu > br_available_xpus.ncpus) or
                                       (used_cpu == br_available_xpus.ncpus and
                                        better_cpu_usage))):
-                    idx = 1
+                    idx = 0
                     for i in xrange(used_cpu):
                         while self._redis.hget(keycr, str(idx)) is not None:
                             idx += 1
