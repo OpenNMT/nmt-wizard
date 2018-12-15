@@ -16,7 +16,8 @@ def add_log_handler(fh):
 def merge_config(a, b, name):
     if isinstance(a, dict):
         for k in six.iterkeys(b):
-            if k not in a or type(a[k]) != type(b[k]):
+            if k not in a or not(
+               (isinstance(a[k], dict) and isinstance(b[k], dict))):
                 a[k] = b[k]
             elif isinstance(a[k], dict):
                 merge_config(a[k], b[k], name)
@@ -44,9 +45,15 @@ def load_service(config_path, base_config=None):
         merge_config(config, base_config, config_path)
     if config.get("disabled") == 1:
         return name, None
-    if "module" not in config or "docker" not in config or "description" not in config:
-        raise ValueError("invalid service definition in %s" % config_path)
-    service = importlib.import_module(config["module"]).init(config)
+
+    try:
+        if "module" not in config or "docker" not in config or "description" not in config:
+            raise ValueError("invalid service definition in %s" % config_path)
+        service = importlib.import_module(config["module"]).init(config)
+    except Exception as e:
+        config["description"] = "**INVALID CONFIG: %s" % str(e)
+        service = importlib.import_module("services.invalid").init(config)
+
     return name, service
 
 

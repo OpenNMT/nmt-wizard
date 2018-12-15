@@ -41,6 +41,10 @@ class Service(object):
         self._config, self._resources = state
 
     @property
+    def valid(self):
+        return True
+
+    @property
     def temporary_ms(self):
         return self._temporary_ms
 

@@ -126,31 +126,32 @@ for task_id in task.list_active(redis, service):
     if redis.hget('task:'+task_id, 'queued_time') is None:
         redis.hset('task:'+task_id, 'queued_time', time.time())
 
-# Desallocate all resources that are not anymore associated to a running task
-resources = services[service].list_resources()
 
-# TODO:
-# if multiple workers are for same service with different configurations
-# or storage definition change - restart all workers
+if services[service].valid:
+    # Desallocate all resources that are not anymore associated to a running task
+    resources = services[service].list_resources()
 
+    # TODO:
+    # if multiple workers are for same service with different configurations
+    # or storage definition change - restart all workers
 
-redis.delete('admin:resources:'+service)
-for resource in resources:
-    redis.lpush('admin:resources:'+service, resource)
-    keygr = 'gpu_resource:%s:%s' % (service, resource)
-    running_tasks = redis.hgetall(keygr)
-    for g, task_id in six.iteritems(running_tasks):
-        with redis.acquire_lock(task_id):
-            status = redis.hget('task:'+task_id, 'status')
-            if not(status == 'running' or status == 'terminating'):
-                redis.hdel(keygr, g)
-    keycr = 'cpu_resource:%s:%s' % (service, resource)
-    running_tasks = redis.hgetall(keycr)
-    for c, task_id in six.iteritems(running_tasks):
-        with redis.acquire_lock(task_id):
-            status = redis.hget('task:'+task_id, 'status')
-            if status == 'running' or status == 'terminating':
-                redis.hdel(keycr, c)
+    redis.delete('admin:resources:'+service)
+    for resource in resources:
+        redis.lpush('admin:resources:'+service, resource)
+        keygr = 'gpu_resource:%s:%s' % (service, resource)
+        running_tasks = redis.hgetall(keygr)
+        for g, task_id in six.iteritems(running_tasks):
+            with redis.acquire_lock(task_id):
+                status = redis.hget('task:'+task_id, 'status')
+                if not(status == 'running' or status == 'terminating'):
+                    redis.hdel(keygr, g)
+        keycr = 'cpu_resource:%s:%s' % (service, resource)
+        running_tasks = redis.hgetall(keycr)
+        for c, task_id in six.iteritems(running_tasks):
+            with redis.acquire_lock(task_id):
+                status = redis.hget('task:'+task_id, 'status')
+                if status == 'running' or status == 'terminating':
+                    redis.hdel(keycr, c)
 
 
 # define ttl policy for a task

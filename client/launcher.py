@@ -207,6 +207,13 @@ parser.add_argument('-v', '--version', action=VersionAction,
                     help='Version information')
 
 
+def _format_message(msg, length=40):
+    msg = msg.replace("\n", "\\n")
+    if len(msg) >= length:
+        return msg[:length-3]+"..."
+    return msg
+
+
 def process_request(serviceList, cmd, is_json, args, auth=None):
     res = None
     result = None
@@ -233,11 +240,11 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                              result[k]['queued'],
                              result[k]['capacity'],
                              result[k]['busy'],
-                             result[k]['name']])
+                             _format_message(result[k]['name'])])
                 if args.verbose:
                     for r in result[k]['detail']:
                         if result[k]['detail'][r]['busy'] != '':
-                            err = '**' + result[k]['detail'][r]['busy']
+                            err = '**' + _format_message(result[k]['detail'][r]['busy'])
                         else:
                             err = ''
                         res.add_row(["  +-- "+r,

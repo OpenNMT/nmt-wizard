@@ -526,7 +526,7 @@ adjs = [
     (False, "malicieux", "malicieuse"),
     (False, "mature", "mature"),
     (False, "mauvais", "mauvaise"),
-    (False, "méchant", "méchante"),
+    (True, "méchant", "méchante"),
     (False, "pacifique", "pacifique"),
     (False, "peiné", "peinée"),
     (False, "perplexe", "perplexe"),
