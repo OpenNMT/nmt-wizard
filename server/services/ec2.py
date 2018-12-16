@@ -192,7 +192,7 @@ class EC2Service(Service):
             task = common.launch_task(
                 task_id,
                 client,
-                xpulist,
+                (xpulist[0], None),
                 params['log_dir'],
                 self._config["docker"],
                 docker_registry,

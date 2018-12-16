@@ -314,8 +314,11 @@ def cmd_docker_run(lxpu, docker_options, task_id,
                     for ks, vs in six.iteritems(v[docker_image]):
                         cmd += '_o_-e_o_%s=%s' % (ks, vs)
 
-        cmd += '_o_-e_o_NB_CPU=%d' % len(lcpu)
-        cmd += '_o_--cpuset-cpus_o_%s' % ",".join([str(v) for v in lcpu])
+        if lcpu is not None:
+            # only set cpu setting if provided list of CPU
+            # this allows dedicated instance (such as EC2) to not enforce CPU restriction
+            cmd += '_o_-e_o_NB_CPU=%d' % len(lcpu)
+            cmd += '_o_--cpuset-cpus_o_%s' % ",".join([str(v) for v in lcpu])
 
         # mount TMP_DIR used to store potential transfered files
         cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id

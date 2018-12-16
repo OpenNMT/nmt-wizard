@@ -4,6 +4,7 @@
 * Add French and German funny names
 * (worker) fix issue with CPU allocation making tasks fail when all CPU were allocated
 * (worker) worker does not fail if configuration is invalid, pool is not disabled
+* (worker) do not set cpu restriction on dedicated instances (like ec2)
 
 ## [v1.4.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.0) (2018-12-14)
 
