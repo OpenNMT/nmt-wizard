@@ -681,7 +681,10 @@ def task_beat(task_id):
     except ValueError:
         abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
     container_id = flask.request.args.get('container_id')
-    task.beat(redis, task_id, duration, container_id)
+    try:
+        task.beat(redis, task_id, duration, container_id)
+    except Exception as e:
+        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
     return flask.jsonify(200)
 
 
@@ -724,6 +727,16 @@ def get_log(task_id):
 def append_log(task_id):
     content = flask.request.get_data()
     task.append_log(redis, taskfile_dir, task_id, content, max_log_size)
+    duration = flask.request.args.get('duration')
+    try:
+        if duration is not None:
+            duration = int(duration)
+    except ValueError:
+        abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
+    try:
+        task.beat(redis, task_id, duration, None)
+    except Exception as e:
+        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
     return flask.jsonify(200)
 
 

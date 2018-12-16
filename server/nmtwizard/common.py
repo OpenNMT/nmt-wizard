@@ -485,7 +485,7 @@ def launch_task(task_id,
                               storages, docker_command, log_dir)
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
-                                               callback_url or '', env) + \
+                                               callback_url or '', env, callback_interval) + \
         "' > %s/%s_launch.log" % (log_dir, task_id)
 
     # get the process group id

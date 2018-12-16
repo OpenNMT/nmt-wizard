@@ -198,6 +198,8 @@ def beat(redis, task_id, duration, container_id):
     (set duration to 0 to disable expiration). The task must be running.
     """
     keyt = "task:" + task_id
+    if redis.hget(keyt, "status") != "running":
+        return
     with redis.acquire_lock(keyt):
         # a beat can only be sent in running mode except if in between, the task stopped
         # or in development mode, no need to raise an alert
