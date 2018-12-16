@@ -4,6 +4,7 @@ import paramiko
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.capacity import Capacity
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -212,18 +213,18 @@ class SSHService(Service):
             login_cmd=params['login_cmd'])
         if 'container_id' in params:
             common.run_docker_command(client, 'rm --force %s' % params['container_id'])
-        else:
-            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
-            if exit_status != 0:
-                logger.debug("exist_status %d: %s", exit_status, stderr.read())
-                client.close()
-                return
-            exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
-            if exit_status != 0:
-                logger.debug("exist_status %d: %s", exit_status, stderr.read())
-                client.close()
-                return
-        logger.debug("successfully terminated")
+            time.sleep(5)
+        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+        if exit_status != 0:
+            logger.info("exist_status %d: %s", exit_status, stderr.read())
+            client.close()
+            return
+        exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+        if exit_status != 0:
+            logger.info("exist_status %d: %s", exit_status, stderr.read())
+            client.close()
+            return
+        logger.info("successfully terminated")
         client.close()
 
 
