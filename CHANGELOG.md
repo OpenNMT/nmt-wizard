@@ -9,6 +9,7 @@
 * (worker) do not set cpu restriction on dedicated instances (like ec2)
 * (worker) double check process termination after docker terminate
 * (worker) patch log renew beat
+* (launcher) `--as_release` is now implied for translations for image >= 1.80, except if `--notransasrelease` is specified
 
 ## [v1.4.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.0) (2018-12-14)
 

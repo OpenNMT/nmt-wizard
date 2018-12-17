@@ -443,6 +443,7 @@ def launch(service):
         chain_prepr_train = (not content.get("nochainprepr", False) and
                              task_type == "train" and
                              semver.match(docker_version, ">=1.4.0"))
+        can_trans_as_release = semver.match(docker_version, ">=1.8.0")
         trans_as_release = (not content.get("notransasrelease", False) and
                             semver.match(docker_version, ">=1.8.0"))
     except ValueError as err:
@@ -511,6 +512,11 @@ def launch(service):
             content["ncpus"] = ncpus or \
                 get_cpu_count(current_configuration, ngpus, task_type)
             content["ngpus"] = ngpus
+
+            if task_type == "trans" and can_trans_as_release:
+                if "--as_release" not in content["docker"]["command"] and trans_as_release:
+                    content["docker"]["command"].append("--as_release")
+                    content["ngpus"] = ngpus = 0
 
             task_resource = service_module.select_resource_from_capacity(
                                             resource, Capacity(content["ngpus"],
