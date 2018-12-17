@@ -150,7 +150,7 @@ if services[service].valid:
         for c, task_id in six.iteritems(running_tasks):
             with redis.acquire_lock(task_id):
                 status = redis.hget('task:'+task_id, 'status')
-                if status == 'running' or status == 'terminating':
+                if not(status == 'running' or status == 'terminating'):
                     redis.hdel(keycr, c)
 
 

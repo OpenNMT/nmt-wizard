@@ -1,5 +1,11 @@
 ## Unreleased
 
+## [v1.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.2) (2018-12-17)
+
+### Fixes and improvements
+
+* (worker) fix delete of running CPU tasks from `ls` when worker restart
+
 ## [v1.4.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.1) (2018-12-17)
 
 ### Fixes and improvements
