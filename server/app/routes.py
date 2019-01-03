@@ -650,12 +650,18 @@ def list_tasks(pattern):
             info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
         if info["alloc_lcpu"]:
             info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
+        info["image"] = '-'
+        info["model"] = '-'
         if info["content"]:
             content = json.loads(info["content"])
-            info["image"] = content['docker']['image']
+            info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
+            j = 0
+            while j < len(content["docker"]["command"]) - 1:
+                if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
+                    info["model"] = content["docker"]["command"][j+1]
+                    break
+                j = j+1
             del info['content']
-        else:
-            info["image"] = '-'
         info['task_id'] = task_id
         ltask.append(info)
     return flask.jsonify(ltask)

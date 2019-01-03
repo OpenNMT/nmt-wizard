@@ -268,7 +268,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                 res.append(k["task_id"])
         elif not is_json:
             res = PrettyTable(["Task ID", "Resource", "Priority",
-                               "Launch Date", "Image", "Status", "Message"])
+                               "Launch Date", "Image", "Status", "Message", "Model"])
             res.align["Task ID"] = "l"
             for k in sorted(result, key=lambda k: float(float(k.get("launched_time", 0)))):
                 date = datetime.fromtimestamp(
@@ -282,7 +282,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                     k["image"] = k["image"][p+1:]
                 task_id = k["task_id"]
                 res.add_row([task_id, resource, int(k["priority"] or 0),
-                             date, k["image"], k["status"], k.get("message")])
+                             date, k["image"], k["status"], k.get("message"), k["model"]])
         else:
             res = r.json()
     elif cmd == "describe":
