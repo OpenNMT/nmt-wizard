@@ -479,7 +479,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                          auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/file\' service: %s' % r.text)
-        res = r.text.encode("utf-8")
+        res = r.content
     elif cmd == "log":
         r = requests.get(os.path.join(args.url, "task/log", args.task_id), auth=auth)
         if r.status_code != 200:
