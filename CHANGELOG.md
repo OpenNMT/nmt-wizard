@@ -4,6 +4,7 @@
 
 * (client) avoid content corruption when `file` output string contains non utf-8 or non supported characters
 * (client)  improve task list to add model and image tag information
+* (client) `-l DEBUG` now traces HTTP requests
 
 ## [v1.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.2) (2018-12-17)
 
