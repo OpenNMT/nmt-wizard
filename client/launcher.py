@@ -13,6 +13,12 @@ import math
 
 VERSION = "1.4.1"
 
+try:
+    # for Python 3
+    from http.client import HTTPConnection
+except ImportError:
+    from httplib import HTTPConnection
+
 
 def append_version(v):
     global VERSION
@@ -282,7 +288,8 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                     k["image"] = k["image"][p+1:]
                 task_id = k["task_id"]
                 res.add_row([task_id, resource, int(k["priority"] or 0),
-                             date, k["image"], k["status"], k.get("message"), k["model"]])
+                             date, k["image"], k["status"], k.get("message"),
+                             k.get("model", "-")])
         else:
             res = r.json()
     elif cmd == "describe":
@@ -498,6 +505,12 @@ if __name__ == "__main__":
 
     logging.basicConfig(stream=sys.stdout, level=args.log_level)
     logger = logging.getLogger()
+
+    if args.log_level == "DEBUG":
+        requests_log = logging.getLogger("urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
+        HTTPConnection.debuglevel = 1
 
     if args.url is None:
         args.url = os.getenv('LAUNCHER_URL')
