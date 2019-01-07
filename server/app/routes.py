@@ -367,17 +367,22 @@ def launch(service):
     service_module = get_service(service)
     content["service"] = service
 
-    task_type = '????'
-    if "train" in content["docker"]["command"]:
-        task_type = "train"
-    elif "trans" in content["docker"]["command"]:
-        task_type = "trans"
-    elif "preprocess" in content["docker"]["command"]:
-        task_type = "prepr"
-    elif "release" in content["docker"]["command"]:
-        task_type = "relea"
-    elif "buildvocab" in content["docker"]["command"]:
-        task_type = "vocab"
+    exec_mode = content.get('exec_mode', False)
+
+    if not exec_mode:
+        task_type = '????'
+        if "train" in content["docker"]["command"]:
+            task_type = "train"
+        elif "trans" in content["docker"]["command"]:
+            task_type = "trans"
+        elif "preprocess" in content["docker"]["command"]:
+            task_type = "prepr"
+        elif "release" in content["docker"]["command"]:
+            task_type = "relea"
+        elif "buildvocab" in content["docker"]["command"]:
+            task_type = "vocab"
+    else:
+        task_type = 'exec'
 
     if task_type == '????':
         abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
@@ -416,6 +421,8 @@ def launch(service):
     iterations = 1
     if "iterations" in content:
         iterations = content["iterations"]
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="chain mode unavailable in exec mode"), 400))
         if (task_type != "train" and iterations != 1) or iterations < 1:
             abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
@@ -431,6 +438,8 @@ def launch(service):
                                   (service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="translate mode unavailable in exec mode"), 400))
         totranslate = content["totranslate"]
         del content["totranslate"]
     else:
@@ -440,11 +449,11 @@ def launch(service):
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
     try:
-        chain_prepr_train = (not content.get("nochainprepr", False) and
+        chain_prepr_train = (not exec_mode and not content.get("nochainprepr", False) and
                              task_type == "train" and
                              semver.match(docker_version, ">=1.4.0"))
         can_trans_as_release = semver.match(docker_version, ">=1.8.0")
-        trans_as_release = (not content.get("notransasrelease", False) and
+        trans_as_release = (not exec_mode and not content.get("notransasrelease", False) and
                             semver.match(docker_version, ">=1.8.0"))
     except ValueError as err:
         # could not match docker_version - not valid semver
@@ -455,7 +464,7 @@ def launch(service):
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
     parent_task_type = None
-    if parent_task_id:
+    if not exec_mode and parent_task_id:
         (parent_struct, parent_task_type) = model_name_analysis(parent_task_id)
 
     # check that parent model type matches current command

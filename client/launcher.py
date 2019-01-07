@@ -141,44 +141,53 @@ parser_check.add_argument('-o', '--options', default='{}',
 parser_check.add_argument('-r', '--resource',
                           help="alternatively to `options`, resource name to check")
 
+exec_arguments = [
+    ['-s', '--service', {"help": 'service name'}],
+    ['-o', '--options', {"default": '{}',
+     "help": 'options selected to run the service'}],
+    ['-r', '--resource',
+     {"help": "alternatively to `options`, resource name to use"}],
+    ['-g', '--gpus', {"type": int, "default": 1, "help": 'number of gpus'}],
+    ['-c', '--cpus', {"type": int,
+     "help": 'number of cpus - if not provided, will be obtained from pool config'}],
+    ['-w', '--wait_after_launch', {
+     "default": 2, "type": int,
+     "help": 'if not 0, wait for this number of seconds after launch '
+             'to check that launch is ok - by default wait for 2 seconds'}],
+    ['--docker_registry', {"default": 'auto',
+     "help": 'docker registry (as configured on server side), default is `auto`'}],
+    ['-i', '--docker_image', {"default": os.getenv('LAUNCHER_IMAGE', None),
+     "help": 'Docker image (can be prefixed by docker_registry:)'}],
+    ['-t', '--docker_tag',
+     {"help": 'Docker image tag (is infered from docker_image if missing)'}],
+    ['-n', '--name',
+     {"help": 'Friendly name for the model, for subsequent tasks, inherits from previous'}],
+    ['-T', '--trainer_id', {"default": os.getenv('LAUNCHER_TID', None),
+     "help": 'trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])'}],
+    ['-P', '--priority', {"type": int, "default": 0, "help": 'task priority - highest better'}],
+]
+
+
+parser_exec = subparsers.add_parser('exec',
+                                    help='execute a generic docker-utility task on the service associated'
+                                         ' to provided options')
+for arg in exec_arguments:
+    parser_exec.add_argument(*arg[:-1], **arg[-1])
+parser_exec.add_argument('docker_command', type=str, nargs='*', help='Docker command')
+
 parser_launch = subparsers.add_parser('launch',
                                       help='launch a task on the service associated'
                                            ' to provided options')
-parser_launch.add_argument('-s', '--service',
-                           help='service name')
-parser_launch.add_argument('-o', '--options', default='{}',
-                           help='options selected to run the service')
-parser_launch.add_argument('-r', '--resource',
-                           help="alternatively to `options`, resource name to use")
-parser_launch.add_argument('-g', '--gpus', type=int, default=1,
-                           help='number of gpus')
-parser_launch.add_argument('-c', '--cpus', type=int,
-                           help='number of cpus - if not provided, will be obtained from pool config')
-parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
-                           help='if not 0, wait for this number of seconds after launch '
-                                'to check that launch is ok - by default wait for 2 seconds')
-parser_launch.add_argument('--docker_registry', default='auto',
-                           help='docker registry (as configured on server side), default is `auto`')
-parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
-                           help='Docker image (can be prefixed by docker_registry:)')
-parser_launch.add_argument('-t', '--docker_tag',
-                           help='Docker image tag (is infered from docker_image if missing)')
-parser_launch.add_argument('-n', '--name',
-                           help='Friendly name for the model, for subsequent tasks, inherits'
-                                ' from previous')
-parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
-                           help='trainer id, used as a prefix to generated models (default '
-                                'ENV[LAUNCHER_TID])')
+for arg in exec_arguments:
+    parser_launch.add_argument(*arg[:-1], **arg[-1])
+
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
                            help='for training tasks, iterate several tasks in a row')
-parser_launch.add_argument('-P', '--priority', type=int, default=0,
-                           help='task priority - highest better')
 parser_launch.add_argument('--nochainprepr', action='store_true',
                            help='don\'t split prepr and train (image >= 1.4.0)')
 parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
-parser_launch.add_argument('docker_command', type=str, nargs='*',
-                           help='Docker command')
+parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 
 parser_list_tasks = subparsers.add_parser('lt',
                                           help='list tasks matching prefix pattern')
@@ -311,7 +320,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         res = r.json()
-    elif cmd == "launch":
+    elif cmd == "exec" or cmd == "launch":
         if args.trainer_id is None:
             raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')
 
@@ -379,18 +388,22 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             "ncpus": args.cpus
         }
 
+        if cmd == "exec":
+            content["exec_mode"] = True
         if args.name:
             content["name"] = args.name
-        if args.iterations:
-            content["iterations"] = args.iterations
-        if args.nochainprepr:
-            content["nochainprepr"] = True
-        if args.notransasrelease:
-            content["notransasrelease"] = True
         if args.priority:
             content["priority"] = args.priority
-        if 'totranslate' in args and args.totranslate:
-            content["totranslate"] = args.totranslate
+
+        if cmd == "launch":
+            if args.iterations:
+                content["iterations"] = args.iterations
+            if args.nochainprepr:
+                content["nochainprepr"] = True
+            if args.notransasrelease:
+                content["notransasrelease"] = True
+            if 'totranslate' in args and args.totranslate:
+                content["totranslate"] = args.totranslate
 
         logger.debug("sending request: %s", json.dumps(content))
 

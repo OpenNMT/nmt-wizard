@@ -1,7 +1,9 @@
 ## Unreleased
 
-### Fixes and improvements
+### New features
+* add "exec" command to launch any generic nmt-wizard docker task
 
+### Fixes and improvements
 * (client) avoid content corruption when `file` output string contains non utf-8 or non supported characters
 * (client)  improve task list to add model and image tag information
 * (client) `-l DEBUG` now traces HTTP requests

@@ -71,7 +71,7 @@ def model_name_analysis(model):
     task_type = None
     struct = {}
     lst = model.split("_")
-    if lst[-1] in model_types:
+    if lst[-1] in model_types or len(lst) == 6:
         task_type = lst[-1][:5]
         lst.pop(-1)
     else:
@@ -150,7 +150,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
         task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
     task_id = task_id[0:47-len(parent_uuid)] + parent_uuid
     if task_type != "train":
-        task_id += '_' + model_type_map[task_type]
+        task_id += '_' + model_type_map.get(task_type, task_type)
     return task_id
 
 
