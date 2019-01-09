@@ -307,7 +307,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
                 cmd += '_o_-v_o_%s' % k
         if 'envvar' in docker_options:
             for k, v in six.iteritems(docker_options['envvar']):
-                if isinstance(v, str):
+                if isinstance(k, six.string_types):
                     cmd += '_o_-e_o_%s=%s' % (k, v)
                 elif isinstance(v, dict) and k == "specific" and docker_image in v:
                     # specific options for a given image
