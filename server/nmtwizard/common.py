@@ -411,6 +411,14 @@ def launch_task(task_id,
         {the_docker_registry: docker_options['registries'][the_docker_registry]},
         requirements)
 
+    if callback_url is not None:
+        exit_status, stdout, stderr = run_command(
+            client,
+            "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
+            "--data-ascii 'Initialization complete...'" % (callback_url, task_id))
+        if exit_status != 0:
+            raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
+
     image_ref = ""
     if docker_options.get('dev') != 1:
         docker_registry = docker_options['registries'][the_docker_registry]
@@ -471,14 +479,6 @@ def launch_task(task_id,
             if exit_status != 0:
                 raise RuntimeError("error retrieving files: %s, %s" %
                                    (cmd_get_files, stderr.read()))
-
-    if callback_url is not None:
-        exit_status, stdout, stderr = run_command(
-            client,
-            "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
-            "--data-ascii 'Initialization complete...'" % (callback_url, task_id))
-        if exit_status != 0:
-            raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
 
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
