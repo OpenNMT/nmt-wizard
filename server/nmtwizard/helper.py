@@ -167,4 +167,5 @@ def boolean_param(value):
                value is False or
                value == "" or
                value == "0" or
-               value == "False")
+               value == "False" or
+               value == "false")
