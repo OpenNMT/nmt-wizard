@@ -687,7 +687,13 @@ def terminate(task_id):
         elif current_status == "stopped":
             return flask.jsonify(message="%s already stopped" % task_id)
         phase = flask.request.args.get('phase')
-        task.terminate(redis, task_id, phase=phase)
+
+    res = post_function('GET/task/terminate', task_id, phase)
+    if res:
+        task.terminate(redis, task_id, phase="publish_error")
+        return flask.jsonify(message="problem while posting model: %s" % res)
+
+    task.terminate(redis, task_id, phase=phase)
     return flask.jsonify(message="terminating %s" % task_id)
 
 
