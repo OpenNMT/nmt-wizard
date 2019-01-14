@@ -28,10 +28,6 @@ assert os.path.isfile(args.config) and args.config.endswith(".json"), \
 assert os.path.isfile('settings.ini'), "missing `settings.ini` file in current directory"
 assert os.path.isfile('logging.conf'), "missing `logging.conf` file in current directory"
 
-services, base_config = config.load_service_config(args.config)
-assert len(services) == 1, "workers are now dedicated to one single service"
-service = next(iter(services))
-
 
 def md5file(fp):
     """Returns the MD5 of the file fp."""
@@ -41,23 +37,6 @@ def md5file(fp):
             m.update(l)
     return m.hexdigest()
 
-
-current_configuration = None
-configurations = {}
-
-if os.path.isdir("configurations"):
-    configurations = {}
-    config_service_md5 = {}
-    for filename in os.listdir("configurations"):
-        if filename.startswith(service+"_") and filename.endswith(".json"):
-            file_path = os.path.join("configurations", filename)
-            with open(file_path) as f:
-                configurations[filename[len(service)+1:-5]] = (os.path.getmtime(file_path),
-                                                               f.read())
-            config_service_md5[md5file(file_path)] = filename[len(service)+1:-5]
-    current_configuration_md5 = md5file(args.config)
-    if current_configuration_md5 in config_service_md5:
-        current_configuration = config_service_md5[current_configuration_md5]
 
 cfg = configparser.ConfigParser()
 cfg.read('settings.ini')
@@ -87,8 +66,39 @@ while retry < 10:
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
 
+# load default configuration from database
+retry = 0
+while retry < 10:
+    default_config = redis.hget('default', 'configuration')
+    default_config_timestamp = redis.hget('default', 'timestamp')
+    if default_config:
+        break
+    time.sleep(5)
 
-redis.set('admin:storages', json.dumps(base_config['storages']))
+assert retry < 10, "Cannot retrieve default config from redis DB - aborting"
+
+base_config = json.loads(default_config)
+
+services = config.load_service_config(args.config, base_config)
+assert len(services) == 1, "workers are now dedicated to one single service"
+service = next(iter(services))
+
+current_configuration = None
+configurations = {}
+
+if os.path.isdir("configurations"):
+    configurations = {}
+    config_service_md5 = {}
+    for filename in os.listdir("configurations"):
+        if filename.startswith(service+"_") and filename.endswith(".json"):
+            file_path = os.path.join("configurations", filename)
+            with open(file_path) as f:
+                configurations[filename[len(service)+1:-5]] = (os.path.getmtime(file_path),
+                                                               f.read())
+            config_service_md5[md5file(file_path)] = filename[len(service)+1:-5]
+    current_configuration_md5 = md5file(args.config)
+    if current_configuration_md5 in config_service_md5:
+        current_configuration = config_service_md5[current_configuration_md5]
 
 pid = os.getpid()
 
@@ -184,5 +194,6 @@ worker = Worker(redis, services,
                 cfg.getint('default', 'refresh_counter'),
                 cfg.getint('default', 'quarantine_time'),
                 keyw,
-                cfg.get('default', 'taskfile_dir'))
+                cfg.get('default', 'taskfile_dir'),
+                default_config_timestamp=default_config_timestamp)
 worker.run()

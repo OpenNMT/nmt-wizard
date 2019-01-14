@@ -6,8 +6,6 @@ import six
 
 logger = logging.getLogger(__name__)
 
-_BASE_CONFIG_NAME = "default.json"
-
 
 def add_log_handler(fh):
     logger.addHandler(fh)
@@ -56,9 +54,8 @@ def load_service(config_path, base_config=None):
     return name, service
 
 
-def load_service_config(filename):
-    """Load configured service given a json file and corresponding default.json
-       Both should be in the same directory
+def load_service_config(filename, base_config):
+    """Load configured service given a json file applying on a provided base configuration
 
     Args:
       directory: The path to the json file configuring the service.
@@ -71,13 +68,6 @@ def load_service_config(filename):
 
     directory = os.path.dirname(os.path.abspath(filename))
 
-    base_config = {}
-    base_config_path = os.path.join(directory, _BASE_CONFIG_NAME)
-    if os.path.exists(base_config_path):
-        logger.info("Reading base configuration %s", base_config_path)
-        with open(base_config_path) as base_config_file:
-            base_config = json.load(base_config_file)
-
     logger.info("Loading services from %s", directory)
     services = {}
 
@@ -88,4 +78,4 @@ def load_service_config(filename):
     services[name] = service
     logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
 
-    return services, base_config
+    return services

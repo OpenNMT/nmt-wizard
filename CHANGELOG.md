@@ -8,6 +8,7 @@
 * (client) improve task list to add model and image tag information
 * (client) `-l DEBUG` now traces HTTP requests
 * (worker) fix: ignore `envvar` field in config.docker
+* (admin) global `default.json` now stored in REDIS db and updated by launcher
 
 ## [v1.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.2) (2018-12-17)
 

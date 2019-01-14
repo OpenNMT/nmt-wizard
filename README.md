@@ -103,7 +103,7 @@ Template files are provided in `config/templates` and can be used as a basis for
 
 ## Server configuration
 
-* The REST server and worker are configured by `settings.ini`.
+* The REST server and workers are configured by `settings.ini`. The default configuration for all of the pools is stored in `default.json`. This file is read by the launcher when the launcher is started and stored in REDIS database together with a timestamp. Whenever this file is changed, the corresponding timestamp must be modified - and this modification will be detected by all workers that are then restarting.
 
 ## Using the launcher
 
