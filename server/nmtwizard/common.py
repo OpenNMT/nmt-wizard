@@ -39,7 +39,7 @@ def rmprivate(lst):
         return r
     elif isinstance(lst, dict):
         for k, v in six.iteritems(lst):
-            lst[k] == rmprivate(v)
+            lst[k] = rmprivate(v)
         return lst
     else:
         t = lst
