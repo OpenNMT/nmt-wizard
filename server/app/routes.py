@@ -650,7 +650,7 @@ def launch(service):
                     score_task_id = build_task_id(content_score, xxyy, "score", parent_task_id)
                     task_create.append(
                             (redis, taskfile_dir,
-                             score_task_id, "score", parent_task_id, score_resource, service,
+                             score_task_id, "exec", parent_task_id, score_resource, service,
                              content_score,
                              (), priority+2,
                              0, 1,
