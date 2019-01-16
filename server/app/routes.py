@@ -1,21 +1,23 @@
-import flask
 import io
 import pickle
 import json
 import logging
 import os
 import time
-import semver
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
 
+import semver
+import six
+import flask
 from flask import abort, make_response, jsonify
-from app import app, redis, get_version, ch, taskfile_dir
-from nmtwizard import common, task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param
+
+from app import app, redis, get_version, taskfile_dir
+from nmtwizard import task
+from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
-from nmtwizard.helper import get_cpu_count
+from nmtwizard.helper import get_cpu_count, get_params
 from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
@@ -387,6 +389,13 @@ def launch(service):
     if task_type == '????':
         abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
 
+    elif task_type != "exec":
+        task_suffix = task_type
+    else:
+        task_suffix = get_docker_action(content["docker"]["command"])
+        if task_suffix is None:
+            task_suffix = task_type
+
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
         abort(flask.make_response(flask.jsonify(message="invalid options field"), 400))
@@ -439,11 +448,18 @@ def launch(service):
 
     if "totranslate" in content:
         if exec_mode:
-            abort(flask.make_response(flask.jsonify(message="translate mode unavailable in exec mode"), 400))
+            abort(flask.make_response(flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
         totranslate = content["totranslate"]
         del content["totranslate"]
     else:
         totranslate = None
+    if "toscore" in content:
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"), 400))
+        toscore = content["toscore"]
+        del content["toscore"]
+    else:
+        toscore = None
 
     docker_version = content['docker']['tag']
     if docker_version.startswith('v'):
@@ -516,7 +532,17 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
-            task_id = build_task_id(content, xxyy, task_type, parent_task_id)
+            task_id = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            file_to_transtaskid = {}
+            if task_type == "trans":
+                try:
+                    idx = content["docker"]["command"].index("trans")
+                    output_files = get_params(("-o", "--output"), content["docker"]["command"][idx+1:])
+                    for ofile in output_files:
+                        file_to_transtaskid[ofile] = task_id
+                except Exception:
+                    pass
 
             content["ncpus"] = ncpus or \
                 get_cpu_count(current_configuration, ngpus, task_type)
@@ -574,12 +600,16 @@ def launch(service):
                                                      (subset_idx+1)*file_per_gpu]
                     for f in subset_totranslate:
                         content_translate["docker"]["command"].append(f[0])
-                    content_translate["docker"]["command"].append('-o')
-                    for f in subset_totranslate:
-                        content_translate["docker"]["command"].append(
-                            f[1].replace('<MODEL>', task_id))
+
                     change_parent_task(content_translate["docker"]["command"], task_id)
                     trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
+
+                    content_translate["docker"]["command"].append('-o')
+                    for f in subset_totranslate:
+                        ofile = f[1].replace('<MODEL>', task_id)
+                        file_to_transtaskid[ofile] = trans_task_id
+                        content_translate["docker"]["command"].append(ofile)
+
                     task_create.append(
                             (redis, taskfile_dir,
                              trans_task_id, "trans", task_id, translate_resource, service,
@@ -591,6 +621,44 @@ def launch(service):
                                            "trans", trans_task_id,
                                            content_translate["ngpus"], content_translate["ncpus"]))
                     subset_idx += 1
+
+            if toscore:
+                toscore_parent = {}
+                for (ofile, rfile) in toscore:
+                    ofile = ofile.replace('<MODEL>', task_id)
+                    parent_task_id = file_to_transtaskid.get(ofile)
+                    if parent_task_id:
+                        if parent_task_id not in toscore_parent:
+                            toscore_parent[parent_task_id] = {"output": [], "ref": []}
+                        toscore_parent[parent_task_id]["output"].append(ofile)
+                        toscore_parent[parent_task_id]["ref"].append(rfile)
+                for parent_task_id, oref in six.iteritems(toscore_parent):
+                    content_score = deepcopy(content)
+                    content_score["priority"] = priority + 1
+                    content_score["ngpus"] = 0
+                    content_score["ncpus"] = 1
+
+                    score_resource = service_module.select_resource_from_capacity(resource, Capacity(0, 1))
+
+                    content_score["docker"] = {
+                        "image": "nmtwizard/score",
+                        "registry": "dockerhub",
+                        "tag": "latest",
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + ['-f', "launcher:scores"]
+                    }
+
+                    score_task_id = build_task_id(content_score, xxyy, "score", parent_task_id)
+                    task_create.append(
+                            (redis, taskfile_dir,
+                             score_task_id, "score", parent_task_id, score_resource, service,
+                             content_score,
+                             (), priority+2,
+                             0, 1,
+                             {}))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                                           "score", score_task_id,
+                                           0, 1))
+
         iterations -= 1
         if iterations > 0:
             parent_task_id = task_id

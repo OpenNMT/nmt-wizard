@@ -229,6 +229,29 @@ def _format_message(msg, length=40):
     return msg
 
 
+def _parse_local_filename(arg, files):
+    if os.path.isabs(arg):
+        if not os.path.exists(arg):
+            raise ValueError("file '%s' does not exist" % c)
+    elif arg.find('/') != -1 and arg.find(':') == -1:
+        print("==", os.path.exists(arg))
+        if not os.path.exists(arg):
+            logger.warning("parameter %s could be a filename but does not exists, considering it is not" % arg)
+            return arg
+        logger.warning("parameter %s could be a filename and exists, considering it is" % arg)
+    else:
+        return arg
+
+    logger.debug("considering %s is a file" % arg)
+
+    basename = os.path.basename(arg)
+    if basename not in files:
+        files[basename] = (basename, open(arg, 'rb'))
+    arg = "${TMP_DIR}/%s" % basename
+
+    return arg
+
+
 def process_request(serviceList, cmd, is_json, args, auth=None):
     res = None
     result = None
@@ -283,7 +306,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                 res.append(k["task_id"])
         elif not is_json:
             res = PrettyTable(["Task ID", "Resource", "Priority",
-                               "Launch Date", "Image", "Status", "Message", "Model"])
+                               "Launch Date", "Image", "Status", "Message"])
             res.align["Task ID"] = "l"
             for k in sorted(result, key=lambda k: float(float(k.get("launched_time", 0)))):
                 date = datetime.fromtimestamp(
@@ -297,8 +320,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                     k["image"] = k["image"][p+1:]
                 task_id = k["task_id"]
                 res.add_row([task_id, resource, int(k["priority"] or 0),
-                             date, k["image"], k["status"], k.get("message"),
-                             k.get("model", "-")])
+                             date, k["image"], k["status"], k.get("message")])
         else:
             res = r.json()
     elif cmd == "describe":
@@ -350,12 +372,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             if c.startswith("@"):
                 with open(c[1:], "rt") as f:
                     c = f.read()
-            if os.path.isabs(c):
-                if not os.path.exists(c):
-                    raise ValueError("file '%s' does not exist" % c)
-                basename = os.path.basename(c)
-                files[basename] = (basename, open(c, 'rb'))
-                c = "${TMP_DIR}/%s" % basename
+            c = _parse_local_filename(c, files)
             # if json, explore for values to check local path values
             if c.startswith('{'):
                 cjson = json.loads(c)
@@ -403,7 +420,11 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             if args.notransasrelease:
                 content["notransasrelease"] = True
             if 'totranslate' in args and args.totranslate:
-                content["totranslate"] = args.totranslate
+                content["totranslate"] = [(_parse_local_filename(i, files),
+                                           o) for (i, o) in args.totranslate]
+            if 'toscore' in args and args.toscore:
+                content["toscore"] = [(o,
+                                       _parse_local_filename(r, files)) for (o, r) in args.toscore]
 
         logger.debug("sending request: %s", json.dumps(content))
 
@@ -437,9 +458,10 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             if sorted_times:
                 upd = current_time - float(result[sorted_times[-1]])
                 last_update = " - updated %d seconds ago" % upd
-            res = ("TASK %s - TYPE %s - status %s (%s)%s\n" % (
+            res = ("TASK %s - TYPE %s - status %s (%s)%s\nPARENT %s\n" % (
                        args.task_id, result.get('type'),
-                       result.get('status'), result.get('message'), last_update))
+                       result.get('status'), result.get('message'), last_update,
+                       result.get('parent', '')))
             if "service" in result:
                 res += ("SERVICE %s - RESOURCE %s - CONTAINER %s\n" % (
                             result['service'], result.get('resource'), result.get('container_id')))

@@ -15,6 +15,37 @@ def _generate_name(xxyy, length=15):
     return generate_name_en(length)
 
 
+def get_docker_action(command):
+    # docker command starts with docker option
+    idx = 0
+    while idx < len(command) and command[idx].startswith('-'):
+        if (command[idx] == '-d' or
+                command[idx] == '--disable-content-trust' or
+                command[idx] == '--help' or
+                command[idx] == '--init' or
+                command[idx].startswith('-i') or command[idx] == '--interactive' or
+                command[idx] == '--privileged' or
+                command[idx].startswith('-P') or command[idx] == '--publish-all' or
+                command[idx] == '--read-only' or
+                command[idx] == '--sig-proxy' or
+                command[idx] == '--rm' or
+                command[idx].startswith('-t') or command[idx] == '--tty'):
+            idx += 1
+        else:
+            idx += 2
+    if command[idx] == '--':
+        idx += 1
+    # possible entrypoint parameters
+    while idx < len(command) and command[idx].startswith('-'):
+        if command[idx] == '--no_push':
+            idx += 1
+        idx += 1
+    # now, there should be the command name
+    if idx < len(command):
+        return command[idx]
+    return None
+
+
 def shallow_command_analysis(command):
     i = 0
     xx = 'xx'
@@ -160,6 +191,20 @@ def get_cpu_count(config, ngpus, task):
             return config["cpu_allocation"].get("gpu_task", 2)
         return config["cpu_allocation"].get("%s_task" % task, 2)
     return 2
+
+
+def get_params(lparam, listcmd):
+    res = []
+    idx = 0
+    while idx < len(listcmd):
+        if listcmd[idx] in lparam:
+            idx = idx+1
+            while idx < len(listcmd) and not listcmd[idx].startswith('-'):
+                res.append(listcmd[idx])
+                idx += 1
+            continue
+        idx += 1
+    return res
 
 
 def boolean_param(value):
