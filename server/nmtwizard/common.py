@@ -430,8 +430,8 @@ def launch_task(task_id,
 
         registry_uri = docker_registry['uri']
 
-        # connect to a registry
-        if docker_registry['type'] != 'dockerhub':
+        # connect to the registry if necessary
+        if docker_registry.get('credentials'):
             exit_status, stdout, stderr = run_command(
                 client,
                 cmd_connect_private_registry(docker_registry)
