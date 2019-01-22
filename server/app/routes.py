@@ -424,7 +424,7 @@ def launch(service):
        'tag' not in content['docker'] or 'command' not in content['docker']):
         abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
-        content['docker']['registry'] = _get_registry(content['docker']['image'])
+        content['docker']['registry'] = _get_registry(service_module, content['docker']['image'])
     elif content['docker']['registry'] not in service_module._config['docker']['registries']:
         abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
 
