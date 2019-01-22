@@ -122,7 +122,7 @@ def _get_registry(service_module, image):
     if p == -1:
         abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
                                   400))
-    repository = repository[:p]
+    repository = image[:p]
     registry = None
     for r in service_module._config['docker']['registries']:
         v = service_module._config['docker']['registries'][r]
