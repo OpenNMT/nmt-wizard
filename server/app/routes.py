@@ -117,6 +117,25 @@ def _find_compatible_resource(service, ngpus, ncpus, request_resource):
     return False
 
 
+def _get_registry(service_module, image):
+    p = image.find("/")
+    if p == -1:
+        abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
+                                  400))
+    repository = repository[:p]
+    registry = None
+    for r in service_module._config['docker']['registries']:
+        v = service_module._config['docker']['registries'][r]
+        if "default_for" in v and repository in v['default_for']:
+            registry = r
+            break
+    if registry is None:
+        abort(flask.make_response(
+                flask.jsonify(message="cannot find registry for repository %s" % repository),
+                400))
+    return registry
+
+
 def task_request(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
@@ -405,23 +424,7 @@ def launch(service):
        'tag' not in content['docker'] or 'command' not in content['docker']):
         abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
-        repository = content['docker']['image']
-        p = repository.find("/")
-        if p == -1:
-            abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
-                                      400))
-        repository = repository[:p]
-        registry = None
-        for r in service_module._config['docker']['registries']:
-            v = service_module._config['docker']['registries'][r]
-            if "default_for" in v and repository in v['default_for']:
-                registry = r
-                break
-        if registry is None:
-            abort(flask.make_response(
-                    flask.jsonify(message="cannot find registry for repository %s" % repository),
-                    400))
-        content['docker']['registry'] = registry
+        content['docker']['registry'] = _get_registry(content['docker']['image'])
     elif content['docker']['registry'] not in service_module._config['docker']['registries']:
         abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
 
@@ -640,9 +643,11 @@ def launch(service):
 
                     score_resource = service_module.select_resource_from_capacity(resource, Capacity(0, 1))
 
+                    image_score = "nmtwizard/score"
+
                     content_score["docker"] = {
-                        "image": "nmtwizard/score",
-                        "registry": "dockerhub",
+                        "image": image_score,
+                        "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + ['-f', "launcher:scores"]
                     }
