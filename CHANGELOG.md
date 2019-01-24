@@ -9,6 +9,7 @@
 * (client) `-l DEBUG` now traces HTTP requests
 * (worker) fix: ignore `envvar` field in config.docker
 * (admin) global `default.json` now stored in REDIS db and updated by launcher
+* (server) introduce Chinese funnyname and generated model contains name translation
 
 ## [v1.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.2) (2018-12-17)
 

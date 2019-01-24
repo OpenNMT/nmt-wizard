@@ -363,6 +363,26 @@ def check(service):
         return flask.jsonify(details)
 
 
+def patch_config_explicitname(content, explicitname):
+    if "docker" in content and content["docker"].get("command"):
+        idx = 0
+        command = content["docker"].get("command")
+        while idx < len(command):
+            if command[idx][0] != '-':
+                return
+            if command[idx] == '-m' or command[idx] == '--model':
+                return
+            if command[idx] == '--no_push':
+                idx += 1
+                continue
+            if command[idx] == '-c' or command[idx] == '--config':
+                config = json.loads(command[idx+1])
+                config["modelname_description"] = explicitname
+                command[idx+1] = json.dumps(config)
+                return
+            idx += 2
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
@@ -498,7 +518,10 @@ def launch(service):
 
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_task_id = build_task_id(content, xxyy, "prepr", parent_task_id)
+            prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
+
+            if explicitname:
+                patch_config_explicitname(content, explicitname)
 
             idx = 0
             prepr_command = []
@@ -535,7 +558,10 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
-            task_id = build_task_id(content, xxyy, task_suffix, parent_task_id)
+            task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            if explicitname:
+                patch_config_explicitname(content, explicitname)
 
             file_to_transtaskid = {}
             if task_type == "trans":
@@ -605,7 +631,7 @@ def launch(service):
                         content_translate["docker"]["command"].append(f[0])
 
                     change_parent_task(content_translate["docker"]["command"], task_id)
-                    trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
+                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans", task_id)
 
                     content_translate["docker"]["command"].append('-o')
                     for f in subset_totranslate:
@@ -652,7 +678,7 @@ def launch(service):
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + ['-f', "launcher:scores"]
                     }
 
-                    score_task_id = build_task_id(content_score, xxyy, "score", parent_task_id)
+                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score", parent_task_id)
                     task_create.append(
                             (redis, taskfile_dir,
                              score_task_id, "exec", parent_task_id, score_resource, service,

@@ -5,11 +5,14 @@ import uuid
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
 from nmtwizard.funnynames.french import generate_name_fr
+from nmtwizard.funnynames.chinese import generate_name_zh
 
 
 def _generate_name(xxyy, length=15):
     if xxyy.startswith("de") or xxyy[2:].find("de") != -1:
         return generate_name_de(length)
+    if xxyy.startswith("zh") or xxyy[2:].find("zh") != -1:
+        return generate_name_zh(length)
     if xxyy.startswith("fr") or xxyy[2:].find("fr") != -1:
         return generate_name_fr(length)
     return generate_name_en(length)
@@ -170,8 +173,12 @@ def build_task_id(content, xxyy, task_type, parent_task):
         if task_type == "prepr" or (task_type == "train" and parent_task_type != "prepr"):
             nn += 1
 
+    explicitname = None
     if not name:
         name = _generate_name(xxyy)
+        if isinstance(name, tuple):
+            explicitname = name[1]+" ("+name[2]+")"
+            name = name[0]
 
     the_uuid = str(uuid.uuid4()).replace("-", "")
 
@@ -182,7 +189,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
     task_id = task_id[0:47-len(parent_uuid)] + parent_uuid
     if task_type != "train":
         task_id += '_' + model_type_map.get(task_type, task_type)
-    return task_id
+    return task_id, explicitname
 
 
 def get_cpu_count(config, ngpus, task):
