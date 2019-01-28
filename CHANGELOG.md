@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [v1.5.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.5.0) (2018-01-28)
+
 ### New features
 * add "exec" command to launch any generic nmt-wizard docker task
 
