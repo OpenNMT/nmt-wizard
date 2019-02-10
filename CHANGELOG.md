@@ -2,6 +2,7 @@
 
 ### Fixes and improvements
 * (worker) fix passing envvar to specific image as defined in non default config.
+* (launcher) fix `lr` for s3 for root path
 
 ## [v1.5.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.5.0) (2018-01-28)
 
