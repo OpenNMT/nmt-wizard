@@ -286,7 +286,7 @@ def cmd_docker_pull(image_ref, docker_path=None):
 
 def cmd_docker_run(lxpu, docker_options, task_id,
                    docker_image, image_ref, callback_url, callback_interval,
-                   storages, docker_command, log_dir=None):
+                   storages, docker_command, log_dir=None, support_statistics=False):
     (lgpu, lcpu) = lxpu
     env = {}
     nbgpu = len(lgpu)
@@ -357,6 +357,8 @@ def cmd_docker_run(lxpu, docker_options, task_id,
             cmd += '_o_-b_o_%s' % callback_url
             if callback_interval is not None:
                 cmd += '_o_-bi_o_%d' % callback_interval
+            if support_statistics:
+                cmd += '_o_--statistics_url_o_%s/task/stat/%s' % (callback_url, task_id)
 
         cmd += '_o_-i_o_%s' % image_ref
 
@@ -392,7 +394,8 @@ def launch_task(task_id,
                 storages=None,
                 callback_url=None,
                 callback_interval=None,
-                requirements=None):
+                requirements=None,
+                support_statistics=False):
     """Launch a task:
         * `task_id`: assigned id for the task and used for logging
         * `client`: ssh client
@@ -487,7 +490,7 @@ def launch_task(task_id,
 
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
-                              storages, docker_command, log_dir)
+                              storages, docker_command, log_dir, support_statistics)
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
                                                callback_url or '', env, callback_interval) + \

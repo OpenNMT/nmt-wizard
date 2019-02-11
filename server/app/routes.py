@@ -494,6 +494,7 @@ def launch(service):
         can_trans_as_release = semver.match(docker_version, ">=1.8.0")
         trans_as_release = (not exec_mode and not content.get("notransasrelease", False) and
                             semver.match(docker_version, ">=1.8.0"))
+        content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
     except ValueError as err:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
@@ -873,6 +874,21 @@ def post_log(task_id):
     content = flask.request.get_data()
     content = task.set_log(redis, taskfile_dir, task_id, content, max_log_size)
     (task_id, content) = post_function('POST/task/log', task_id, content)
+    return flask.jsonify(200)
+
+
+@app.route("/task/stat/<string:task_id>", methods=["POST"])
+@filter_request("POST/task/stat")
+@task_request
+def post_stat(task_id):
+    stats = flask.request.get_json()
+    task_id_check = stats.get('task_id')
+    if task_id_check != task_id:
+        abort(flask.make_response(flask.jsonify(message="incorrect task_id"), 400))
+    start_time = float(stats.get('start_time'))
+    end_time = float(stats.get('end_time'))
+    statistics = stats.get('statistics')
+    task.set_stat(redis, task_id, end_time-start_time, statistics)
     return flask.jsonify(200)
 
 
