@@ -151,6 +151,7 @@ The server has the following HTTP routes:
 | `DELETE`  | `task/{task_id}` | | Delete a task from the database |
 | `PUT`     | `task/beat/{task_id}` | | Provides a `beat` back to the launcher to notify the task activity and announce the next beat to expect |
 | `GET`<br>`POST` | `task/file/{task_id}` | | Gets or set a file associated to a task |
+| `POST` | `task/stat/{task_id}` | | post json statistics for a task |
 | `GET`<br>`PATCH`<br>`POST` | `task/log/{task_id}` | | Gets, appends or sets the log associated to a task |
 | `GET`     | `service/listconfig/{service}` | | List all configurations associated to a given service | 
 | `GET`     | `service/selectconfig/{service}/{configname}` | | Select a named configuration associated to a given service | 
@@ -519,7 +520,7 @@ The Redis database contains the following task fields:
 | `reserved:<service>:<resourceid>` | value | id of a task reserving a specific resource |
 | `ncpus:<service>:<resourceid>` | value | number of cpus available for a specific resource |
 | `busy:<service>:<resourceid>` | string | expirable timestamp on a resource indicating that the resource has been seen unavailable |
-| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, allocating, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|allocating|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li><li>priority: task priority (higher better)</li><li>alloc_(resource|lgpu): allocated resource and gpu list</li><li>(ncpus|ngpus): number of cpus/gpus used by the task</li></ul> |
+| `task:<taskid>` | dict | <ul><li>status: [queued, allocated, allocating, running, terminating, stopped]</li><li>job: json of jobid (if status>=waiting)</li><li>service:the name of the service</li><li>resource: the name of the resource - or auto before allocating one message: error message (if any), ‘completed’ if successfully finished</li><li>container_id: container in which the task run send back by docker notifier</li><li>(queued|allocated|allocating|running|updated|stopped)_time: time for each event</li><li>parent: parent task id, if any</li>type: task type id (trans, train, ...)</li><li>priority: task priority (higher better)</li><li>alloc_(resource|lgpu): allocated resource and gpu list</li><li>(ncpus|ngpus): number of cpus/gpus used by the task</li><li>duration: duration of the task in seconds reported by framework</li><li>statistics: statistics on the task reported by the framework</li></ul> |
 | `files:<task_id>` | dict | files associated to a task, "log" is generated when training is complete |
 | `queue:<task_id>` | str | expirable timestamp on the task - is used to regularily check status |
 | `work:<service>` | list | Tasks being processed on a given service |
