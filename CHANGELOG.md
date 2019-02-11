@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.6.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.6.0) (2018-02-11)
+
+### New features
+* add "task/stat" route for tracking tasks statistics
+
 ### Fixes and improvements
 * (worker) fix passing envvar to specific image as defined in non default config.
 * (launcher) fix `lr` for s3 for root path
