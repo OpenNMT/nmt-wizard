@@ -1,0 +1,3 @@
+[submodule "server/nmt-wizard-docker"]
+	path = server/nmt-wizard-docker
+	url = https://github.com/OpenNMT/nmt-wizard-docker.git

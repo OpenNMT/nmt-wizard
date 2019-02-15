@@ -1,13 +1,15 @@
+import os
+import time
+import logging
+import json
+
 from flask import Flask
 from flask_ini import FlaskIni
-import os
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
-import logging
-import time
 from redis.exceptions import ConnectionError
 
-VERSION = "1.4.2"
+VERSION = "1.6.0"
 
 app = Flask(__name__)
 app._requestid = 1
@@ -22,6 +24,14 @@ common.add_log_handler(ch)
 
 config_file = os.getenv('LAUNCHER_CONFIG', 'settings.ini')
 assert config_file is not None and os.path.isfile(config_file), "invalid LAUNCHER_CONFIG"
+
+default_file = os.path.join(os.path.dirname(config_file), "default.json")
+assert os.path.isfile(default_file), "Cannot find default.json: %s" % default_file
+
+with open(default_file) as default_fh:
+    default_config = default_fh.read()
+    base_config = json.loads(default_config)
+    assert 'storages' in base_config, "incomplete configuration - missing `storages` in %s" % default_file
 
 app.iniconfig = FlaskIni()
 with app.app_context():
@@ -42,14 +52,17 @@ assert os.path.isdir(taskfile_dir), "taskfile_dir (%s) must be a directory" % ta
 retry = 0
 while retry < 10:
     try:
-        storages_list = redis.get("admin:storages")
-        assert storages_list, "ERROR: cannot get storages from worker db"
+        current_default_config = redis.exists("default") and redis.hget("default", "configuration")
         break
     except (ConnectionError, AssertionError) as e:
         retry += 1
         time.sleep(1)
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
+
+if current_default_config != default_config:
+    redis.hset("default", "configuration", default_config)
+    redis.hset("default", "timestamp", time.time())
 
 
 def append_version(v):

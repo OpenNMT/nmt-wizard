@@ -37,17 +37,22 @@ def rmprivate(lst):
         for t in lst:
             r.append(rmprivate(t))
         return r
+    elif isinstance(lst, dict):
+        for k, v in six.iteritems(lst):
+            lst[k] = rmprivate(v)
+        return lst
     else:
         t = lst
-        p = t.find("[[private:")
-        while p != -1:
-            t = t[0:p] + t[p+10:]
-            q = t.find("]]")
-            if q != -1:
-                t = t[0:q] + t[q+2:]
-                p = t.find("[[private:", q)
-            else:
-                p = -1
+        if isinstance(t, six.string_types):
+            p = t.find("[[private:")
+            while p != -1:
+                t = t[0:p] + t[p+10:]
+                q = t.find("]]")
+                if q != -1:
+                    t = t[0:q] + t[q+2:]
+                    p = t.find("[[private:", q)
+                else:
+                    p = -1
         return t
 
 
@@ -281,7 +286,7 @@ def cmd_docker_pull(image_ref, docker_path=None):
 
 def cmd_docker_run(lxpu, docker_options, task_id,
                    docker_image, image_ref, callback_url, callback_interval,
-                   storages, docker_command, log_dir=None):
+                   storages, docker_command, log_dir=None, support_statistics=False):
     (lgpu, lcpu) = lxpu
     env = {}
     nbgpu = len(lgpu)
@@ -307,7 +312,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
                 cmd += '_o_-v_o_%s' % k
         if 'envvar' in docker_options:
             for k, v in six.iteritems(docker_options['envvar']):
-                if isinstance(v, str):
+                if isinstance(v, six.string_types):
                     cmd += '_o_-e_o_%s=%s' % (k, v)
                 elif isinstance(v, dict) and k == "specific" and docker_image in v:
                     # specific options for a given image
@@ -352,6 +357,8 @@ def cmd_docker_run(lxpu, docker_options, task_id,
             cmd += '_o_-b_o_%s' % callback_url
             if callback_interval is not None:
                 cmd += '_o_-bi_o_%d' % callback_interval
+            if support_statistics:
+                cmd += '_o_--statistics_url_o_%s/task/stat/%s' % (callback_url, task_id)
 
         cmd += '_o_-i_o_%s' % image_ref
 
@@ -387,7 +394,8 @@ def launch_task(task_id,
                 storages=None,
                 callback_url=None,
                 callback_interval=None,
-                requirements=None):
+                requirements=None,
+                support_statistics=False):
     """Launch a task:
         * `task_id`: assigned id for the task and used for logging
         * `client`: ssh client
@@ -411,14 +419,22 @@ def launch_task(task_id,
         {the_docker_registry: docker_options['registries'][the_docker_registry]},
         requirements)
 
+    if callback_url is not None:
+        exit_status, stdout, stderr = run_command(
+            client,
+            "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
+            "--data-ascii 'Initialization complete...'" % (callback_url, task_id))
+        if exit_status != 0:
+            raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
+
     image_ref = ""
     if docker_options.get('dev') != 1:
         docker_registry = docker_options['registries'][the_docker_registry]
 
         registry_uri = docker_registry['uri']
 
-        # connect to a registry
-        if docker_registry['type'] != 'dockerhub':
+        # connect to the registry if necessary
+        if docker_registry.get('credentials'):
             exit_status, stdout, stderr = run_command(
                 client,
                 cmd_connect_private_registry(docker_registry)
@@ -472,17 +488,9 @@ def launch_task(task_id,
                 raise RuntimeError("error retrieving files: %s, %s" %
                                    (cmd_get_files, stderr.read()))
 
-    if callback_url is not None:
-        exit_status, stdout, stderr = run_command(
-            client,
-            "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
-            "--data-ascii 'Initialization complete...'" % (callback_url, task_id))
-        if exit_status != 0:
-            raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
-
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
-                              storages, docker_command, log_dir)
+                              storages, docker_command, log_dir, support_statistics)
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
                                                callback_url or '', env, callback_interval) + \

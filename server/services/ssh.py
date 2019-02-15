@@ -143,7 +143,8 @@ class SSHService(Service):
                docker_command,
                docker_files,
                wait_after_launch,
-               auth_token):
+               auth_token,
+               support_statistics):
         options['server'] = resource
         params = _get_params(self._config, options)
         client = common.ssh_connect_with_retry(
@@ -172,7 +173,8 @@ class SSHService(Service):
                 self._config.get('storages'),
                 callback_url,
                 self._config.get('callback_interval'),
-                requirements=self._config.get("requirements"))
+                requirements=self._config.get("requirements"),
+                support_statistics=support_statistics)
         finally:
             client.close()
         params['model'] = task['model']

@@ -276,3 +276,9 @@ def append_log(redis, taskfile_dir, task_id, content, limit=None):
 
 def set_log(redis, taskfile_dir, task_id, content, limit=None):
     return set_file(redis, taskfile_dir, task_id, content, "log", limit)
+
+
+def set_stat(redis, task_id, duration, statistics):
+    keyt = "task:" + task_id
+    redis.hset(keyt, "duration", str(duration))
+    redis.hset(keyt, "statistics", json.dumps(statistics))

@@ -1,21 +1,23 @@
-import flask
 import io
 import pickle
 import json
 import logging
 import os
 import time
-import semver
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
 
+import semver
+import six
+import flask
 from flask import abort, make_response, jsonify
-from app import app, redis, get_version, ch, taskfile_dir
-from nmtwizard import common, task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param
+
+from app import app, redis, get_version, taskfile_dir
+from nmtwizard import task
+from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
-from nmtwizard.helper import get_cpu_count
+from nmtwizard.helper import get_cpu_count, get_params
 from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
@@ -113,6 +115,25 @@ def _find_compatible_resource(service, ngpus, ncpus, request_resource):
             if ngpus <= capacity.ngpus and (ncpus is None or ncpus <= capacity.ncpus):
                 return True
     return False
+
+
+def _get_registry(service_module, image):
+    p = image.find("/")
+    if p == -1:
+        abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
+                                  400))
+    repository = image[:p]
+    registry = None
+    for r in service_module._config['docker']['registries']:
+        v = service_module._config['docker']['registries'][r]
+        if "default_for" in v and repository in v['default_for']:
+            registry = r
+            break
+    if registry is None:
+        abort(flask.make_response(
+                flask.jsonify(message="cannot find registry for repository %s" % repository),
+                400))
+    return registry
 
 
 def task_request(func):
@@ -342,6 +363,26 @@ def check(service):
         return flask.jsonify(details)
 
 
+def patch_config_explicitname(content, explicitname):
+    if "docker" in content and content["docker"].get("command"):
+        idx = 0
+        command = content["docker"].get("command")
+        while idx < len(command):
+            if command[idx][0] != '-':
+                return
+            if command[idx] == '-m' or command[idx] == '--model':
+                return
+            if command[idx] == '--no_push':
+                idx += 1
+                continue
+            if command[idx] == '-c' or command[idx] == '--config':
+                config = json.loads(command[idx+1])
+                config["modelname_description"] = explicitname
+                command[idx+1] = json.dumps(config)
+                return
+            idx += 2
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
@@ -367,20 +408,32 @@ def launch(service):
     service_module = get_service(service)
     content["service"] = service
 
-    task_type = '????'
-    if "train" in content["docker"]["command"]:
-        task_type = "train"
-    elif "trans" in content["docker"]["command"]:
-        task_type = "trans"
-    elif "preprocess" in content["docker"]["command"]:
-        task_type = "prepr"
-    elif "release" in content["docker"]["command"]:
-        task_type = "relea"
-    elif "buildvocab" in content["docker"]["command"]:
-        task_type = "vocab"
+    exec_mode = content.get('exec_mode', False)
+
+    if not exec_mode:
+        task_type = '????'
+        if "train" in content["docker"]["command"]:
+            task_type = "train"
+        elif "trans" in content["docker"]["command"]:
+            task_type = "trans"
+        elif "preprocess" in content["docker"]["command"]:
+            task_type = "prepr"
+        elif "release" in content["docker"]["command"]:
+            task_type = "relea"
+        elif "buildvocab" in content["docker"]["command"]:
+            task_type = "vocab"
+    else:
+        task_type = 'exec'
 
     if task_type == '????':
         abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
+
+    elif task_type != "exec":
+        task_suffix = task_type
+    else:
+        task_suffix = get_docker_action(content["docker"]["command"])
+        if task_suffix is None:
+            task_suffix = task_type
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
@@ -391,23 +444,7 @@ def launch(service):
        'tag' not in content['docker'] or 'command' not in content['docker']):
         abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
-        repository = content['docker']['image']
-        p = repository.find("/")
-        if p == -1:
-            abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
-                                      400))
-        repository = repository[:p]
-        registry = None
-        for r in service_module._config['docker']['registries']:
-            v = service_module._config['docker']['registries'][r]
-            if "default_for" in v and repository in v['default_for']:
-                registry = r
-                break
-        if registry is None:
-            abort(flask.make_response(
-                    flask.jsonify(message="cannot find registry for repository %s" % repository),
-                    400))
-        content['docker']['registry'] = registry
+        content['docker']['registry'] = _get_registry(service_module, content['docker']['image'])
     elif content['docker']['registry'] not in service_module._config['docker']['registries']:
         abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
 
@@ -416,6 +453,8 @@ def launch(service):
     iterations = 1
     if "iterations" in content:
         iterations = content["iterations"]
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="chain mode unavailable in exec mode"), 400))
         if (task_type != "train" and iterations != 1) or iterations < 1:
             abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
@@ -431,21 +470,31 @@ def launch(service):
                                   (service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
         totranslate = content["totranslate"]
         del content["totranslate"]
     else:
         totranslate = None
+    if "toscore" in content:
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"), 400))
+        toscore = content["toscore"]
+        del content["toscore"]
+    else:
+        toscore = None
 
     docker_version = content['docker']['tag']
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
     try:
-        chain_prepr_train = (not content.get("nochainprepr", False) and
+        chain_prepr_train = (not exec_mode and not content.get("nochainprepr", False) and
                              task_type == "train" and
                              semver.match(docker_version, ">=1.4.0"))
         can_trans_as_release = semver.match(docker_version, ">=1.8.0")
-        trans_as_release = (not content.get("notransasrelease", False) and
+        trans_as_release = (not exec_mode and not content.get("notransasrelease", False) and
                             semver.match(docker_version, ">=1.8.0"))
+        content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
     except ValueError as err:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
@@ -455,7 +504,7 @@ def launch(service):
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
     parent_task_type = None
-    if parent_task_id:
+    if not exec_mode and parent_task_id:
         (parent_struct, parent_task_type) = model_name_analysis(parent_task_id)
 
     # check that parent model type matches current command
@@ -470,7 +519,10 @@ def launch(service):
 
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_task_id = build_task_id(content, xxyy, "prepr", parent_task_id)
+            prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
+
+            if explicitname:
+                patch_config_explicitname(content, explicitname)
 
             idx = 0
             prepr_command = []
@@ -507,7 +559,20 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
-            task_id = build_task_id(content, xxyy, task_type, parent_task_id)
+            task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            if explicitname:
+                patch_config_explicitname(content, explicitname)
+
+            file_to_transtaskid = {}
+            if task_type == "trans":
+                try:
+                    idx = content["docker"]["command"].index("trans")
+                    output_files = get_params(("-o", "--output"), content["docker"]["command"][idx+1:])
+                    for ofile in output_files:
+                        file_to_transtaskid[ofile] = task_id
+                except Exception:
+                    pass
 
             content["ncpus"] = ncpus or \
                 get_cpu_count(current_configuration, ngpus, task_type)
@@ -565,12 +630,16 @@ def launch(service):
                                                      (subset_idx+1)*file_per_gpu]
                     for f in subset_totranslate:
                         content_translate["docker"]["command"].append(f[0])
+
+                    change_parent_task(content_translate["docker"]["command"], task_id)
+                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans", task_id)
+
                     content_translate["docker"]["command"].append('-o')
                     for f in subset_totranslate:
-                        content_translate["docker"]["command"].append(
-                            f[1].replace('<MODEL>', task_id))
-                    change_parent_task(content_translate["docker"]["command"], task_id)
-                    trans_task_id = build_task_id(content_translate, xxyy, "trans", task_id)
+                        ofile = f[1].replace('<MODEL>', task_id)
+                        file_to_transtaskid[ofile] = trans_task_id
+                        content_translate["docker"]["command"].append(ofile)
+
                     task_create.append(
                             (redis, taskfile_dir,
                              trans_task_id, "trans", task_id, translate_resource, service,
@@ -582,6 +651,46 @@ def launch(service):
                                            "trans", trans_task_id,
                                            content_translate["ngpus"], content_translate["ncpus"]))
                     subset_idx += 1
+
+            if toscore:
+                toscore_parent = {}
+                for (ofile, rfile) in toscore:
+                    ofile = ofile.replace('<MODEL>', task_id)
+                    parent_task_id = file_to_transtaskid.get(ofile)
+                    if parent_task_id:
+                        if parent_task_id not in toscore_parent:
+                            toscore_parent[parent_task_id] = {"output": [], "ref": []}
+                        toscore_parent[parent_task_id]["output"].append(ofile)
+                        toscore_parent[parent_task_id]["ref"].append(rfile)
+                for parent_task_id, oref in six.iteritems(toscore_parent):
+                    content_score = deepcopy(content)
+                    content_score["priority"] = priority + 1
+                    content_score["ngpus"] = 0
+                    content_score["ncpus"] = 1
+
+                    score_resource = service_module.select_resource_from_capacity(resource, Capacity(0, 1))
+
+                    image_score = "nmtwizard/score"
+
+                    content_score["docker"] = {
+                        "image": image_score,
+                        "registry": _get_registry(service_module, image_score),
+                        "tag": "latest",
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + ['-f', "launcher:scores"]
+                    }
+
+                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score", parent_task_id)
+                    task_create.append(
+                            (redis, taskfile_dir,
+                             score_task_id, "exec", parent_task_id, score_resource, service,
+                             content_score,
+                             (), priority+2,
+                             0, 1,
+                             {}))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                                           "score", score_task_id,
+                                           0, 1))
+
         iterations -= 1
         if iterations > 0:
             parent_task_id = task_id
@@ -650,12 +759,18 @@ def list_tasks(pattern):
             info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
         if info["alloc_lcpu"]:
             info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
+        info["image"] = '-'
+        info["model"] = '-'
         if info["content"]:
             content = json.loads(info["content"])
-            info["image"] = content['docker']['image']
+            info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
+            j = 0
+            while j < len(content["docker"]["command"]) - 1:
+                if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
+                    info["model"] = content["docker"]["command"][j+1]
+                    break
+                j = j+1
             del info['content']
-        else:
-            info["image"] = '-'
         info['task_id'] = task_id
         ltask.append(info)
     return flask.jsonify(ltask)
@@ -672,7 +787,13 @@ def terminate(task_id):
         elif current_status == "stopped":
             return flask.jsonify(message="%s already stopped" % task_id)
         phase = flask.request.args.get('phase')
-        task.terminate(redis, task_id, phase=phase)
+
+    res = post_function('GET/task/terminate', task_id, phase)
+    if res:
+        task.terminate(redis, task_id, phase="publish_error")
+        return flask.jsonify(message="problem while posting model: %s" % res)
+
+    task.terminate(redis, task_id, phase=phase)
     return flask.jsonify(message="terminating %s" % task_id)
 
 
@@ -753,6 +874,21 @@ def post_log(task_id):
     content = flask.request.get_data()
     content = task.set_log(redis, taskfile_dir, task_id, content, max_log_size)
     (task_id, content) = post_function('POST/task/log', task_id, content)
+    return flask.jsonify(200)
+
+
+@app.route("/task/stat/<string:task_id>", methods=["POST"])
+@filter_request("POST/task/stat")
+@task_request
+def post_stat(task_id):
+    stats = flask.request.get_json()
+    task_id_check = stats.get('task_id')
+    if task_id_check != task_id:
+        abort(flask.make_response(flask.jsonify(message="incorrect task_id"), 400))
+    start_time = float(stats.get('start_time'))
+    end_time = float(stats.get('end_time'))
+    statistics = stats.get('statistics')
+    task.set_stat(redis, task_id, end_time-start_time, statistics)
     return flask.jsonify(200)
 
 

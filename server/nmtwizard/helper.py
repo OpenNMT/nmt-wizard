@@ -5,14 +5,48 @@ import uuid
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
 from nmtwizard.funnynames.french import generate_name_fr
+from nmtwizard.funnynames.chinese import generate_name_zh
 
 
 def _generate_name(xxyy, length=15):
     if xxyy.startswith("de") or xxyy[2:].find("de") != -1:
         return generate_name_de(length)
+    if xxyy.startswith("zh") or xxyy[2:].find("zh") != -1:
+        return generate_name_zh(length)
     if xxyy.startswith("fr") or xxyy[2:].find("fr") != -1:
         return generate_name_fr(length)
     return generate_name_en(length)
+
+
+def get_docker_action(command):
+    # docker command starts with docker option
+    idx = 0
+    while idx < len(command) and command[idx].startswith('-'):
+        if (command[idx] == '-d' or
+                command[idx] == '--disable-content-trust' or
+                command[idx] == '--help' or
+                command[idx] == '--init' or
+                command[idx].startswith('-i') or command[idx] == '--interactive' or
+                command[idx] == '--privileged' or
+                command[idx].startswith('-P') or command[idx] == '--publish-all' or
+                command[idx] == '--read-only' or
+                command[idx] == '--sig-proxy' or
+                command[idx] == '--rm' or
+                command[idx].startswith('-t') or command[idx] == '--tty'):
+            idx += 1
+        else:
+            idx += 2
+    if command[idx] == '--':
+        idx += 1
+    # possible entrypoint parameters
+    while idx < len(command) and command[idx].startswith('-'):
+        if command[idx] == '--no_push':
+            idx += 1
+        idx += 1
+    # now, there should be the command name
+    if idx < len(command):
+        return command[idx]
+    return None
 
 
 def shallow_command_analysis(command):
@@ -71,7 +105,7 @@ def model_name_analysis(model):
     task_type = None
     struct = {}
     lst = model.split("_")
-    if lst[-1] in model_types:
+    if lst[-1] in model_types or len(lst) == 6:
         task_type = lst[-1][:5]
         lst.pop(-1)
     else:
@@ -139,8 +173,12 @@ def build_task_id(content, xxyy, task_type, parent_task):
         if task_type == "prepr" or (task_type == "train" and parent_task_type != "prepr"):
             nn += 1
 
+    explicitname = None
     if not name:
         name = _generate_name(xxyy)
+        if isinstance(name, tuple):
+            explicitname = name[1]+" ("+name[2]+")"
+            name = name[0]
 
     the_uuid = str(uuid.uuid4()).replace("-", "")
 
@@ -150,8 +188,8 @@ def build_task_id(content, xxyy, task_type, parent_task):
         task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
     task_id = task_id[0:47-len(parent_uuid)] + parent_uuid
     if task_type != "train":
-        task_id += '_' + model_type_map[task_type]
-    return task_id
+        task_id += '_' + model_type_map.get(task_type, task_type)
+    return task_id, explicitname
 
 
 def get_cpu_count(config, ngpus, task):
@@ -162,9 +200,24 @@ def get_cpu_count(config, ngpus, task):
     return 2
 
 
+def get_params(lparam, listcmd):
+    res = []
+    idx = 0
+    while idx < len(listcmd):
+        if listcmd[idx] in lparam:
+            idx = idx+1
+            while idx < len(listcmd) and not listcmd[idx].startswith('-'):
+                res.append(listcmd[idx])
+                idx += 1
+            continue
+        idx += 1
+    return res
+
+
 def boolean_param(value):
     return not(value is None or
                value is False or
                value == "" or
                value == "0" or
-               value == "False")
+               value == "False" or
+               value == "false")

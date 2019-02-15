@@ -146,7 +146,9 @@ class Service(object):
                docker_tag,
                docker_command,
                docker_files,
-               wait_after_launch):
+               wait_after_launch,
+               auth_tokens,
+               support_statistics):
         """Launches a new task."""
         raise NotImplementedError()
 

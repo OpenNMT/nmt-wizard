@@ -1,5 +1,27 @@
 ## Unreleased
 
+## [v1.6.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.6.0) (2018-02-11)
+
+### New features
+* add "task/stat" route for tracking tasks statistics
+
+### Fixes and improvements
+* (worker) fix passing envvar to specific image as defined in non default config.
+* (launcher) fix `lr` for s3 for root path
+
+## [v1.5.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.5.0) (2018-01-28)
+
+### New features
+* add "exec" command to launch any generic nmt-wizard docker task
+
+### Fixes and improvements
+* (client) avoid content corruption when `file` output string contains non utf-8 or non supported characters
+* (client) improve task list to add model and image tag information
+* (client) `-l DEBUG` now traces HTTP requests
+* (worker) fix: ignore `envvar` field in config.docker
+* (admin) global `default.json` now stored in REDIS db and updated by launcher
+* (server) introduce Chinese funnyname and generated model contains name translation
+
 ## [v1.4.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.4.2) (2018-12-17)
 
 ### Fixes and improvements

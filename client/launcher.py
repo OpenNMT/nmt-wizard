@@ -11,7 +11,13 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
-VERSION = "1.4.1"
+VERSION = "1.6.0"
+
+try:
+    # for Python 3
+    from http.client import HTTPConnection
+except ImportError:
+    from httplib import HTTPConnection
 
 
 def append_version(v):
@@ -146,6 +152,46 @@ parser_check.add_argument('-o', '--options', default='{}',
 parser_check.add_argument('-r', '--resource',
                           help="alternatively to `options`, resource name to check")
 
+exec_arguments = [
+    ['-s', '--service', {"help": 'service name'}],
+    ['-o', '--options', {"default": '{}',
+     "help": 'options selected to run the service'}],
+    ['-r', '--resource',
+     {"help": "alternatively to `options`, resource name to use"}],
+    ['-g', '--gpus', {"type": int, "default": 1, "help": 'number of gpus'}],
+    ['-c', '--cpus', {"type": int,
+     "help": 'number of cpus - if not provided, will be obtained from pool config'}],
+    ['-w', '--wait_after_launch', {
+     "default": 2, "type": int,
+     "help": 'if not 0, wait for this number of seconds after launch '
+             'to check that launch is ok - by default wait for 2 seconds'}],
+    ['--docker_registry', {"default": 'auto',
+     "help": 'docker registry (as configured on server side), default is `auto`'}],
+    ['-i', '--docker_image', {"default": os.getenv('LAUNCHER_IMAGE', None),
+     "help": 'Docker image (can be prefixed by docker_registry:)'}],
+    ['-t', '--docker_tag',
+     {"help": 'Docker image tag (is infered from docker_image if missing)'}],
+    ['-n', '--name',
+     {"help": 'Friendly name for the model, for subsequent tasks, inherits from previous'}],
+    ['-T', '--trainer_id', {"default": os.getenv('LAUNCHER_TID', None),
+     "help": 'trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])'}],
+    ['-P', '--priority', {"type": int, "default": 0, "help": 'task priority - highest better'}],
+]
+
+
+parser_exec = subparsers.add_parser('exec',
+                                    help='execute a generic docker-utility task on the service associated'
+                                         ' to provided options')
+for arg in exec_arguments:
+    parser_exec.add_argument(*arg[:-1], **arg[-1])
+parser_exec.add_argument('docker_command', type=str, nargs='*', help='Docker command')
+
+parser_launch = subparsers.add_parser('launch',
+                                      help='launch a task on the service associated'
+                                           ' to provided options')
+for arg in exec_arguments:
+    parser_launch.add_argument(*arg[:-1], **arg[-1])
+
 subparsers_tasks = subparsers_map["task"].add_subparsers(help='sub-command help', dest='subcmd')
 subparsers_tasks.required = True
 parser_launch = subparsers_tasks.add_parser('launch',
@@ -179,14 +225,11 @@ parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID
                                 'ENV[LAUNCHER_TID])')
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
                            help='for training tasks, iterate several tasks in a row')
-parser_launch.add_argument('-P', '--priority', type=int, default=0,
-                           help='task priority - highest better')
 parser_launch.add_argument('--nochainprepr', action='store_true',
                            help='don\'t split prepr and train (image >= 1.4.0)')
 parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
-parser_launch.add_argument('docker_command', type=str, nargs='*',
-                           help='Docker command')
+parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 
 parser_list_tasks = subparsers_tasks.add_parser('list',
                                                 help='{lt} list tasks matching prefix pattern')
@@ -230,6 +273,29 @@ def _format_message(msg, length=40):
     if len(msg) >= length:
         return msg[:length-3]+"..."
     return msg
+
+
+def _parse_local_filename(arg, files):
+    if os.path.isabs(arg):
+        if not os.path.exists(arg):
+            raise ValueError("file '%s' does not exist" % c)
+    elif arg.find('/') != -1 and arg.find(':') == -1:
+        print("==", os.path.exists(arg))
+        if not os.path.exists(arg):
+            logger.warning("parameter %s could be a filename but does not exists, considering it is not" % arg)
+            return arg
+        logger.warning("parameter %s could be a filename and exists, considering it is" % arg)
+    else:
+        return arg
+
+    logger.debug("considering %s is a file" % arg)
+
+    basename = os.path.basename(arg)
+    if basename not in files:
+        files[basename] = (basename, open(arg, 'rb'))
+    arg = "${TMP_DIR}/%s" % basename
+
+    return arg
 
 
 def argparse_preprocess():
@@ -339,7 +405,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         res = r.json()
-    elif cmd == "task" and subcmd == "launch":
+    elif cmd == "exec" or cmd == "task" and subcmd == "launch":
         if args.trainer_id is None:
             raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')
 
@@ -369,12 +435,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             if c.startswith("@"):
                 with open(c[1:], "rt") as f:
                     c = f.read()
-            if os.path.isabs(c):
-                if not os.path.exists(c):
-                    raise ValueError("file '%s' does not exist" % c)
-                basename = os.path.basename(c)
-                files[basename] = (basename, open(c, 'rb'))
-                c = "${TMP_DIR}/%s" % basename
+            c = _parse_local_filename(c, files)
             # if json, explore for values to check local path values
             if c.startswith('{'):
                 cjson = json.loads(c)
@@ -407,18 +468,26 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             "ncpus": args.cpus
         }
 
+        if cmd == "exec":
+            content["exec_mode"] = True
         if args.name:
             content["name"] = args.name
-        if args.iterations:
-            content["iterations"] = args.iterations
-        if args.nochainprepr:
-            content["nochainprepr"] = True
-        if args.notransasrelease:
-            content["notransasrelease"] = True
         if args.priority:
             content["priority"] = args.priority
-        if 'totranslate' in args and args.totranslate:
-            content["totranslate"] = args.totranslate
+
+        if cmd == "launch":
+            if args.iterations:
+                content["iterations"] = args.iterations
+            if args.nochainprepr:
+                content["nochainprepr"] = True
+            if args.notransasrelease:
+                content["notransasrelease"] = True
+            if 'totranslate' in args and args.totranslate:
+                content["totranslate"] = [(_parse_local_filename(i, files),
+                                           o) for (i, o) in args.totranslate]
+            if 'toscore' in args and args.toscore:
+                content["toscore"] = [(o,
+                                       _parse_local_filename(r, files)) for (o, r) in args.toscore]
 
         logger.debug("sending request: %s", json.dumps(content))
 
@@ -452,9 +521,10 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             if sorted_times:
                 upd = current_time - float(result[sorted_times[-1]])
                 last_update = " - updated %d seconds ago" % upd
-            res = ("TASK %s - TYPE %s - status %s (%s)%s\n" % (
+            res = ("TASK %s - TYPE %s - status %s (%s)%s\nPARENT %s\n" % (
                        args.task_id, result.get('type'),
-                       result.get('status'), result.get('message'), last_update))
+                       result.get('status'), result.get('message'), last_update,
+                       result.get('parent', '')))
             if "service" in result:
                 res += ("SERVICE %s - RESOURCE %s - CONTAINER %s\n" % (
                             result['service'], result.get('resource'), result.get('container_id')))
@@ -514,7 +584,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
                          auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/file\' service: %s' % r.text)
-        res = r.text.encode("utf-8")
+        res = r.content
     elif cmd == "task" and subcmd == "log":
         r = requests.get(os.path.join(args.url, "task/log", args.task_id), auth=auth)
         if r.status_code != 200:
@@ -534,6 +604,12 @@ if __name__ == "__main__":
 
     logging.basicConfig(stream=sys.stdout, level=args.log_level)
     logger = logging.getLogger()
+
+    if args.log_level == "DEBUG":
+        requests_log = logging.getLogger("urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
+        HTTPConnection.debuglevel = 1
 
     if args.url is None:
         args.url = os.getenv('LAUNCHER_URL')

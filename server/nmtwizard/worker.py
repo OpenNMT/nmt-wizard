@@ -17,7 +17,9 @@ def _compatible_resource(resource, request_resource):
 
 class Worker(object):
 
-    def __init__(self, redis, services, ttl_policy, refresh_counter, quarantine_time, worker_id, taskfile_dir):
+    def __init__(self, redis, services, ttl_policy, refresh_counter,
+                 quarantine_time, worker_id, taskfile_dir,
+                 default_config_timestamp=None):
         self._redis = redis
         self._service = next(iter(services))
         self._services = services
@@ -26,6 +28,7 @@ class Worker(object):
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
         self._taskfile_dir = taskfile_dir
+        self._default_config_timestamp = default_config_timestamp
         task.set_ttl_policy(ttl_policy)
 
     def run(self):
@@ -53,6 +56,10 @@ class Worker(object):
             # every 100 * 0.01s (1s) - check worker administration command
             if counter_beat % 100 == 0:
                 workeradmin.process(self._logger, self._redis, self._service)
+                if (self._default_config_timestamp and
+                        self._redis.hget('default', 'timestamp') != self._default_config_timestamp):
+                    self._logger.info('stopped by default configuration change')
+                    sys.exit(0)
 
             # process one message from the queue
             message = pubsub.get_message()
@@ -205,7 +212,8 @@ class Worker(object):
                         content['docker']['command'],
                         task.file_list(self._redis, self._taskfile_dir, task_id),
                         content['wait_after_launch'],
-                        self._redis.hget(keyt, 'token'))
+                        self._redis.hget(keyt, 'token'),
+                        content.get('support_statistics'))
                 except EnvironmentError as e:
                     # the resource is not available and will be set busy
                     self._block_resource(resource, service, str(e))
