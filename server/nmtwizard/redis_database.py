@@ -2,6 +2,7 @@ import uuid
 import time
 import logging
 import redis
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,22 @@ class RedisDatabase(redis.Redis):
 
     def acquire_lock(self, name, acquire_timeout=20, expire_time=60):
         return RedisLock(self, name, acquire_timeout=acquire_timeout, expire_time=expire_time)
+
+    def get_cache(self, name, parameter, f):
+        key = 'cache:%s' % name
+        ser_parameter = json.dumps(parameter)
+        v = self.hget(key, ser_parameter)
+        if v is None:
+            v = f(parameter)
+            ser_v = json.dumps(v)
+            self.hset(key, ser_parameter, ser_v)
+            self.expire(key, 300)
+            return v
+        return json.loads(v)
+
+    def del_cache(self, name):
+        key = 'cache:%s' % name
+        self.delete(key)
 
 
 class RedisLock(object):

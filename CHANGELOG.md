@@ -1,5 +1,7 @@
 ## Unreleased
 
+* add generic DB cache with redis 
+
 ## [v1.6.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.6.0) (2018-02-11)
 
 ### New features
