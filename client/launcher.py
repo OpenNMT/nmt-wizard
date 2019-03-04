@@ -308,9 +308,9 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             res = PrettyTable(["Task ID", "Resource", "Priority",
                                "Launch Date", "Image", "Status", "Message"])
             res.align["Task ID"] = "l"
-            for k in sorted(result, key=lambda k: float(float(k.get("launched_time", 0)))):
+            for k in sorted(result, key=lambda k: float(k.get("launched_time") or 0)):
                 date = datetime.fromtimestamp(
-                    math.ceil(float(k.get("launched_time", 0)))).isoformat(' ')
+                    math.ceil(float(k.get("launched_time") or 0))).isoformat(' ')
                 resource = _truncate_string(k["alloc_resource"] or k["resource"])
                 if k.get("alloc_lgpu") is not None and k.get("alloc_lcpu") is not None:
                     resource += ':(%d,%d)' % (len(k.get("alloc_lgpu", [])),
