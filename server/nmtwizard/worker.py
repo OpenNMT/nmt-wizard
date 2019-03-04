@@ -508,7 +508,7 @@ class Worker(object):
                     if next_task_id in preallocated_task_count:
                         # if task is pre-allocated, can only continue on the same node
                         r = preallocated_task_resource[next_task_id]
-                        xgpus -= preallocated_task_count[next_task_id]
+                        nxpus -= preallocated_task_count[next_task_id]
                         avail_r = avail_resource[r]
                         foundResource = (nxpus.ngpus == 0 and avail_r.cpus != 0) or (
                                             nxpus.ngpus != 0 and avail_r.gpus != 0)
