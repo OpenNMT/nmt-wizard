@@ -510,8 +510,8 @@ class Worker(object):
                         r = preallocated_task_resource[next_task_id]
                         nxpus -= preallocated_task_count[next_task_id]
                         avail_r = avail_resource[r]
-                        foundResource = (nxpus.ngpus == 0 and avail_r.cpus != 0) or (
-                                            nxpus.ngpus != 0 and avail_r.gpus != 0)
+                        foundResource = (nxpus.ngpus == 0 and avail_r.ncpus != 0) or (
+                                            nxpus.ngpus != 0 and avail_r.ngpus != 0)
                     else:
                         # can the task be launched on any node
                         for r, v in six.iteritems(avail_resource):
