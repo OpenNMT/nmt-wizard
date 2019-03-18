@@ -503,6 +503,7 @@ def launch(service):
     priority = content.get("priority", 0)
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
+    parent_struct = None
     parent_task_type = None
     if not exec_mode and parent_task_id:
         (parent_struct, parent_task_type) = model_name_analysis(parent_task_id)
@@ -672,11 +673,16 @@ def launch(service):
 
                     image_score = "nmtwizard/score"
 
+                    option_lang = []
+                    if parent_struct is not None:
+                        option_lang.append('-l')
+                        option_lang.append(parent_struct['xxyy'][-2:])
+
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + ['-f', "launcher:scores"]
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicitname = build_task_id(content_score, xxyy, "score", parent_task_id)
