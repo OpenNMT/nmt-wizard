@@ -365,7 +365,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
         for arg in docker_command:
             if arg.startswith('${TMP_DIR}'):
                 arg = '/root/tmp/%s%s' % (task_id, arg[10:])
-            cmd += '_o_' + arg
+            cmd += '_o_' + arg.replace("'", "'\"'\"'")
 
         return cmd.replace("\n", "\\\\n").replace("_o_", "\n"), str(env).replace("'", '"')
 
