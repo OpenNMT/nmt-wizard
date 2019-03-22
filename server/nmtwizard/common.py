@@ -286,7 +286,7 @@ def cmd_docker_pull(image_ref, docker_path=None):
 
 def cmd_docker_run(lxpu, docker_options, task_id,
                    docker_image, image_ref, callback_url, callback_interval,
-                   storages, docker_command, log_dir=None, support_statistics=False):
+                   storages, docker_command, log_dir=None, support_statistics=False, parenttask=None):
     (lgpu, lcpu) = lxpu
     env = {}
     nbgpu = len(lgpu)
@@ -332,7 +332,10 @@ def cmd_docker_run(lxpu, docker_options, task_id,
 
         if storages is not None and storages != {}:
             v = json.dumps(storages)
-            v = v.replace("<TASK_ID>", task_id)
+            if parenttask is not None and "_trans" in parenttask:
+                v = v.replace("<TASK_ID>", parenttask)
+            else:
+                v = v.replace("<TASK_ID>", task_id)
             v = v.replace("<CALLBACK_URL>", callback_url)
             cmd += '_o_-s_o_%s' % v
 
@@ -395,7 +398,8 @@ def launch_task(task_id,
                 callback_url=None,
                 callback_interval=None,
                 requirements=None,
-                support_statistics=False):
+                support_statistics=False,
+                parenttask=None):
     """Launch a task:
         * `task_id`: assigned id for the task and used for logging
         * `client`: ssh client
@@ -490,7 +494,7 @@ def launch_task(task_id,
 
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
-                              storages, docker_command, log_dir, support_statistics)
+                              storages, docker_command, log_dir, support_statistics, parenttask=parenttask)
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
                                                callback_url or '', env, callback_interval) + \

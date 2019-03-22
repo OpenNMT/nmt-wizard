@@ -187,6 +187,7 @@ class Worker(object):
             elif status == 'allocated':
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
+                parent = self._redis.hget(keyt, 'parent')
                 self._logger.info('%s: launching on %s', task_id, service.name)
                 try:
                     keygr = 'gpu_resource:%s:%s' % (service.name, resource)
@@ -213,7 +214,8 @@ class Worker(object):
                         task.file_list(self._redis, self._taskfile_dir, task_id),
                         content['wait_after_launch'],
                         self._redis.hget(keyt, 'token'),
-                        content.get('support_statistics'))
+                        content.get('support_statistics'),
+                        parenttask=parent)
                 except EnvironmentError as e:
                     # the resource is not available and will be set busy
                     self._block_resource(resource, service, str(e))

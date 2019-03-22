@@ -152,7 +152,8 @@ class EC2Service(Service):
                docker_files,
                wait_after_launch,
                auth_token,
-               support_statistics):
+               support_statistics,
+               parenttask=None):
         options['server'] = resource
         params = _get_params(self._templates, options)
         ec2_client = self._session.client("ec2")
@@ -205,7 +206,8 @@ class EC2Service(Service):
                 self._config.get('storages'),
                 callback_url,
                 self._config.get('callback_interval'),
-                support_statistics=support_statistics)
+                support_statistics=support_statistics,
+                parenttask=parenttask)
         except Exception as e:
             if self._config["variables"].get("terminateOnError", True):
                 instance.terminate()
