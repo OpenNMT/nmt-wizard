@@ -5,6 +5,7 @@
 * fix display of task list if some tasks have corrupted information
 * (worker) fix crash for resource calculation
 * (worker) fix use of single quote in configuration file
+* (launcher) enable /file and /task/file equivalent API for backward compatibility
 
 ## [v1.6.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.6.0) (2018-02-11)
 

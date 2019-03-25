@@ -815,6 +815,7 @@ def task_beat(task_id):
     return flask.jsonify(200)
 
 
+@app.route("/file/<string:task_id>/<path:filename>", methods=["GET"])
 @app.route("/task/file/<string:task_id>/<path:filename>", methods=["GET"])
 @task_request
 def get_file(task_id, filename):

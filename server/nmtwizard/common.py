@@ -465,6 +465,7 @@ def launch_task(task_id,
         exit_status, stdout, stderr = run_command(client, cmd_mkdir)
         if exit_status != 0:
             raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, stderr.read()))
+        logger.info("transfer task files in dockers [%s]" % ", ".join(docker_files))
         for f in docker_files:
             p = f.rfind("/")
             if p != -1:
