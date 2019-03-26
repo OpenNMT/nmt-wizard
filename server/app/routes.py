@@ -555,7 +555,6 @@ def launch(service):
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
-            parent_task_id = prepr_task_id
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
