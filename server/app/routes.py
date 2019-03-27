@@ -556,7 +556,8 @@ def launch(service):
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
-            parent_task_id = prepr_task_id
+            if parent_task_id is None:
+                parent_task_id = prepr_task_id
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
@@ -821,6 +822,7 @@ def task_beat(task_id):
     return flask.jsonify(200)
 
 
+@app.route("/file/<string:task_id>/<path:filename>", methods=["GET"])
 @app.route("/task/file/<string:task_id>/<path:filename>", methods=["GET"])
 @task_request
 def get_file(task_id, filename):

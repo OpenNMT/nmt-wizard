@@ -365,7 +365,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
         for arg in docker_command:
             if arg.startswith('${TMP_DIR}'):
                 arg = '/root/tmp/%s%s' % (task_id, arg[10:])
-            cmd += '_o_' + arg
+            cmd += '_o_' + arg.replace("'", "'\"'\"'")
 
         return cmd.replace("\n", "\\\\n").replace("_o_", "\n"), str(env).replace("'", '"')
 
@@ -465,6 +465,7 @@ def launch_task(task_id,
         exit_status, stdout, stderr = run_command(client, cmd_mkdir)
         if exit_status != 0:
             raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, stderr.read()))
+        logger.info("transfer task files in dockers [%s]" % ", ".join(docker_files))
         for f in docker_files:
             p = f.rfind("/")
             if p != -1:
