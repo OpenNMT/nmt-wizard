@@ -7,6 +7,7 @@
 * (worker) fix use of single quote in configuration file
 * (launcher) enable /file and /task/file equivalent API for backward compatibility
 * (launcher) normalize naming of tasks with parent task id (#51648)
+* add score docker lang option
 
 ## [v1.6.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.6.0) (2018-02-11)
 
