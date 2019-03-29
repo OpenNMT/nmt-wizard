@@ -116,24 +116,35 @@ parser.add_argument('-l', '--log-level', default='INFO',
                     help="log-level (INFO|WARN|DEBUG|FATAL|ERROR)")
 parser.add_argument('-d', '--display', default='TABLE',
                     help="display mode (TABLE, JSON, HTML, RAW)")
+parser.add_argument('-v', '--version', action=VersionAction,
+                    help='Version information')
 
 subparsers = parser.add_subparsers(help='command help', dest='cmd')
 subparsers.required = True
 
-parser_list_services = subparsers.add_parser('ls',
-                                             help='list available services')
+subparsers_map = {
+    "service": subparsers.add_parser(u'service'),
+    "task": subparsers.add_parser(u'task'),
+}
+shortcut_map = {}
+
+subparsers_service = subparsers_map["service"].add_subparsers(help='sub-command help', dest='subcmd')
+subparsers_service.required = True
+parser_list_services = subparsers_service.add_parser('list',
+                                                     help='{ls} list available services')
+shortcut_map["ls"] = ["service", "list"]
 parser_list_services.add_argument('-v', '--verbose', help='detail resource name, and running tasks',
                                   action='store_true')
 parser_list_services.add_argument('-a', '--all', action='store_true',
                                   help='show all visible pools, default show only user pool')
 
-parser_describe = subparsers.add_parser('describe',
-                                        help='list available options for the service')
+parser_describe = subparsers_service.add_parser('describe',
+                                                help='list available options for the service')
 parser_describe.add_argument('-s', '--service', help="service name")
 
-parser_check = subparsers.add_parser('check',
-                                     help='check that service associated to provided'
-                                          'options is operational')
+parser_check = subparsers_service.add_parser('check',
+                                             help='check that service associated to provided'
+                                                  'options is operational')
 parser_check.add_argument('-s', '--service',
                           help='service name')
 parser_check.add_argument('-o', '--options', default='{}',
@@ -181,6 +192,37 @@ parser_launch = subparsers.add_parser('launch',
 for arg in exec_arguments:
     parser_launch.add_argument(*arg[:-1], **arg[-1])
 
+subparsers_tasks = subparsers_map["task"].add_subparsers(help='sub-command help', dest='subcmd')
+subparsers_tasks.required = True
+parser_launch = subparsers_tasks.add_parser('launch',
+                                            help='launch a task on the service associated'
+                                                 ' to provided options')
+shortcut_map["launch"] = ["task", "launch"]
+parser_launch.add_argument('-s', '--service',
+                           help='service name')
+parser_launch.add_argument('-o', '--options', default='{}',
+                           help='options selected to run the service')
+parser_launch.add_argument('-r', '--resource',
+                           help="alternatively to `options`, resource name to use")
+parser_launch.add_argument('-g', '--gpus', type=int, default=1,
+                           help='number of gpus')
+parser_launch.add_argument('-c', '--cpus', type=int,
+                           help='number of cpus - if not provided, will be obtained from pool config')
+parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
+                           help='if not 0, wait for this number of seconds after launch '
+                                'to check that launch is ok - by default wait for 2 seconds')
+parser_launch.add_argument('--docker_registry', default='auto',
+                           help='docker registry (as configured on server side), default is `auto`')
+parser_launch.add_argument('-i', '--docker_image', default=os.getenv('LAUNCHER_IMAGE', None),
+                           help='Docker image (can be prefixed by docker_registry:)')
+parser_launch.add_argument('-t', '--docker_tag',
+                           help='Docker image tag (is infered from docker_image if missing)')
+parser_launch.add_argument('-n', '--name',
+                           help='Friendly name for the model, for subsequent tasks, inherits'
+                                ' from previous')
+parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID', None),
+                           help='trainer id, used as a prefix to generated models (default '
+                                'ENV[LAUNCHER_TID])')
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
                            help='for training tasks, iterate several tasks in a row')
 parser_launch.add_argument('--nochainprepr', action='store_true',
@@ -189,8 +231,9 @@ parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
 parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 
-parser_list_tasks = subparsers.add_parser('lt',
-                                          help='list tasks matching prefix pattern')
+parser_list_tasks = subparsers_tasks.add_parser('list',
+                                                help='{lt} list tasks matching prefix pattern')
+shortcut_map["lt"] = ["task", "list"]
 parser_list_tasks.add_argument('-p', '--prefix', default=os.getenv('LAUNCHER_TID', ''),
                                help='prefix for the tasks to list (default ENV[LAUNCHER_TID])')
 parser_list_tasks.add_argument('-q', '--quiet', action='store_true',
@@ -198,28 +241,31 @@ parser_list_tasks.add_argument('-q', '--quiet', action='store_true',
 parser_list_tasks.add_argument('-S', '--status',
                                help='filter on status value')
 
-parser_del_tasks = subparsers.add_parser('dt',
-                                         help='delete tasks matching prefix pattern')
+parser_del_tasks = subparsers_tasks.add_parser('delete',
+                                               help='{dt} delete tasks matching prefix pattern')
+shortcut_map["dt"] = ["task", "delete"]
 parser_del_tasks.add_argument('-p', '--prefix', required=True,
                               help='prefix for the tasks to delete')
 
-parser_status = subparsers.add_parser('status',
-                                      help='get status of a task')
+parser_status = subparsers_tasks.add_parser('status',
+                                            help='{status} get status of a task')
+shortcut_map["status"] = ["task", "status"]
 parser_status.add_argument('task_id', help='task identifier')
 
-parser_terminate = subparsers.add_parser('terminate',
-                                         help='terminate a task')
+parser_terminate = subparsers_tasks.add_parser('terminate',
+                                               help='{terminate} terminate a task')
+shortcut_map["terminate"] = ["task", "terminate"]
 parser_terminate.add_argument('task_id', help='task identifier')
 
-parser_log = subparsers.add_parser('log', help='get log associated to a task')
+parser_log = subparsers_tasks.add_parser('log', help='{log} get log associated to a task')
+shortcut_map["log"] = ["task", "log"]
 parser_log.add_argument('task_id', help='task identifier')
 
-parser_file = subparsers.add_parser('file', help='get file associated to a task')
+parser_file = subparsers_tasks.add_parser('file', help='{file} get file associated to a task')
+shortcut_map["file"] = ["task", "file"]
 parser_file.add_argument('task_id', help='task identifier')
 parser_file.add_argument('-f', '--filename', required=True,
                          help='filename to retrieve - for instance log')
-parser.add_argument('-v', '--version', action=VersionAction,
-                    help='Version information')
 
 
 def _format_message(msg, length=40):
@@ -252,10 +298,27 @@ def _parse_local_filename(arg, files):
     return arg
 
 
-def process_request(serviceList, cmd, is_json, args, auth=None):
+def argparse_preprocess():
+    skip = False
+    for idx, v in enumerate(sys.argv[1:], 1):
+        if skip:
+            skip = False
+            continue
+        if "--display".startswith(v) or v == "-d" or "--url".startswith(v) or v == "-u" or \
+           "--log-level".startswith(v) or v == "-l":
+            skip = True
+        elif v == "-v" or "--version".startswith(v):
+            continue
+        else:
+            if v in shortcut_map:
+                sys.argv = sys.argv[:idx] + shortcut_map[v] + sys.argv[idx+1:]
+            return
+
+
+def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
     res = None
     result = None
-    if cmd == "ls":
+    if cmd == "service" and subcmd == "list":
         params = {'all': args.all}
         r = requests.get(os.path.join(args.url, "service/list"), auth=auth, params=params)
         if r.status_code != 200:
@@ -293,7 +356,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                                      err])
             if len(busymsg):
                 res += "\n" + "\n".join(busymsg)
-    elif cmd == "lt":
+    elif cmd == "task" and subcmd == "list":
         r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
@@ -323,14 +386,14 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                              date, k["image"], k["status"], k.get("message")])
         else:
             res = r.json()
-    elif cmd == "describe":
+    elif cmd == "service" and subcmd == "describe":
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
         r = requests.get(os.path.join(args.url, "service/describe", args.service), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/describe\' service: %s' % r.text)
         res = r.json()
-    elif cmd == "check":
+    elif cmd == "service" and subcmd == "check":
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
         if args.options == '{}' and args.resource is not None:
@@ -342,7 +405,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         res = r.json()
-    elif cmd == "exec" or cmd == "launch":
+    elif cmd == "exec" or cmd == "task" and subcmd == "launch":
         if args.trainer_id is None:
             raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')
 
@@ -441,7 +504,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                 res = ("\n".join(result))
             else:
                 res = result
-    elif cmd == "status":
+    elif cmd == "task" and subcmd == "status":
         r = requests.get(os.path.join(args.url, "task/status", args.task_id), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/status\' service: %s' % r.text)
@@ -489,7 +552,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
             content = json.loads(content)
             res += "CONTENT"
             res += json.dumps(content, indent=True)+"\n"
-    elif cmd == "dt":
+    elif cmd == "task" and subcmd == "delete":
         r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
@@ -509,20 +572,20 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
                     if r.status_code != 200:
                         raise RuntimeError(
                             'incorrect result from \'delete_task\' service: %s' % r.text)
-    elif cmd == "terminate":
+    elif cmd == "task" and subcmd == "terminate":
         r = requests.get(os.path.join(args.url, "task/terminate", args.task_id), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/terminate\' service: %s' % r.text)
         result = r.json()
         if not is_json:
             res = result["message"]
-    elif cmd == "file":
+    elif cmd == "task" and subcmd == "file":
         r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename),
                          auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/file\' service: %s' % r.text)
         res = r.content
-    elif cmd == "log":
+    elif cmd == "task" and subcmd == "log":
         r = requests.get(os.path.join(args.url, "task/log", args.task_id), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/log\' service: %s' % r.text)
@@ -536,6 +599,7 @@ def process_request(serviceList, cmd, is_json, args, auth=None):
 if __name__ == "__main__":
     import logging
 
+    argparse_preprocess()
     args = parser.parse_args()
 
     logging.basicConfig(stream=sys.stdout, level=args.log_level)
@@ -561,7 +625,7 @@ if __name__ == "__main__":
     serviceList = r.json()
 
     try:
-        res = process_request(serviceList, args.cmd, args.display == "JSON", args)
+        res = process_request(serviceList, args.cmd, args.subcmd, args.display == "JSON", args)
     except RuntimeError as err:
         logger.error(err)
         sys.exit(1)
