@@ -11,7 +11,7 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 try:
     # for Python 3
@@ -225,6 +225,8 @@ parser_launch.add_argument('-T', '--trainer_id', default=os.getenv('LAUNCHER_TID
                                 'ENV[LAUNCHER_TID])')
 parser_launch.add_argument('-I', '--iterations', type=int, default=1,
                            help='for training tasks, iterate several tasks in a row')
+parser_launch.add_argument('-P', '--priority', type=int, default=0,
+                           help='task priority - highest better')
 parser_launch.add_argument('--nochainprepr', action='store_true',
                            help='don\'t split prepr and train (image >= 1.4.0)')
 parser_launch.add_argument('--notransasrelease', action='store_true',
@@ -278,7 +280,7 @@ def _format_message(msg, length=40):
 def _parse_local_filename(arg, files):
     if os.path.isabs(arg):
         if not os.path.exists(arg):
-            raise ValueError("file '%s' does not exist" % c)
+            raise ValueError("file '%s' does not exist" % arg)
     elif arg.find('/') != -1 and arg.find(':') == -1:
         print("==", os.path.exists(arg))
         if not os.path.exists(arg):
@@ -322,7 +324,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
         params = {'all': args.all}
         r = requests.get(os.path.join(args.url, "service/list"), auth=auth, params=params)
         if r.status_code != 200:
-            launcher.logger.error('incorrect result from \'service/list\' service: %s', r.text)
+            logger.error('incorrect result from \'service/list\' service: %s', r.text)
             sys.exit(1)
         result = r.json()
 
