@@ -3,16 +3,8 @@ import time
 import logging
 import redis
 import json
-from decimal import Decimal
 
 logger = logging.getLogger(__name__)
-
-
-class DecimalEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Decimal):
-            return float(obj)
-        return json.JSONEncoder.default(self, obj)
 
 
 class RedisDatabase(redis.Redis):
@@ -36,7 +28,7 @@ class RedisDatabase(redis.Redis):
         v = self.hget(key, ser_parameter)
         if v is None:
             v = f(parameter)
-            ser_v = json.dumps(v, cls=DecimalEncoder)
+            ser_v = json.dumps(v)
             self.hset(key, ser_parameter, ser_v)
             self.expire(key, 300)
             return v
