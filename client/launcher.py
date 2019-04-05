@@ -477,7 +477,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
         if args.priority:
             content["priority"] = args.priority
 
-        if cmd == "launch":
+        if cmd == "task" and subcmd == "launch":
             if args.iterations:
                 content["iterations"] = args.iterations
             if args.nochainprepr:
