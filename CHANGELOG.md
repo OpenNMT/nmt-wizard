@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [v1.7.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.7.2) (2019-04-05)
+### Fixes and improvements
+* (client) fix task launch command
+
+## [v1.7.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.7.0) (2019-04-02)
 ### Fixes and improvements
 * add generic DB cache with redis 
 * fix display of task list if some tasks have corrupted information
