@@ -2808,7 +2808,7 @@ nouns = [
     ["Hualishu", "花栗鼠", "chipmunk", 1],
     ["Huamao", "花猫", "calico", 14],
     ["Huabao", "花豹", "leopard", 3],
-    ["Cangying", "苍蝇", "fly", 612],
+    ["Cangying", "苍蝇", "northern goshawk", 612],
     ["Caomeng", "草蜢", "grasshopper", 11],
     ["Caoyu", "草鱼", "carp", 153],
     ["Caoji", "草鸡", "hen", 18],

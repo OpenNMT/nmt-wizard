@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixes and improvements
+* correct inappropriate chinese funny name
+
 ## [v1.7.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.7.2) (2019-04-05)
 ### Fixes and improvements
 * (client) fix task launch command
