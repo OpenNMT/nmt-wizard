@@ -282,7 +282,6 @@ def _parse_local_filename(arg, files):
         if not os.path.exists(arg):
             raise ValueError("file '%s' does not exist" % arg)
     elif arg.find('/') != -1 and arg.find(':') == -1:
-        print("==", os.path.exists(arg))
         if not os.path.exists(arg):
             logger.warning("parameter %s could be a filename but does not exists, considering it is not" % arg)
             return arg
