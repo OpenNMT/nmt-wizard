@@ -1,5 +1,9 @@
 ## Unreleased
 
+## [v1.7.3](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.7.3) (2019-05-14)
+### Fixes and improvements
+* (worker) fix worker not auto restart when "admin:worker:" redis key expired
+
 ## [v1.7.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.7.2) (2019-04-05)
 ### Fixes and improvements
 * (client) fix task launch command
