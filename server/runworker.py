@@ -128,7 +128,7 @@ while True:
             if time.time() - start > 30:
                 # check if worker still there
                 w = redis.exists("admin:worker:%s:%d" % (service, p1.pid))
-                if w is False:
+                if not w:
                     p1.kill()
     except Exception as e:
         log_fh.write("-" * 80)
