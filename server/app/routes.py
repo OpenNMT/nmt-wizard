@@ -190,7 +190,7 @@ def list_services():
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
         pool_entity = service[0:2].upper()
-        if flask.g.permissions.get('is_super') or has_ability(flask.g, "", pool_entity, showall):
+        if has_ability(flask.g, "train", pool_entity, showall):
             service_def = get_service(service)
             name = service_def.display_name
             if minimal:
