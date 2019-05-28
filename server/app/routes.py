@@ -19,6 +19,7 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_pa
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.helper import get_cpu_count, get_params
 from nmtwizard.capacity import Capacity
+import re
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -140,9 +141,16 @@ def task_request(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
     def func_wrapper(*args, **kwargs):
-        if not task.exists(redis, kwargs['task_id']):
-            abort(flask.make_response(flask.jsonify(message="task %s unknown" % kwargs['task_id']),
-                                      404))
+        task_id = kwargs['task_id']
+        response = list_tasks(task_id)
+        if response.status_code != 200:
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+
+        task_num = len(response.json) if response.is_json and isinstance(response.json, list) else 0
+
+        if task_num != 1 : # no task found or more rare, multiple tasks found
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+
         return func(*args, **kwargs)
     return func_wrapper
 
@@ -740,45 +748,94 @@ def del_task(task_id):
     return flask.jsonify(message="deleted %s" % task_id)
 
 
+def to_regex_format(pattern):
+    if len(pattern) > 0:  # format to the regex syntax
+        regex_expression = pattern.replace("*", ".*")  # staring by sth. Ex: *B
+        if len(pattern) > 1 and pattern[-1:] != "*":  # ending by sth. Ex: A*
+            regex_expression += "$"
+    else:
+        regex_expression = pattern
+
+    return regex_expression
+
+def is_matched_entity (entity, entity_regex_filter):
+    is_matched = isinstance(entity, six.string_types) and re.match(entity_regex_filter, entity) is not None
+    return is_matched
+
+"""
+Function: list_tasks
+Arguments:
+    pattern: if not empty, the first two characters will be used to search the entity.
+"""
 @app.route("/task/list/<string:pattern>", methods=["GET"])
 @filter_request("GET/task/list")
 def list_tasks(pattern):
     ltask = []
-    prefix = pattern
+
+    prefix = "*" if pattern == '-*' else pattern
     suffix = ''
     if prefix.endswith('*'):
         prefix = prefix[:-1]
         suffix = '*'
-    p = has_ability(flask.g, '', prefix)
-    if p is False:
-        abort(make_response(jsonify(message="insufficient credentials for "
-                                            "list tasks starting with %s" % prefix[0:2]), 403))
-    elif p is not True:
-        prefix = p
-    for task_key in task.scan_iter(redis, prefix + suffix):
-        task_id = task.id(task_key)
-        info = task.info(
-                redis, taskfile_dir, task_id,
-                ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
-                 "status", "message", "type", "iterations", "priority"])
-        if info["alloc_lgpu"]:
-            info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
-        if info["alloc_lcpu"]:
-            info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
-        info["image"] = '-'
-        info["model"] = '-'
-        if info["content"]:
-            content = json.loads(info["content"])
-            info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
-            j = 0
-            while j < len(content["docker"]["command"]) - 1:
-                if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
-                    info["model"] = content["docker"]["command"][j+1]
-                    break
-                j = j+1
-            del info['content']
-        info['task_id'] = task_id
-        ltask.append(info)
+
+    task_where_clauses = []
+    if has_ability(flask.g, '', '', True) : # super admin so no control on the prefix of searching criteria
+        task_where_clauses.append(prefix)
+    else:
+        searched_entity_expression = to_regex_format(prefix[:2]) #empty == all entities
+        searched_user_part = prefix[2:5]
+        remaining_criteria_of_user = prefix[5:]
+
+        filtered_entities = [ent for ent in flask.g.entities if is_matched_entity (ent, searched_entity_expression)]
+
+        for entity in filtered_entities:
+            is_admin = has_ability(flask.g, 'admin_task', entity)
+
+            if not is_admin and not has_ability(flask.g, 'train', entity): continue
+
+            if is_admin or searched_user_part == flask.g.user.user_code:
+                # for entity admin or search criteria already restricted to the current user
+                task_where_clauses.append(entity + searched_user_part + remaining_criteria_of_user)
+            else:
+                searched_user_part = searched_user_part.replace("*", ".*")  # staring by sth. Ex: *B
+                if re.match(searched_user_part, flask.g.user.user_code) is not None: # Exe: usercode*
+                    task_where_clauses.append(entity + flask.g.user.user_code + "_" + remaining_criteria_of_user)
+                else:
+                    abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
+
+        if not task_where_clauses:
+            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
+
+    # found_tasks_tmp = []
+    # for clause in task_where_clauses:
+    #     for task_key in task.scan_iter(redis, clause + suffix):
+    #         found_tasks_tmp.append(task_key)
+
+    for clause in task_where_clauses:
+        for task_key in task.scan_iter(redis, clause + suffix):
+            task_id = task.id(task_key)
+            info = task.info(
+                    redis, taskfile_dir, task_id,
+                    ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
+                     "status", "message", "type", "iterations", "priority"])
+            if info["alloc_lgpu"]:
+                info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
+            if info["alloc_lcpu"]:
+                info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
+            info["image"] = '-'
+            info["model"] = '-'
+            if info["content"]:
+                content = json.loads(info["content"])
+                info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
+                j = 0
+                while j < len(content["docker"]["command"]) - 1:
+                    if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
+                        info["model"] = content["docker"]["command"][j+1]
+                        break
+                    j = j+1
+                del info['content']
+            info['task_id'] = task_id
+            ltask.append(info)
     return flask.jsonify(ltask)
 
 
