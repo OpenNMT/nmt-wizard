@@ -774,14 +774,15 @@ def is_regex_matched(pattern, regex_filter_expression):
     return is_matched
 
 
-"""
-Function: list_tasks
-Arguments:
-    pattern: if not empty, the first two characters will be used to search the entity.
-"""
 @app.route("/task/list/<string:pattern>", methods=["GET"])
 @filter_request("GET/task/list")
 def list_tasks(pattern):
+    """
+    Goal: return tasks list based on prefix/pattern
+    Arguments:
+        pattern: if not empty, the first two characters will be used to search the entity.
+    """
+
     ltask = []
 
     prefix = "*" if pattern == '-*' else pattern
