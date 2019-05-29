@@ -165,6 +165,7 @@ def task_control(func):
         return func(*args, **kwargs)
     return func_wrapper
 
+
 # global variable to contains all filters on the routes
 filter_routes = []
 # global variable to contains all possible filters on ability
@@ -186,9 +187,9 @@ def filter_request(route, ability=None):
     return wrapper
 
 
-def has_ability(g, ability, entity, accessall=True):
+def has_ability(g, ability, entity):
     for f in has_ability_funcs:
-        if not f(g, ability, entity, accessall):
+        if not f(g, ability, entity):
             return False
     return True
 
@@ -208,7 +209,10 @@ def list_services():
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
         pool_entity = service[0:2].upper()
-        if has_ability(flask.g, "train", pool_entity, showall):
+        if not showall and pool_entity != flask.g.user.entity.entity_code:
+            continue
+
+        if has_ability(flask.g, "train", pool_entity):
             service_def = get_service(service)
             name = service_def.display_name
             if minimal:
@@ -792,7 +796,7 @@ def list_tasks(pattern):
         suffix = '*'
 
     task_where_clauses = []
-    if has_ability(flask.g, '', '', True):  # super admin so no control on the prefix of searching criteria
+    if has_ability(flask.g, '', ''):  # super admin so no control on the prefix of searching criteria
         task_where_clauses.append(prefix)
     else:
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
