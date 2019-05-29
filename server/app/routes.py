@@ -141,6 +141,17 @@ def task_request(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
     def func_wrapper(*args, **kwargs):
+        if not task.exists(redis, kwargs['task_id']):
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % kwargs['task_id']),
+                                      404))
+        return func(*args, **kwargs)
+    return func_wrapper
+
+
+def task_control(func):
+    """minimal check on the request to check that tasks exists"""
+    @wraps(func)
+    def func_wrapper(*args, **kwargs):
         task_id = kwargs['task_id']
         response = list_tasks(task_id)
         if response.status_code != 200:
@@ -148,12 +159,11 @@ def task_request(func):
 
         task_num = len(response.json) if response.is_json and isinstance(response.json, list) else 0
 
-        if task_num != 1 : # no task found or more rare, multiple tasks found
+        if task_num != 1:  # no task found or more rare, multiple tasks found
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
 
         return func(*args, **kwargs)
     return func_wrapper
-
 
 # global variable to contains all filters on the routes
 filter_routes = []
@@ -723,7 +733,7 @@ def launch(service):
 
 @app.route("/task/status/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/status")
-@task_request
+@task_control
 def status(task_id):
     fields = flask.request.args.get('fields', None)
     if fields is not None and fields != '':
@@ -749,18 +759,20 @@ def del_task(task_id):
 
 
 def to_regex_format(pattern):
-    if len(pattern) > 0:  # format to the regex syntax
-        regex_expression = pattern.replace("*", ".*")  # staring by sth. Ex: *B
-        if len(pattern) > 1 and pattern[-1:] != "*":  # ending by sth. Ex: A*
-            regex_expression += "$"
-    else:
-        regex_expression = pattern
+    if len(pattern) == 0:
+        return pattern
+
+    regex_expression = pattern.replace("*", ".*")  # staring by sth. Ex: *B
+    if len(pattern) > 1 and pattern[-1:] != "*":  # ending by sth. Ex: A*
+        regex_expression += "$"
 
     return regex_expression
 
-def is_matched_entity (entity, entity_regex_filter):
-    is_matched = isinstance(entity, six.string_types) and re.match(entity_regex_filter, entity) is not None
+
+def is_regex_matched(pattern, regex_filter_expression):
+    is_matched = isinstance(pattern, six.string_types) and re.match(regex_filter_expression, pattern) is not None
     return is_matched
+
 
 """
 Function: list_tasks
@@ -779,37 +791,29 @@ def list_tasks(pattern):
         suffix = '*'
 
     task_where_clauses = []
-    if has_ability(flask.g, '', '', True) : # super admin so no control on the prefix of searching criteria
+    if has_ability(flask.g, '', '', True):  # super admin so no control on the prefix of searching criteria
         task_where_clauses.append(prefix)
     else:
-        searched_entity_expression = to_regex_format(prefix[:2]) #empty == all entities
-        searched_user_part = prefix[2:5]
-        remaining_criteria_of_user = prefix[5:]
+        search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
+        search_user_expression = prefix[2:5]
+        search_remaining_expression = prefix[5:]
 
-        filtered_entities = [ent for ent in flask.g.entities if is_matched_entity (ent, searched_entity_expression)]
+        filtered_entities = [ent for ent in flask.g.entities if is_regex_matched(ent, search_entity_expression)]
 
         for entity in filtered_entities:
-            is_admin = has_ability(flask.g, 'admin_task', entity)
-
-            if not is_admin and not has_ability(flask.g, 'train', entity): continue
-
-            if is_admin or searched_user_part == flask.g.user.user_code:
-                # for entity admin or search criteria already restricted to the current user
-                task_where_clauses.append(entity + searched_user_part + remaining_criteria_of_user)
-            else:
-                searched_user_part = searched_user_part.replace("*", ".*")  # staring by sth. Ex: *B
-                if re.match(searched_user_part, flask.g.user.user_code) is not None: # Exe: usercode*
-                    task_where_clauses.append(entity + flask.g.user.user_code + "_" + remaining_criteria_of_user)
+            if has_ability(flask.g, 'admin_task', entity):
+                task_where_clauses.append(entity + search_user_expression + search_remaining_expression)
+            elif has_ability(flask.g, 'train', entity):
+                search_user_expression = search_user_expression.replace("*", ".*")
+                if re.match(search_user_expression, flask.g.user.user_code) is not None:  # Example: *usercode*
+                    task_where_clauses.append(entity + flask.g.user.user_code + search_remaining_expression)
                 else:
                     abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
+            else:
+                continue
 
         if not task_where_clauses:
             abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
-
-    # found_tasks_tmp = []
-    # for clause in task_where_clauses:
-    #     for task_key in task.scan_iter(redis, clause + suffix):
-    #         found_tasks_tmp.append(task_key)
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis, clause + suffix):
@@ -841,7 +845,7 @@ def list_tasks(pattern):
 
 @app.route("/task/terminate/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/terminate")
-@task_request
+@task_control
 def terminate(task_id):
     with redis.acquire_lock(task_id):
         current_status = task.info(redis, taskfile_dir, task_id, "status")
@@ -862,7 +866,7 @@ def terminate(task_id):
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
 @filter_request("PUT/task/beat")
-@task_request
+@task_control
 def task_beat(task_id):
     duration = flask.request.args.get('duration')
     try:
