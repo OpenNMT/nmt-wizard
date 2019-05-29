@@ -759,7 +759,7 @@ def del_task(task_id):
 
 
 def to_regex_format(pattern):
-    if len(pattern) == 0:
+    if not pattern:
         return pattern
 
     regex_expression = pattern.replace("*", ".*")  # staring by sth. Ex: *B
