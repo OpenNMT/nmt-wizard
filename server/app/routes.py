@@ -19,6 +19,7 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_pa
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.helper import get_cpu_count, get_params
 from nmtwizard.capacity import Capacity
+import re
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -147,6 +148,24 @@ def task_request(func):
     return func_wrapper
 
 
+def task_control(func):
+    """minimal check on the request to check that tasks exists"""
+    @wraps(func)
+    def func_wrapper(*args, **kwargs):
+        task_id = kwargs['task_id']
+        response = list_tasks(task_id)
+        if response.status_code != 200:
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+
+        task_num = len(response.json) if response.is_json and isinstance(response.json, list) else 0
+
+        if task_num != 1:  # no task found or more rare, multiple tasks found
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+
+        return func(*args, **kwargs)
+    return func_wrapper
+
+
 # global variable to contains all filters on the routes
 filter_routes = []
 # global variable to contains all possible filters on ability
@@ -168,9 +187,9 @@ def filter_request(route, ability=None):
     return wrapper
 
 
-def has_ability(g, ability, entity, accessall=True):
+def has_ability(g, ability, entity):
     for f in has_ability_funcs:
-        if not f(g, ability, entity, accessall):
+        if not f(g, ability, entity):
             return False
     return True
 
@@ -190,7 +209,10 @@ def list_services():
     for keys in redis.scan_iter("admin:service:*"):
         service = keys[14:]
         pool_entity = service[0:2].upper()
-        if has_ability(flask.g, "", pool_entity, showall):
+        if not showall and pool_entity != flask.g.user.entity.entity_code:
+            continue
+
+        if has_ability(flask.g, "train", pool_entity):
             service_def = get_service(service)
             name = service_def.display_name
             if minimal:
@@ -715,7 +737,7 @@ def launch(service):
 
 @app.route("/task/status/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/status")
-@task_request
+@task_control
 def status(task_id):
     fields = flask.request.args.get('fields', None)
     if fields is not None and fields != '':
@@ -740,51 +762,95 @@ def del_task(task_id):
     return flask.jsonify(message="deleted %s" % task_id)
 
 
+def to_regex_format(pattern):
+    if not pattern:
+        return pattern
+
+    regex_expression = pattern.replace("*", ".*")  # staring by sth. Ex: *B
+    if len(pattern) > 1 and pattern[-1:] != "*":  # ending by sth. Ex: A*
+        regex_expression += "$"
+
+    return regex_expression
+
+
+def is_regex_matched(pattern, regex_filter_expression):
+    is_matched = isinstance(pattern, six.string_types) and re.match(regex_filter_expression, pattern) is not None
+    return is_matched
+
+
 @app.route("/task/list/<string:pattern>", methods=["GET"])
 @filter_request("GET/task/list")
 def list_tasks(pattern):
+    """
+    Goal: return tasks list based on prefix/pattern
+    Arguments:
+        pattern: if not empty, the first two characters will be used to search the entity.
+    """
+
     ltask = []
-    prefix = pattern
+
+    prefix = "*" if pattern == '-*' else pattern
     suffix = ''
     if prefix.endswith('*'):
         prefix = prefix[:-1]
         suffix = '*'
-    p = has_ability(flask.g, '', prefix)
-    if p is False:
-        abort(make_response(jsonify(message="insufficient credentials for "
-                                            "list tasks starting with %s" % prefix[0:2]), 403))
-    elif p is not True:
-        prefix = p
-    for task_key in task.scan_iter(redis, prefix + suffix):
-        task_id = task.id(task_key)
-        info = task.info(
-                redis, taskfile_dir, task_id,
-                ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
-                 "status", "message", "type", "iterations", "priority"])
-        if info["alloc_lgpu"]:
-            info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
-        if info["alloc_lcpu"]:
-            info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
-        info["image"] = '-'
-        info["model"] = '-'
-        if info["content"]:
-            content = json.loads(info["content"])
-            info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
-            j = 0
-            while j < len(content["docker"]["command"]) - 1:
-                if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
-                    info["model"] = content["docker"]["command"][j+1]
-                    break
-                j = j+1
-            del info['content']
-        info['task_id'] = task_id
-        ltask.append(info)
+
+    task_where_clauses = []
+    if has_ability(flask.g, '', ''):  # super admin so no control on the prefix of searching criteria
+        task_where_clauses.append(prefix)
+    else:
+        search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
+        search_user_expression = prefix[2:5]
+        search_remaining_expression = prefix[5:]
+
+        filtered_entities = [ent for ent in flask.g.entities if is_regex_matched(ent, search_entity_expression)]
+
+        for entity in filtered_entities:
+            if has_ability(flask.g, 'admin_task', entity):
+                task_where_clauses.append(entity + search_user_expression + search_remaining_expression)
+            elif has_ability(flask.g, 'train', entity):
+                search_user_expression = search_user_expression.replace("*", ".*")
+                if re.match(search_user_expression, flask.g.user.user_code) is not None:  # Example: *usercode*
+                    task_where_clauses.append(entity + flask.g.user.user_code + search_remaining_expression)
+                else:
+                    abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
+            else:
+                continue
+
+        if not task_where_clauses:
+            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
+
+    for clause in task_where_clauses:
+        for task_key in task.scan_iter(redis, clause + suffix):
+            task_id = task.id(task_key)
+            info = task.info(
+                    redis, taskfile_dir, task_id,
+                    ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
+                     "status", "message", "type", "iterations", "priority"])
+            if info["alloc_lgpu"]:
+                info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
+            if info["alloc_lcpu"]:
+                info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
+            info["image"] = '-'
+            info["model"] = '-'
+            if info["content"]:
+                content = json.loads(info["content"])
+                info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
+                j = 0
+                while j < len(content["docker"]["command"]) - 1:
+                    if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
+                        info["model"] = content["docker"]["command"][j+1]
+                        break
+                    j = j+1
+                del info['content']
+            info['task_id'] = task_id
+            ltask.append(info)
     return flask.jsonify(ltask)
 
 
 @app.route("/task/terminate/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/terminate")
-@task_request
+@task_control
 def terminate(task_id):
     with redis.acquire_lock(task_id):
         current_status = task.info(redis, taskfile_dir, task_id, "status")
@@ -805,7 +871,7 @@ def terminate(task_id):
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
 @filter_request("PUT/task/beat")
-@task_request
+@task_control
 def task_beat(task_id):
     duration = flask.request.args.get('duration')
     try:
