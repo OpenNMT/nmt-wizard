@@ -1496,7 +1496,7 @@ adjectives = [
     ["Tinghua", "听话", "obedient", 277],
     ["Songruan", "松软", "soft", 276],
     ["Dideng", "低等", "low status", 273],
-    ["Weixie", "猥亵", "indecent", 272],
+    ["Weixie", "萎谢", "withered", 272],
     ["Duobing", "多病", "sickly", 271],
     ["Feida", "肥大", "large", 270],
     ["Xuwei", "虚伪", "false", 268],
