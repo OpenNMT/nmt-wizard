@@ -152,15 +152,17 @@ def task_control(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
     def func_wrapper(*args, **kwargs):
+        ok = False
         task_id = kwargs['task_id']
-        response = list_tasks(task_id)
-        if response.status_code != 200:
-            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+        entity = task_id[:2]
 
-        task_num = len(response.json) if response.is_json and isinstance(response.json, list) else 0
+        if has_ability(flask.g, 'admin_task', entity):
+            ok = True
+        elif has_ability(flask.g, 'train', entity) and flask.g.user.user_code == task_id[2:5]:
+            ok = True
 
-        if task_num != 1:  # no task found or more rare, multiple tasks found
-            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+        if not ok:
+            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
         return func(*args, **kwargs)
     return func_wrapper
@@ -757,7 +759,7 @@ def status(task_id):
 
 @app.route("/task/<string:task_id>", methods=["DELETE"])
 @filter_request("DELETE/task")
-@task_request
+@task_control
 def del_task(task_id):
     response = task.delete(redis, taskfile_dir, task_id)
     if isinstance(response, list) and not response[0]:
