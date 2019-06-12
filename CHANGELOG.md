@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Fixes and improvements
+* (launcher) fix scoring task when working with launcher as storage
 * correct inappropriate chinese funny name
 * (client) remove debug (== True) displaying when launching operation involving local file
 

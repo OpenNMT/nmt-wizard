@@ -683,6 +683,9 @@ def launch(service):
                     if parent_task_id:
                         if parent_task_id not in toscore_parent:
                             toscore_parent[parent_task_id] = {"output": [], "ref": []}
+                        ofile_split = ofile.split(':')
+                        if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
+                            ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
                         toscore_parent[parent_task_id]["output"].append(ofile)
                         toscore_parent[parent_task_id]["ref"].append(rfile)
                 for parent_task_id, oref in six.iteritems(toscore_parent):
