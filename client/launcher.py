@@ -57,7 +57,7 @@ def getjson(config):
 
 
 def _truncate_string(s, n=25):
-    if len(s) > n:
+    if s is not None and len(s) > n:
         return s[:22]+"..."
     return s
 
