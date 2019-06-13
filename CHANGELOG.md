@@ -2,6 +2,8 @@
 
 ### Fixes and improvements
 * (launcher) fix scoring task when working with launcher as storage
+* (launcher) check ability when deleting task
+* (launcher) fix crash when  alloc_ressource and resource not found in task
 * correct inappropriate chinese funny name
 * (client) remove debug (== True) displaying when launching operation involving local file
 
