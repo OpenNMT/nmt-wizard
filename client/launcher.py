@@ -11,7 +11,7 @@ from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
 
-VERSION = "1.7.2"
+VERSION = "1.8.0"
 
 try:
     # for Python 3
