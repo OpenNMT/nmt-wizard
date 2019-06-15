@@ -115,7 +115,7 @@ parser.add_argument('-u', '--url',
 parser.add_argument('-l', '--log-level', default='INFO',
                     help="log-level (INFO|WARN|DEBUG|FATAL|ERROR)")
 parser.add_argument('-d', '--display', default='TABLE',
-                    help="display mode (TABLE, JSON, HTML, RAW)")
+                    help="display mode (TABLE, JSON, RAW)")
 parser.add_argument('-v', '--version', action=VersionAction,
                     help='Version information')
 
