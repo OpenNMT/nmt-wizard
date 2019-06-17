@@ -798,7 +798,13 @@ def list_tasks(pattern):
 
     ltask = []
 
-    prefix = "*" if pattern == '-*' else pattern
+    prefix = pattern
+
+    if prefix is None or prefix == '*':
+        prefix = flask.g.user.entity.entity_code + flask.g.user.user_code + "*"
+    elif prefix == '-*':
+        prefix = "*"
+
     suffix = ''
     if prefix.endswith('*'):
         prefix = prefix[:-1]
@@ -809,7 +815,7 @@ def list_tasks(pattern):
         task_where_clauses.append(prefix)
     else:
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
-        search_user_expression = prefix[2:5] if prefix[2:5] else flask.g.user.user_code  # search user tasks by default
+        search_user_expression = prefix[2:5]
         search_remaining_expression = prefix[5:]
 
         filtered_entities = [ent for ent in flask.g.entities if is_regex_matched(ent, search_entity_expression)]
