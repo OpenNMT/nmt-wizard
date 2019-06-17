@@ -148,7 +148,7 @@ def task_request(func):
     return func_wrapper
 
 
-def task_control(func):
+def task_write_control(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
     def func_wrapper(*args, **kwargs):
@@ -742,13 +742,17 @@ def launch(service):
 
 @app.route("/task/status/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/status")
-@task_control
 def status(task_id):
     fields = flask.request.args.get('fields', None)
     if fields is not None and fields != '':
         fields = fields.split(',')
     else:
         fields = None
+
+    entity = task_id[:2]
+    if has_ability(flask.g, 'train', entity) is False:
+        abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
+
     response = task.info(redis, taskfile_dir, task_id, fields)
     if response.get("alloc_lgpu"):
         response["alloc_lgpu"] = response["alloc_lgpu"].split(",")
@@ -759,7 +763,7 @@ def status(task_id):
 
 @app.route("/task/<string:task_id>", methods=["DELETE"])
 @filter_request("DELETE/task")
-@task_control
+@task_write_control
 def del_task(task_id):
     response = task.delete(redis, taskfile_dir, task_id)
     if isinstance(response, list) and not response[0]:
@@ -805,20 +809,14 @@ def list_tasks(pattern):
         task_where_clauses.append(prefix)
     else:
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
-        search_user_expression = prefix[2:5]
+        search_user_expression = prefix[2:5] if prefix[2:5] else flask.g.user.user_code  # search user tasks by default
         search_remaining_expression = prefix[5:]
 
         filtered_entities = [ent for ent in flask.g.entities if is_regex_matched(ent, search_entity_expression)]
 
         for entity in filtered_entities:
-            if has_ability(flask.g, 'admin_task', entity):
+            if has_ability(flask.g, 'train', entity):
                 task_where_clauses.append(entity + search_user_expression + search_remaining_expression)
-            elif has_ability(flask.g, 'train', entity):
-                search_user_expression = search_user_expression.replace("*", ".*")
-                if re.match(search_user_expression, flask.g.user.user_code) is not None:  # Example: *usercode*
-                    task_where_clauses.append(entity + flask.g.user.user_code + search_remaining_expression)
-                else:
-                    abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
             else:
                 continue
 
@@ -855,7 +853,7 @@ def list_tasks(pattern):
 
 @app.route("/task/terminate/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/terminate")
-@task_control
+@task_write_control
 def terminate(task_id):
     with redis.acquire_lock(task_id):
         current_status = task.info(redis, taskfile_dir, task_id, "status")
@@ -876,7 +874,7 @@ def terminate(task_id):
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
 @filter_request("PUT/task/beat")
-@task_control
+@task_write_control
 def task_beat(task_id):
     duration = flask.request.args.get('duration')
     try:
