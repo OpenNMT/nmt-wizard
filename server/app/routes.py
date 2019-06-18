@@ -148,6 +148,15 @@ def task_request(func):
     return func_wrapper
 
 
+def task_exist_control(task_id):
+
+    if task_id is None:
+        abort(flask.make_response(flask.jsonify(message="task empty"), 404))
+
+    if not task.exists(redis, task_id):
+        abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+
+
 def task_write_control(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
@@ -155,6 +164,8 @@ def task_write_control(func):
         ok = False
         task_id = kwargs['task_id']
         entity = task_id[:2]
+
+        task_exist_control(task_id)
 
         if has_ability(flask.g, 'admin_task', entity):
             ok = True
@@ -166,6 +177,14 @@ def task_write_control(func):
 
         return func(*args, **kwargs)
     return func_wrapper
+
+
+def task_readonly_control(task_id):
+
+    task_exist_control(task_id)
+
+    if not has_ability(flask.g, 'train', task_id[:2]):
+        abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
 
 # global variable to contains all filters on the routes
@@ -743,15 +762,14 @@ def launch(service):
 @app.route("/task/status/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/status")
 def status(task_id):
+
+    task_readonly_control(task_id)
+
     fields = flask.request.args.get('fields', None)
     if fields is not None and fields != '':
         fields = fields.split(',')
     else:
         fields = None
-
-    entity = task_id[:2]
-    if has_ability(flask.g, 'train', entity) is False:
-        abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
     response = task.info(redis, taskfile_dir, task_id, fields)
     if response.get("alloc_lgpu"):
@@ -915,7 +933,11 @@ def post_file(task_id, filename):
 @app.route("/task/log/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/log")
 def get_log(task_id):
+
+    task_readonly_control(task_id)
+
     content = task.get_log(redis, taskfile_dir, task_id)
+
     (task_id, content) = post_function('GET/task/log', task_id, content)
     if content is None:
         abort(flask.make_response(
