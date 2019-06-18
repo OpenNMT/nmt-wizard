@@ -1,5 +1,5 @@
 ## Unreleased
-
+### Fixes and improvements
 * (launcher) allow user see all tasks launched in his entity (#52201)
 
 ## [v1.8.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.8.0) (2019-06-14)

@@ -797,13 +797,7 @@ def list_tasks(pattern):
     """
 
     ltask = []
-
-    prefix = pattern
-
-    if prefix is None or prefix == '*':
-        prefix = flask.g.user.entity.entity_code + flask.g.user.user_code + "*"
-    elif prefix == '-*':
-        prefix = "*"
+    prefix = "*" if pattern == '-*' else pattern
 
     suffix = ''
     if prefix.endswith('*'):
