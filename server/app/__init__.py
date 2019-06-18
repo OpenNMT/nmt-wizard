@@ -9,7 +9,7 @@ from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
 from redis.exceptions import ConnectionError
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 
 app = Flask(__name__)
 app._requestid = 1
