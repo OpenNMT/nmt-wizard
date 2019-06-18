@@ -148,24 +148,20 @@ def task_request(func):
     return func_wrapper
 
 
-def task_exist_control(task_id):
-
-    if task_id is None:
-        abort(flask.make_response(flask.jsonify(message="task empty"), 404))
-
-    if not task.exists(redis, task_id):
-        abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-
-
 def task_write_control(func):
     """minimal check on the request to check that tasks exists"""
     @wraps(func)
     def func_wrapper(*args, **kwargs):
         ok = False
         task_id = kwargs['task_id']
-        entity = task_id[:2]
 
-        task_exist_control(task_id)
+        if task_id is None:
+            abort(flask.make_response(flask.jsonify(message="task empty"), 404))
+
+        if not task.exists(redis, task_id):
+            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+
+        entity = task_id[:2]
 
         if has_ability(flask.g, 'admin_task', entity):
             ok = True
@@ -180,8 +176,11 @@ def task_write_control(func):
 
 
 def task_readonly_control(task_id):
+    if task_id is None:
+        abort(flask.make_response(flask.jsonify(message="task empty"), 404))
 
-    task_exist_control(task_id)
+    if not task.exists(redis, task_id):
+        abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
 
     if not has_ability(flask.g, 'train', task_id[:2]):
         abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
