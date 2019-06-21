@@ -1,4 +1,5 @@
 ## Unreleased
+* (launcher) limit task log access to entity's users (#52079)
 * (launcher) fix crash when updating with empty statistics (#52209)
 
 ## [v1.8.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.8.1) (2019-06-18)
