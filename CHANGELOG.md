@@ -1,4 +1,6 @@
 ## Unreleased
+* (launcher) fix crash when updating with empty statistics (#52209)
+
 ## [v1.8.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.8.1) (2019-06-18)
 ### Fixes and improvements
 * (launcher) allow user see all tasks launched in his entity (#52201)
