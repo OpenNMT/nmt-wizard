@@ -958,6 +958,10 @@ def post_log(task_id):
 @task_request
 def post_stat(task_id):
     stats = flask.request.get_json()
+
+    if stats is None:
+        abort(flask.make_response(flask.jsonify(message="statistics empty"), 400))
+
     task_id_check = stats.get('task_id')
     if task_id_check != task_id:
         abort(flask.make_response(flask.jsonify(message="incorrect task_id"), 400))
