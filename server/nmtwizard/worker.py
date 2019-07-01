@@ -332,25 +332,28 @@ class Worker(object):
             if self._redis.get(key_busy) is not None:
                 return False, False
             # if we need gpus
-            used_gpu = 0
-            used_cpu = 0
+            allocated_gpu = 0
+            allocated_cpu = 0
             remaining_gpus = 0
             remaining_cpus = 0
 
             # allocate GPU first. For GPU we want to minimise the fragmentation, so minimize
             # br_remainining_xpus.ngpus
             if nxpus.ngpus != 0:
+                # do not allocate several run on the same GPU
                 current_usage_gpu = self._redis.hlen(keygr)
                 if current_usage_gpu > 0 and not service.resource_multitask:
                     return False, False
+                # available gpu is the capacity of the node less number of gpu used
                 avail_gpu = capacity.ngpus - current_usage_gpu
-                used_gpu = min(avail_gpu, nxpus.ngpus)
-                remaining_gpus = avail_gpu - used_gpu
-                if (used_gpu > 0 and ((used_gpu > br_available_xpus.ngpus) or
-                                      (used_gpu == br_available_xpus.ngpus and
-                                       remaining_gpus < br_remaining_xpus.ngpus))):
+
+                allocated_gpu = min(avail_gpu, nxpus.ngpus)
+                remaining_gpus = avail_gpu - allocated_gpu
+                if (allocated_gpu > 0 and ((allocated_gpu > br_available_xpus.ngpus) or
+                                           (allocated_gpu == br_available_xpus.ngpus and
+                                            remaining_gpus < br_remaining_xpus.ngpus))):
                     idx = 1
-                    for i in xrange(used_gpu):
+                    for i in xrange(allocated_gpu):
                         while self._redis.hget(keygr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
@@ -363,25 +366,26 @@ class Worker(object):
             # to avoid loading too much individual servers
             # * for CPU on monotask service, we want to minimize the remaining CPU
             # to avoid loading on a over-dimensioned service
-            if used_gpu == nxpus.ngpus and nxpus.ncpus != 0:
+            if allocated_gpu == nxpus.ngpus and nxpus.ncpus != 0:
                 current_usage_cpu = self._redis.hlen(keycr)
                 if current_usage_cpu > 0 and not service.resource_multitask:
                     return False, False
                 avail_cpu = capacity.ncpus - current_usage_cpu
-                used_cpu = min(avail_cpu, nxpus.ncpus)
-                remaining_cpus = avail_cpu - used_cpu
+                allocated_cpu = min(avail_cpu, nxpus.ncpus)
+                remaining_cpus = avail_cpu - allocated_cpu
 
+                # for mono task service, allocate node with lowest cpu number
                 if service.resource_multitask:
                     better_cpu_usage = remaining_cpus > br_remaining_xpus.ncpus
                 else:
                     better_cpu_usage = remaining_cpus < br_remaining_xpus.ncpus
 
-                if (used_cpu > 0 and (used_gpu != 0 or
-                                      (used_cpu > br_available_xpus.ncpus) or
-                                      (used_cpu == br_available_xpus.ncpus and
-                                       better_cpu_usage))):
+                if (allocated_cpu > 0 and (allocated_gpu != 0 or
+                                           (allocated_cpu > br_available_xpus.ncpus) or
+                                           (allocated_cpu == br_available_xpus.ncpus and
+                                            better_cpu_usage))):
                     idx = 0
-                    for i in xrange(used_cpu):
+                    for i in xrange(allocated_cpu):
                         while self._redis.hget(keycr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
@@ -389,10 +393,10 @@ class Worker(object):
                 else:
                     return False, False
 
-            if used_gpu < nxpus.ngpus or used_cpu < nxpus.ncpus:
+            if allocated_gpu < nxpus.ngpus or allocated_cpu < nxpus.ncpus:
                 self._redis.set(key_reserved, task_id)
 
-            return Capacity(used_gpu, used_cpu), Capacity(remaining_gpus, remaining_cpus)
+            return Capacity(allocated_gpu, allocated_cpu), Capacity(remaining_gpus, remaining_cpus)
 
     def _release_resource(self, service, resource, task_id, nxpus):
         """remove the task from resource queue
