@@ -36,6 +36,9 @@ def get_docker_action(command):
             idx += 1
         else:
             idx += 2
+    # reach the index boundary, if there is no action (score, align, etc.)
+    if idx >= len(command):
+        return None
     if command[idx] == '--':
         idx += 1
     # possible entrypoint parameters
