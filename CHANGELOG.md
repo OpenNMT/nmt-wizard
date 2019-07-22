@@ -1,4 +1,6 @@
 ## Unreleased
+* (launcher) update to use latest storage management
+* (launcher) fix S3 storage with "assume_role" feature (#52401)
 * (launcher) limit task log access to entity's users (#52079)
 * (launcher) fix crash when updating with empty statistics (#52209)
 
