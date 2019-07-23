@@ -1,4 +1,6 @@
 ## Unreleased
+## [v1.9.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.9.0) (2019-07-23)
+### Fixes and improvements
 * (launcher) update to use latest storage management
 * (launcher) fix S3 storage with "assume_role" feature (#52401)
 * (launcher) limit task log access to entity's users (#52079)
