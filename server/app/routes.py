@@ -525,6 +525,13 @@ def launch(service):
         del content["toscore"]
     else:
         toscore = None
+    if "totuminer" in content:
+        if exec_mode:
+            abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"), 400))
+        totuminer = content["totuminer"]
+        del content["totuminer"]
+    else:
+        totuminer = None
 
     docker_version = content['docker']['tag']
     if docker_version.startswith('v'):
@@ -741,6 +748,56 @@ def launch(service):
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                                            "score", score_task_id,
                                            0, 1))
+
+            if totuminer:
+                # tuminer can run in CPU only mode, but it will be very slow for large data
+                ngpus_recommend = 2
+                ncpus_recommend = 4
+
+                totuminer_parent = {}
+                for (ifile, ofile) in totuminer:
+                    #ofile = ofile.replace('<MODEL>', task_id)
+                    parent_task_id = file_to_transtaskid.get(ofile)
+                    if parent_task_id:
+                        if parent_task_id not in totuminer_parent:
+                            totuminer_parent[parent_task_id] = {"infile": [], "outfile": [], "scorefile": []}
+                        ofile_split = ofile.split(':')
+                        if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
+                            ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
+                        totuminer_parent[parent_task_id]["infile"].append(ifile)
+                        totuminer_parent[parent_task_id]["outfile"].append(ofile)
+                        scorefile = ofile
+                        if scorefile.endswith(".gz"):
+                            scorefile = scorefile[:-3]
+                        totuminer_parent[parent_task_id]["scorefile"].append(scorefile[:-3])
+                for parent_task_id, in_out in six.iteritems(totuminer_parent):
+                    content_tuminer = deepcopy(content)
+                    content_tuminer["priority"] = priority + 1
+                    content_tuminer["ngpus"] = ngpus_recommend
+                    content_tuminer["ncpus"] = ncpus_recommend
+
+                    tuminer_resource = service_module.select_resource_from_capacity(resource, Capacity(ngpus_recommend, ncpus_recommend))
+
+                    image_score = "nmtwizard/tuminer"
+
+                    content_tuminer["docker"] = {
+                        "image": image_score,
+                        "registry": _get_registry(service_module, image_score),
+                        "tag": "latest",
+                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] + in_out["outfile"]+ ["--output"] + in_out["scorefile"]
+                    }
+
+                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
+                    task_create.append(
+                            (redis, taskfile_dir,
+                             tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
+                             content_tuminer,
+                             (), priority+2,
+                             ngpus_recommend, ncpus_recommend,
+                             {}))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                                           "tuminer", tuminer_task_id,
+                                           ngpus_recommend, ncpus_recommend))
 
         iterations -= 1
         if iterations > 0:
