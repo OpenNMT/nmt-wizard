@@ -489,6 +489,9 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             if 'toscore' in args and args.toscore:
                 content["toscore"] = [(o,
                                        _parse_local_filename(r, files)) for (o, r) in args.toscore]
+            if 'totuminer' in args and args.totuminer:
+                content["totuminer"] = [(_parse_local_filename(i, files),
+                                           o) for (i, o) in args.totuminer]
 
         logger.debug("sending request: %s", json.dumps(content))
 
