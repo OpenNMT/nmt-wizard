@@ -3,7 +3,7 @@ import time
 import logging
 import redis
 import json
-import cPickle
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,15 +22,21 @@ class RedisDatabase(redis.Redis):
     def acquire_lock(self, name, acquire_timeout=20, expire_time=60):
         return RedisLock(self, name, acquire_timeout=acquire_timeout, expire_time=expire_time)
 
+    @staticmethod
+    def convert_set_2_list(obj):
+        if isinstance(obj, set):
+            return list(obj)
+        raise TypeError
+
     def get_model_from_cache(self, name, function, *args, **kwargs):
-        EXPIRED_TIME_SS = 3600*24*3 # 3 days
+        EXPIRED_TIME_SS = 3600*24*3  # 3 days
         root_key = 'cache:%s' % name
-        key= "||".join(map(str,args))
+        key = "||".join(map(str,args))
         compressed_value = self.hget(root_key, key)
         if compressed_value is None:
             logger.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
             value = function(*args, **kwargs)
-            str_value = cPickle.dumps(obj=value, protocol=cPickle.HIGHEST_PROTOCOL)  # Not use json because of error if value is not good json format
+            str_value = json.dumps(value, default=RedisDatabase.convert_set_2_list)
             compressed_value = str_value.encode("zlib")
             result = self.hset(root_key, key, compressed_value)
             if result == 0:  # continue even in Redis error case , log a Warning
@@ -43,7 +49,7 @@ class RedisDatabase(redis.Redis):
         logger.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
         self.expire(root_key, EXPIRED_TIME_SS)
         uncompressed_value = compressed_value.decode("zlib")
-        return cPickle.loads(uncompressed_value)
+        return json.loads(uncompressed_value)
 
     def get_cache(self, name, parameter, f):
         key = 'cache:%s' % name
