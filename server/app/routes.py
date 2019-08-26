@@ -527,7 +527,7 @@ def launch(service):
         toscore = None
     if "totuminer" in content:
         if exec_mode:
-            abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"), 400))
+            abort(flask.make_response(flask.jsonify(message="tuminer chain mode unavailable for exec cmd"), 400))
         totuminer = content["totuminer"]
         del content["totuminer"]
     else:
@@ -751,8 +751,8 @@ def launch(service):
 
             if totuminer:
                 # tuminer can run in CPU only mode, but it will be very slow for large data
-                ngpus_recommend = 2
-                ncpus_recommend = 4
+                ngpus_recommend = ngpus
+                ncpus_recommend = ncpus
 
                 totuminer_parent = {}
                 for (ifile, ofile) in totuminer:
