@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 class RedisDatabase(redis.Redis):
     """Extension to redis.Redis."""
+    ROOT_CACHE_KEY = "cache"
+
+    @staticmethod
+    def get_cache_key (cache_key):
+        return RedisDatabase.ROOT_CACHE_KEY + ":" + cache_key
 
     def __init__(self, host, port, db, password):
         """Creates a new database instance."""
@@ -28,9 +33,9 @@ class RedisDatabase(redis.Redis):
             return list(obj)
         raise TypeError
 
-    def get_model_from_cache(self, name, function, *args, **kwargs):
+    def get_model(self, name, function, *args, **kwargs):
         EXPIRED_TIME_SS = 3600*24*3  # 3 days
-        root_key = 'cache:%s' % name
+        root_key = RedisDatabase.get_cache_key(name)
         key = "||".join(map(str,args))
         compressed_value = self.hget(root_key, key)
         if compressed_value is None:
