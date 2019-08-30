@@ -49,7 +49,7 @@ class RedisDatabase(redis.Redis):
             else:
                 self.expire(root_key, EXPIRED_TIME_SS)
 
-            return value
+            return json.loads(str_value)
 
         logger.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
         self.expire(root_key, EXPIRED_TIME_SS)
