@@ -444,6 +444,22 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
                 c = json.dumps(cjson)
             docker_command.append(c)
 
+        # set remove_placeholders by default for -bt trans
+        if "-bt" in docker_command:
+            docker_command.remove('-bt')
+            if "--keep_placeholders_as_config" in docker_command:
+                docker_command.remove('--keep_placeholders_as_config')
+            else:
+                if "-c" not in docker_command:
+                    docker_command.extend(["-c", "{}"])
+                option_index = docker_command.index("-c") + 1
+                config = json.loads(docker_command[option_index])
+                if "postprocess" in config:
+                    config['postprocess']['remove_placeholders'] = True
+                else:
+                    config['postprocess'] = {'remove_placeholders': True}
+                docker_command[option_index] = json.dumps(config)
+
         if args.service not in serviceList:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
 
