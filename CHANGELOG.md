@@ -1,4 +1,6 @@
 ## Unreleased
+### Fixes and improvements
+* update to support evaluating local (multi-) reference files
 ## [v1.9.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.9.0) (2019-07-23)
 ### Fixes and improvements
 * (launcher) update to use latest storage management

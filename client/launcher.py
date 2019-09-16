@@ -487,8 +487,13 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
                 content["totranslate"] = [(_parse_local_filename(i, files),
                                            o) for (i, o) in args.totranslate]
             if 'toscore' in args and args.toscore:
-                content["toscore"] = [(o,
-                                       _parse_local_filename(r, files)) for (o, r) in args.toscore]
+                content["toscore"] = []
+                for (o, r) in args.toscore:
+                    ref_new = []
+                    ref_split = r.split(",")
+                    for ref in ref_split:
+                        ref_new.append(_parse_local_filename(ref, files))
+                    content["toscore"].append((o, ",".join(ref_new)))
             if 'totuminer' in args and args.totuminer:
                 content["totuminer"] = [(_parse_local_filename(i, files),
                                            o) for (i, o) in args.totuminer]

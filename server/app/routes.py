@@ -742,7 +742,7 @@ def launch(service):
                             (redis, taskfile_dir,
                              score_task_id, "exec", parent_task_id, score_resource, service,
                              content_score,
-                             (), priority+2,
+                             files, priority+2,
                              0, 1,
                              {}))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
