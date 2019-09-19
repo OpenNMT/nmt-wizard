@@ -35,7 +35,9 @@ if max_log_size is not None:
 def handle_error(e):
     # return a nice message when any exception occured, keeping the orignal Http error
     # https://stackoverflow.com/questions/29332056/global-error-handler-for-any-exception
-    app.logger.error("User:'%s'" % flask.g.user.user_code)
+    if 'user' in flask.g:
+       app.logger.error("User:'%s'" % flask.g.user.user_code)
+
     app.logger.error(traceback.format_exc())
 
     code = 500
