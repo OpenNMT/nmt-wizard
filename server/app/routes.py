@@ -20,6 +20,8 @@ from nmtwizard.helper import change_parent_task, remove_config_option, model_nam
 from nmtwizard.helper import get_cpu_count, get_params
 from nmtwizard.capacity import Capacity
 import re
+from werkzeug.exceptions import HTTPException
+import traceback
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -27,6 +29,19 @@ logger.addHandler(app.logger)
 max_log_size = app.iniconfig.get('default', 'max_log_size', fallback=None)
 if max_log_size is not None:
     max_log_size = int(max_log_size)
+
+
+@app.errorhandler(Exception)
+def handle_error(e):
+    # return a nice message when any exception occured, keeping the orignal Http error
+    # https://stackoverflow.com/questions/29332056/global-error-handler-for-any-exception
+    app.logger.error("User:'%s'" % flask.g.user.user_code)
+    app.logger.error(traceback.format_exc())
+
+    code = 500
+    if isinstance(e, HTTPException):
+        code = e.code
+    return jsonify(error=str(e)), code
 
 
 def get_service(service):
