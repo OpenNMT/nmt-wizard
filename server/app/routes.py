@@ -7,7 +7,7 @@ import time
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
-
+import __builtin__
 import semver
 import six
 import flask
@@ -30,6 +30,7 @@ max_log_size = app.iniconfig.get('default', 'max_log_size', fallback=None)
 if max_log_size is not None:
     max_log_size = int(max_log_size)
 
+TASK_RELEASE_TYPE = "relea"
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -478,7 +479,7 @@ def launch(service):
         elif "preprocess" in content["docker"]["command"]:
             task_type = "prepr"
         elif "release" in content["docker"]["command"]:
-            task_type = "relea"
+            task_type = TASK_RELEASE_TYPE
         elif "buildvocab" in content["docker"]["command"]:
             task_type = "vocab"
     else:
@@ -815,6 +816,16 @@ def launch(service):
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                                            "tuminer", tuminer_task_id,
                                            ngpus_recommend, ncpus_recommend))
+
+            if task_type == TASK_RELEASE_TYPE:
+                j = 0
+                while j < len(content["docker"]["command"]) - 1:
+                    if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
+                        model_name = content["docker"]["command"][j + 1]
+                        __builtin__.pn9model_db.model_set_release_state(model_name, content.get("trainer_id"), task_id,
+                                                                        "in progress")
+                        break
+                    j = j + 1
 
         iterations -= 1
         if iterations > 0:
