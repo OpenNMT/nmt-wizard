@@ -931,13 +931,15 @@ def list_tasks(pattern):
             info = task.info(
                     redis, taskfile_dir, task_id,
                     ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
-                     "status", "message", "type", "iterations", "priority"])
+                     "status", "message", "type", "iterations", "priority", "service"])
             if info["alloc_lgpu"]:
                 info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
             if info["alloc_lcpu"]:
                 info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
             info["image"] = '-'
             info["model"] = '-'
+            if not info["service"]:
+                info["service"] = ""
             if info["content"]:
                 content = json.loads(info["content"])
                 info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
