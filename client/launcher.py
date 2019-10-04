@@ -242,6 +242,8 @@ parser_list_tasks.add_argument('-q', '--quiet', action='store_true',
                                help='only display task_id')
 parser_list_tasks.add_argument('-S', '--status',
                                help='filter on status value')
+parser_list_tasks.add_argument('-se', '--service',
+                               help='filter on service')
 parser_list_tasks.add_argument('-pa', '--parent', action='store_true',
                                help='display parent task')
 
@@ -255,6 +257,7 @@ parser_status = subparsers_tasks.add_parser('status',
                                             help='{status} get status of a task')
 shortcut_map["status"] = ["task", "status"]
 shortcut_map["parent"] = ["task", "parent"]
+shortcut_map["service"] = ["task", "service"]
 parser_status.add_argument('task_id', help='task identifier')
 
 parser_terminate = subparsers_tasks.add_parser('terminate',
@@ -361,24 +364,22 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             if len(busymsg):
                 res += "\n" + "\n".join(busymsg)
     elif cmd == "task" and subcmd == "list":
-        r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth, params={"parent": args.parent})
+        r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth,
+                         params={"with_parent": args.parent, "service": args.service, "status": args.status})
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
-        if args.status:
-            result = [r for r in result if r["status"] == args.status]
+
         if args.quiet:
             res = []
             for k in result:
                 res.append(k["task_id"])
         elif not is_json:
+            headers= ["Task ID", "Service", "Resource", "Priority", "Launch Date", "Image", "Status", "Message" ]
             if args.parent:
-                res = PrettyTable(["Task ID", "Service", "Resource", "Priority",
-                                   "Launch Date", "Image", "Status", "Message", "Parent"])
-            else:
-                res = PrettyTable(["Task ID", "Service", "Resource", "Priority",
-                                   "Launch Date", "Image", "Status", "Message"])
+                headers.append("parent")
 
+            res = PrettyTable(headers)
             res.align["Task ID"] = "l"
             for k in sorted(result, key=lambda k: float(k.get("launched_time") or 0)):
                 date = datetime.fromtimestamp(
