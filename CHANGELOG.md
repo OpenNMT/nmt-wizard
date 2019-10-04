@@ -1,6 +1,8 @@
 ## Unreleased
 ### Fixes and improvements
 * update to support evaluating local (multi-) reference files
+* (launcher/client) filter the task list by status, service (#52807)
+* (launcher/client) show the parent task in the task list (#52807)
 ## [v1.9.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.9.0) (2019-07-23)
 ### Fixes and improvements
 * (launcher) update to use latest storage management

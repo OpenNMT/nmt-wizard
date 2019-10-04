@@ -17,7 +17,7 @@ from app import app, redis, get_version, taskfile_dir
 from nmtwizard import task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
-from nmtwizard.helper import get_cpu_count, get_params
+from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
 import re
 from werkzeug.exceptions import HTTPException
@@ -897,6 +897,9 @@ def list_tasks(pattern):
     Arguments:
         pattern: if not empty, the first two characters will be used to search the entity.
     """
+    with_parent = boolean_param(flask.request.args.get('with_parent'))
+    service_filter = flask.request.args.get('service')
+    status_filter = flask.request.args.get('status')
 
     ltask = []
     prefix = "*" if pattern == '-*' else pattern
@@ -931,13 +934,24 @@ def list_tasks(pattern):
             info = task.info(
                     redis, taskfile_dir, task_id,
                     ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
-                     "status", "message", "type", "iterations", "priority"])
+                     "status", "message", "type", "iterations", "priority", "service", "parent"])
+
+            if (service_filter and info["service"] != service_filter) \
+                    or (status_filter and info["status"] != status_filter):
+                continue
+
             if info["alloc_lgpu"]:
                 info["alloc_lgpu"] = info["alloc_lgpu"].split(",")
             if info["alloc_lcpu"]:
                 info["alloc_lcpu"] = info["alloc_lcpu"].split(",")
             info["image"] = '-'
             info["model"] = '-'
+
+            if not info["service"]:
+                info["service"] = ""
+            if with_parent and not info["parent"]:
+                info["parent"] = ""
+
             if info["content"]:
                 content = json.loads(info["content"])
                 info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
@@ -949,6 +963,10 @@ def list_tasks(pattern):
                     j = j+1
                 del info['content']
             info['task_id'] = task_id
+
+            if not with_parent:  # bc the parent could make the response more heavy for a http transport.
+                del info["parent"]
+
             ltask.append(info)
     return flask.jsonify(ltask)
 
