@@ -771,6 +771,8 @@ def launch(service):
                 # tuminer can run in CPU only mode, but it will be very slow for large data
                 ngpus_recommend = ngpus
                 ncpus_recommend = ncpus
+                if ncpus_recommend is None:
+                    ncpus_recommend = 4
 
                 totuminer_parent = {}
                 for (ifile, ofile) in totuminer:
