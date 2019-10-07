@@ -3,6 +3,13 @@
 * update to support evaluating local (multi-) reference files
 * (launcher/client) filter the task list by status, service (#52807)
 * (launcher/client) show the parent task in the task list (#52807)
+* (launcher) add the possibility to create a folder in S3 storages
+* (launcher) store the informations relative to the release action when a model is released (#52793)
+* (launcher) Flask server returns proper error message (with the code 500) after an uncatched error (#52742)
+* (launcher) prevent user to use resource/upload in pn9-model-catalog and all shared storages 
+(except for systran resource manager )
+* (launcher) create cache to improve the search of model
+
 ## [v1.9.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.9.0) (2019-07-23)
 ### Fixes and improvements
 * (launcher) update to use latest storage management
