@@ -257,7 +257,6 @@ parser_status = subparsers_tasks.add_parser('status',
                                             help='{status} get status of a task')
 shortcut_map["status"] = ["task", "status"]
 shortcut_map["parent"] = ["task", "parent"]
-shortcut_map["service"] = ["task", "service"]
 parser_status.add_argument('task_id', help='task identifier')
 
 parser_terminate = subparsers_tasks.add_parser('terminate',
