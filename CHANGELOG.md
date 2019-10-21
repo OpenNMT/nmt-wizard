@@ -1,4 +1,7 @@
 ## Unreleased
+### Fixes and improvements
+* (client) fix error with option service list(#52908)
+
 ## [v1.10.0](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.10.0) (2019-10-08)
 ### Fixes and improvements
 * (launcher/client) update to support evaluating local (multi-) reference files
