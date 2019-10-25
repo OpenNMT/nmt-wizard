@@ -14,6 +14,7 @@ import flask
 from flask import abort, make_response, jsonify
 
 from app import app, redis, get_version, taskfile_dir
+from lib.pn9model import PN9Model
 from nmtwizard import task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
@@ -31,6 +32,9 @@ if max_log_size is not None:
     max_log_size = int(max_log_size)
 
 TASK_RELEASE_TYPE = "relea"
+
+def get_entities_by_permission(the_permission, g):
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, "train", ent_code)]
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -179,7 +183,7 @@ def task_write_control(func):
         if not task.exists(redis, task_id):
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
 
-        entity = task_id[:2]
+        entity = PN9Model.get_entity_name(task_id)
 
         if has_ability(flask.g, 'admin_task', entity):
             ok = True
@@ -199,8 +203,8 @@ def task_readonly_control(task_id):
 
     if not task.exists(redis, task_id):
         abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-
-    if not has_ability(flask.g, 'train', task_id[:2]):
+    entity = PN9Model.get_entity_name(task_id)
+    if not has_ability(flask.g, 'train', entity):
         abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
 
@@ -461,6 +465,17 @@ def launch(service):
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
+    trainer_of_entities = get_entities_by_permission("train", flask.g)
+
+    if not trainer_of_entities or len(trainer_of_entities) == 0:
+        abort(flask.make_response(flask.jsonify(message="you are not a trainer"), 403))
+
+    content = flask.request.form.get('content')
+    if content is not None:
+        content = json.loads(content)
+    else:
+        abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+
     files = {}
     for k in flask.request.files:
         files[k] = flask.request.files[k].read()
@@ -627,6 +642,17 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
+            if task_type == "train":
+                entity_owner = flask.request.form.get('entity_owner')
+                if entity_owner:
+                    if entity_owner not in trainer_of_entities:
+                        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner),
+                                                  403))
+                else:
+                    # if len(trainer_of_entities) > 1:
+                    #     abort(flask.make_response(flask.jsonify(message="owner is ambigious"), 400))
+                    entity_owner = trainer_of_entities[0]
+
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
             if explicitname:
@@ -655,13 +681,15 @@ def launch(service):
                                             resource, Capacity(content["ngpus"],
                                                                content["ncpus"]))
 
+            other_task_info = {"owner": entity_owner} if entity_owner else {}
+
             task_create.append(
                     (redis, taskfile_dir,
                      task_id, task_type, parent_task_id, task_resource, service,
                      _duplicate_adapt(service_module, content),
                      files, priority,
                      content["ngpus"], content["ncpus"],
-                     {}))
+                     other_task_info))
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         task_type, task_id,
                         content["ngpus"], content["ncpus"]))
@@ -762,7 +790,7 @@ def launch(service):
                              content_score,
                              files, priority+2,
                              0, 1,
-                             {}))
+                             other_task_info))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                                            "score", score_task_id,
                                            0, 1))
@@ -914,6 +942,7 @@ def list_tasks(pattern):
     if has_ability(flask.g, '', ''):  # super admin so no control on the prefix of searching criteria
         task_where_clauses.append(prefix)
     else:
+        entity = PN9Model.get_entity_name(prefix)
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
         search_user_expression = prefix[2:5]
         search_remaining_expression = prefix[5:]

@@ -200,6 +200,8 @@ parser_launch = subparsers_tasks.add_parser('launch',
 shortcut_map["launch"] = ["task", "launch"]
 parser_launch.add_argument('-s', '--service',
                            help='service name')
+parser_launch.add_argument('-e', '--entity',
+                           help='entity owner')
 parser_launch.add_argument('-o', '--options', default='{}',
                            help='options selected to run the service')
 parser_launch.add_argument('-r', '--resource',
@@ -515,7 +517,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
         launch_url = os.path.join(args.url, "task/launch", args.service)
         r = requests.post(launch_url,
                           files=files,
-                          data={'content': json.dumps(content)},
+                          data={'content': json.dumps(content), 'entity_owner': args.entity},
                           auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/launch\' service: %s' % r.text)
