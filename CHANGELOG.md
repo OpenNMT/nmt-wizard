@@ -1,4 +1,7 @@
 ## Unreleased
+### Fixes and improvements
+* (client/launcher) add `-e/--entity-owner` option when training a model(#52926)
+
 ## [v1.10.1](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.10.1) (2019-10-21)
 ### Fixes and improvements
 * (client) fix error with option service list(#52908)

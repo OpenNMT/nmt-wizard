@@ -14,13 +14,14 @@ import flask
 from flask import abort, make_response, jsonify
 
 from app import app, redis, get_version, taskfile_dir
-from lib.pn9model import PN9Model
 from nmtwizard import task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
 import re
+
+from nmtwizard.task import get_task_entity
 from werkzeug.exceptions import HTTPException
 import traceback
 
@@ -32,6 +33,7 @@ if max_log_size is not None:
     max_log_size = int(max_log_size)
 
 TASK_RELEASE_TYPE = "relea"
+
 
 def get_entities_by_permission(the_permission, g):
     return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, "train", ent_code)]
@@ -183,7 +185,7 @@ def task_write_control(func):
         if not task.exists(redis, task_id):
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
 
-        entity = PN9Model.get_entity_name(task_id)
+        entity = get_task_entity(task_id)
 
         if has_ability(flask.g, 'admin_task', entity):
             ok = True
@@ -203,7 +205,7 @@ def task_readonly_control(task_id):
 
     if not task.exists(redis, task_id):
         abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-    entity = PN9Model.get_entity_name(task_id)
+    entity = get_task_entity(task_id)
     if not has_ability(flask.g, 'train', entity):
         abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
@@ -649,8 +651,8 @@ def launch(service):
                         abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner),
                                                   403))
                 else:
-                    # if len(trainer_of_entities) > 1:
-                    #     abort(flask.make_response(flask.jsonify(message="owner is ambigious"), 400))
+                    if len(trainer_of_entities) > 1:
+                         abort(flask.make_response(flask.jsonify(message="model owner is ambigious between %s" % trainer_of_entities), 400))
                     entity_owner = trainer_of_entities[0]
 
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
@@ -942,7 +944,6 @@ def list_tasks(pattern):
     if has_ability(flask.g, '', ''):  # super admin so no control on the prefix of searching criteria
         task_where_clauses.append(prefix)
     else:
-        entity = PN9Model.get_entity_name(prefix)
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
         search_user_expression = prefix[2:5]
         search_remaining_expression = prefix[5:]

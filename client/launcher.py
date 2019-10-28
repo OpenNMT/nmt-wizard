@@ -200,7 +200,7 @@ parser_launch = subparsers_tasks.add_parser('launch',
 shortcut_map["launch"] = ["task", "launch"]
 parser_launch.add_argument('-s', '--service',
                            help='service name')
-parser_launch.add_argument('-e', '--entity',
+parser_launch.add_argument('-e', '--entity-owner',
                            help='entity owner')
 parser_launch.add_argument('-o', '--options', default='{}',
                            help='options selected to run the service')
