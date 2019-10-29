@@ -36,7 +36,7 @@ TASK_RELEASE_TYPE = "relea"
 
 
 def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, "train", ent_code)]
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, the_permission, ent_code)]
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -472,12 +472,6 @@ def launch(service):
     if not trainer_of_entities or len(trainer_of_entities) == 0:
         abort(flask.make_response(flask.jsonify(message="you are not a trainer"), 403))
 
-    content = flask.request.form.get('content')
-    if content is not None:
-        content = json.loads(content)
-    else:
-        abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
-
     files = {}
     for k in flask.request.files:
         files[k] = flask.request.files[k].read()
@@ -644,16 +638,19 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
+            other_task_info = {}
             if task_type == "train":
                 entity_owner = flask.request.form.get('entity_owner')
                 if entity_owner:
                     if entity_owner not in trainer_of_entities:
-                        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner),
-                                                  403))
+                        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
                 else:
                     if len(trainer_of_entities) > 1:
-                         abort(flask.make_response(flask.jsonify(message="model owner is ambigious between %s" % trainer_of_entities), 400))
+                         abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities)) ), 400))
                     entity_owner = trainer_of_entities[0]
+
+                if entity_owner:
+                    other_task_info["owner"] = entity_owner
 
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
@@ -682,8 +679,6 @@ def launch(service):
             task_resource = service_module.select_resource_from_capacity(
                                             resource, Capacity(content["ngpus"],
                                                                content["ncpus"]))
-
-            other_task_info = {"owner": entity_owner} if entity_owner else {}
 
             task_create.append(
                     (redis, taskfile_dir,
