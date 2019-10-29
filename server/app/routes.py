@@ -469,8 +469,8 @@ def launch(service):
 
     trainer_of_entities = get_entities_by_permission("train", flask.g)
 
-    if not trainer_of_entities or len(trainer_of_entities) == 0:
-        abort(flask.make_response(flask.jsonify(message="you are not a trainer"), 403))
+    if not trainer_of_entities:
+        abort(flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
 
     files = {}
     for k in flask.request.files:
