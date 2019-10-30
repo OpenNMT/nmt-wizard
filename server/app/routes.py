@@ -20,6 +20,8 @@ from nmtwizard.helper import change_parent_task, remove_config_option, model_nam
 from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
 import re
+
+from nmtwizard.task import get_task_entity
 from werkzeug.exceptions import HTTPException
 import traceback
 
@@ -31,6 +33,11 @@ if max_log_size is not None:
     max_log_size = int(max_log_size)
 
 TASK_RELEASE_TYPE = "relea"
+
+
+def get_entities_by_permission(the_permission, g):
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, the_permission, ent_code)]
+
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -179,7 +186,7 @@ def task_write_control(func):
         if not task.exists(redis, task_id):
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
 
-        entity = task_id[:2]
+        entity = get_task_entity(task_id)
 
         if has_ability(flask.g, 'admin_task', entity):
             ok = True
@@ -199,8 +206,8 @@ def task_readonly_control(task_id):
 
     if not task.exists(redis, task_id):
         abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-
-    if not has_ability(flask.g, 'train', task_id[:2]):
+    entity = get_task_entity(task_id)
+    if not has_ability(flask.g, 'train', entity):
         abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
 
@@ -461,6 +468,11 @@ def launch(service):
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
+    trainer_of_entities = get_entities_by_permission("train", flask.g)
+
+    if not trainer_of_entities:
+        abort(flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
+
     files = {}
     for k in flask.request.files:
         files[k] = flask.request.files[k].read()
@@ -627,6 +639,21 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
+            other_task_info = {}
+            if task_type == "train":
+                entity_owner = flask.request.form.get('entity_owner')
+                if entity_owner:
+                    if entity_owner not in trainer_of_entities:
+                        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
+                else:
+                    if len(trainer_of_entities) > 1:
+                        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
+                    entity_owner = trainer_of_entities[0]
+
+                if not entity_owner:
+                    abort(flask.make_response(flask.jsonify(message="invalid entity owner"), 500))
+                other_task_info["owner"] = entity_owner
+
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
             if explicitname:
@@ -661,7 +688,7 @@ def launch(service):
                      _duplicate_adapt(service_module, content),
                      files, priority,
                      content["ngpus"], content["ncpus"],
-                     {}))
+                     other_task_info))
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         task_type, task_id,
                         content["ngpus"], content["ncpus"]))
@@ -762,7 +789,7 @@ def launch(service):
                              content_score,
                              files, priority+2,
                              0, 1,
-                             {}))
+                             other_task_info))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                                            "score", score_task_id,
                                            0, 1))
