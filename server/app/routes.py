@@ -38,6 +38,7 @@ TASK_RELEASE_TYPE = "relea"
 def get_entities_by_permission(the_permission, g):
     return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, the_permission, ent_code)]
 
+
 @app.errorhandler(Exception)
 def handle_error(e):
     # return a nice message when any exception occured, keeping the orignal Http error
@@ -646,11 +647,12 @@ def launch(service):
                         abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
                 else:
                     if len(trainer_of_entities) > 1:
-                         abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities)) ), 400))
+                        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
                     entity_owner = trainer_of_entities[0]
 
-                if entity_owner:
-                    other_task_info["owner"] = entity_owner
+                if not entity_owner:
+                    abort(flask.make_response(flask.jsonify(message="invalid entity owner"), 500))
+                other_task_info["owner"] = entity_owner
 
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
