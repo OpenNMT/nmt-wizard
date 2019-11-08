@@ -11,7 +11,8 @@ import __builtin__
 import semver
 import six
 import flask
-from flask import abort, make_response, jsonify
+from bson import json_util
+from flask import abort, make_response, jsonify, Response
 
 from app import app, redis, get_version, taskfile_dir
 from nmtwizard import task
@@ -53,6 +54,8 @@ def handle_error(e):
         code = e.code
     return jsonify(error=str(e)), code
 
+def cust_jsonify(obj):
+    return Response(json.dumps(obj, default=json_util.default), mimetype='application/json')
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
