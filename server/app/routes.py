@@ -1,3 +1,5 @@
+from datetime import datetime
+import time
 import io
 import pickle
 import json
@@ -54,8 +56,16 @@ def handle_error(e):
         code = e.code
     return jsonify(error=str(e)), code
 
+def our_default_encoder(obj):
+    """Override the json encoder that comes with pymongo (bson)
+    So that datetime objects are encoded as ISO-8601"""
+    if isinstance(obj, datetime):
+        return time.mktime(obj.timetuple())
+
+    return json_util.default(obj)
+
 def cust_jsonify(obj):
-    return Response(json.dumps(obj, default=json_util.default), mimetype='application/json')
+    return Response(json.dumps(obj, default=our_default_encoder), mimetype='application/json')
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
