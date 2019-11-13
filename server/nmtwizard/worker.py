@@ -391,7 +391,10 @@ class Worker(object):
                             assert idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
                         self._redis.hset(keycr, str(idx), task_id)
                 else:
-                    return False, False
+                    if allocated_gpu > 0:
+                        self._logger.warning('%s: allocated %d GPUs, but there are no CPUs', task_id, allocated_gpu)
+                    else:
+                        return False, False
 
             if allocated_gpu < nxpus.ngpus or allocated_cpu < nxpus.ncpus:
                 self._redis.set(key_reserved, task_id)
