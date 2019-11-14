@@ -315,6 +315,11 @@ class Worker(object):
 
     def _reserve_resource(self, service, resource, capacity, task_id, nxpus,
                           br_available_xpus, br_remaining_xpus, check_reserved=False):
+        """Reserves the resource for task_id, if possible. The resource is locked
+        while we try to reserve it.
+        Resource should have more gpus available (within ngpus) than br_available_xpus
+        or the same number but a smaller size
+        """
         self._logger.debug('service.name = %s', service.name)
         self._logger.debug('resource = %s', resource)
         self._logger.debug('capacity = (%d, %d)', capacity.ngpus, capacity.ncpus)
@@ -323,11 +328,6 @@ class Worker(object):
         self._logger.debug('br_available_xpus = (%d, %d)', br_available_xpus.ngpus, br_available_xpus.ncpus)
         self._logger.debug('br_remaining_xpus = (%d, %d)', br_remaining_xpus.ngpus, br_remaining_xpus.ncpus)
 
-        """Reserves the resource for task_id, if possible. The resource is locked
-        while we try to reserve it.
-        Resource should have more gpus available (within ngpus) than br_available_xpus
-        or the same number but a smaller size
-        """
         for idx, val in enumerate(capacity):
             if val < nxpus[idx]:
                 return False, False
