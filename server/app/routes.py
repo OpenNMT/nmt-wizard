@@ -1,5 +1,4 @@
 from datetime import datetime
-import time
 import io
 import pickle
 import json
@@ -18,7 +17,7 @@ from flask import abort, make_response, jsonify, Response
 
 from app import app, redis, get_version, taskfile_dir
 from nmtwizard import task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action
+from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action, our_default_encoder
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
@@ -56,13 +55,6 @@ def handle_error(e):
         code = e.code
     return jsonify(error=str(e)), code
 
-def our_default_encoder(obj):
-    """Override the json encoder that comes with pymongo (bson)
-    So that datetime objects are encoded as ISO-8601"""
-    if isinstance(obj, datetime):
-        return time.mktime(obj.timetuple())
-
-    return json_util.default(obj)
 
 def cust_jsonify(obj):
     return Response(json.dumps(obj, default=our_default_encoder), mimetype='application/json')

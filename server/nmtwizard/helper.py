@@ -1,12 +1,27 @@
+from datetime import datetime
 import random
 import json
+import time
 import uuid
 
+from bson import json_util
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
 from nmtwizard.funnynames.french import generate_name_fr
 from nmtwizard.funnynames.chinese import generate_name_zh
 
+
+def our_default_encoder(obj):
+    """Override the json encoder that comes with pymongo (bson)
+    So that datetime objects are encoded as ISO-8601"""
+    if isinstance(obj, datetime):
+        return time.mktime(obj.timetuple())
+
+    return json_util.default(obj)
+
+
+def cust_jsondump(obj):
+    return json.dumps(obj, default=our_default_encoder)
 
 def _generate_name(xxyy, length=15):
     if xxyy.startswith("de") or xxyy[2:].find("de") != -1:
