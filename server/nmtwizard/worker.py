@@ -328,6 +328,12 @@ class Worker(object):
         keycr = 'cpu_resource:%s:%s' % (service.name, resource)
         key_busy = 'busy:%s:%s' % (service.name, resource)
         key_reserved = 'reserved:%s:%s' % (service.name, resource)
+
+        if check_reserved:
+            self._logger.debug('current resource is reserved to task: %s', self._redis.get(key_reserved))
+        elif self._redis.get(key_reserved) is not None:
+            return False, False
+
         with self._redis.acquire_lock(keygr):
             if self._redis.get(key_busy) is not None:
                 return False, False
