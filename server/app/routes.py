@@ -17,7 +17,7 @@ from flask import abort, make_response, jsonify, Response
 
 from app import app, redis, get_version, taskfile_dir
 from nmtwizard import task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action, our_default_encoder
+from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action, cust_jsondump
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
@@ -57,7 +57,8 @@ def handle_error(e):
 
 
 def cust_jsonify(obj):
-    return Response(json.dumps(obj, default=our_default_encoder), mimetype='application/json')
+    result = cust_jsondump(obj)
+    return Response(result, mimetype='application/json')
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
