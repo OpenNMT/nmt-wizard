@@ -515,9 +515,12 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
         logger.debug("sending request: %s", json.dumps(content))
 
         launch_url = os.path.join(args.url, "task/launch", args.service)
+        data = {'content': json.dumps(content) }
+        if "entity_owner" in args:
+            data['entity_owner'] = args.entity_owner
         r = requests.post(launch_url,
                           files=files,
-                          data={'content': json.dumps(content), 'entity_owner': args.entity_owner},
+                          data=data,
                           auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/launch\' service: %s' % r.text)
