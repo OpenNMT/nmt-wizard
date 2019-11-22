@@ -320,6 +320,14 @@ class Worker(object):
         Resource should have more gpus available (within ngpus) than br_available_xpus
         or the same number but a smaller size
         """
+        self._logger.debug('service.name = %s', service.name)
+        self._logger.debug('resource = %s', resource)
+        self._logger.debug('capacity = (%d, %d)', capacity.ngpus, capacity.ncpus)
+        self._logger.debug('task_id = %s', task_id)
+        self._logger.debug('nxpus = (%d, %d)', nxpus.ngpus, nxpus.ncpus)
+        self._logger.debug('br_available_xpus = (%d, %d)', br_available_xpus.ngpus, br_available_xpus.ncpus)
+        self._logger.debug('br_remaining_xpus = (%d, %d)', br_remaining_xpus.ngpus, br_remaining_xpus.ncpus)
+
         for idx, val in enumerate(capacity):
             if val < nxpus[idx]:
                 return False, False
@@ -342,13 +350,17 @@ class Worker(object):
             if nxpus.ngpus != 0:
                 # do not allocate several run on the same GPU
                 current_usage_gpu = self._redis.hlen(keygr)
+                self._logger.debug('current_usage_gpu = %d', current_usage_gpu)
                 if current_usage_gpu > 0 and not service.resource_multitask:
                     return False, False
                 # available gpu is the capacity of the node less number of gpu used
                 avail_gpu = capacity.ngpus - current_usage_gpu
-
+                self._logger.debug('avail_gpu = %d', avail_gpu)
                 allocated_gpu = min(avail_gpu, nxpus.ngpus)
+                self._logger.debug('allocated_gpu = %d', allocated_gpu)
                 remaining_gpus = avail_gpu - allocated_gpu
+                self._logger.debug('remaining_gpus = %d', remaining_gpus)
+
                 if (allocated_gpu > 0 and ((allocated_gpu > br_available_xpus.ngpus) or
                                            (allocated_gpu == br_available_xpus.ngpus and
                                             remaining_gpus < br_remaining_xpus.ngpus))):
@@ -357,6 +369,7 @@ class Worker(object):
                         while self._redis.hget(keygr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
+                        self._logger.debug('reserve GPU idx = %d', idx)
                         self._redis.hset(keygr, str(idx), task_id)
                 else:
                     return False, False
@@ -368,11 +381,15 @@ class Worker(object):
             # to avoid loading on a over-dimensioned service
             if allocated_gpu == nxpus.ngpus and nxpus.ncpus != 0:
                 current_usage_cpu = self._redis.hlen(keycr)
+                self._logger.debug('current_usage_cpu = %d', current_usage_cpu)
                 if current_usage_cpu > 0 and not service.resource_multitask:
                     return False, False
                 avail_cpu = capacity.ncpus - current_usage_cpu
+                self._logger.debug('avail_cpu = %d', avail_cpu)
                 allocated_cpu = min(avail_cpu, nxpus.ncpus)
+                self._logger.debug('allocated_cpu = %d', allocated_cpu)
                 remaining_cpus = avail_cpu - allocated_cpu
+                self._logger.debug('remaining_cpus = %d', remaining_cpus)
 
                 # for mono task service, allocate node with lowest cpu number
                 if service.resource_multitask:
@@ -389,9 +406,13 @@ class Worker(object):
                         while self._redis.hget(keycr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
+                        self._logger.debug('reserve CPU idx = %d', idx)
                         self._redis.hset(keycr, str(idx), task_id)
                 else:
-                    return False, False
+                    if allocated_gpu > 0:
+                        self._logger.warning('%s: allocated %d GPUs, but there are no CPUs', task_id, allocated_gpu)
+                    else:
+                        return False, False
 
             if allocated_gpu < nxpus.ngpus or allocated_cpu < nxpus.ncpus:
                 self._redis.set(key_reserved, task_id)
