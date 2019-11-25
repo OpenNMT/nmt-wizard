@@ -1,1 +1,1 @@
-../nmt-wizard-docker/nmtwizard/storage.py
+../storages/systran_storages/storage.py
