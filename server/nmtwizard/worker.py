@@ -314,7 +314,7 @@ class Worker(object):
         return best_resource, br_available_xpus
 
     def _reserve_resource(self, service, resource, capacity, task_id, nxpus,
-                          br_available_xpus, br_remaining_xpus, check_reserved=False):
+                          br_available_xpus, br_remaining_xpus, no_need_to_check_reserved=False):
         """Reserves the resource for task_id, if possible. The resource is locked
         while we try to reserve it.
         Resource should have more gpus available (within ngpus) than br_available_xpus
@@ -329,7 +329,7 @@ class Worker(object):
         key_busy = 'busy:%s:%s' % (service.name, resource)
         key_reserved = 'reserved:%s:%s' % (service.name, resource)
 
-        if check_reserved:
+        if no_need_to_check_reserved:
             self._logger.debug('current resource is reserved to task: %s', self._redis.get(key_reserved))
         elif self._redis.get(key_reserved) is not None:
             return False, False
