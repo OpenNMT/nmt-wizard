@@ -550,7 +550,7 @@ class Worker(object):
                             if reserved[r]:
                                 continue
                             if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus and v.ngpus > 0) or
-                               (nxpus.ngpus == 0 and v.ncpus >= 0)):
+                               (nxpus.ngpus == 0 and resources[r].ncpus >= nxpus.ncpus and v.ncpus > 0)):
                                 foundResource = True
                                 break
                     if not foundResource:
