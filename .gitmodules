@@ -1,3 +1,0 @@
-[submodule "server/storages"]
-	path = server/storages
-	url = https://github.com/SYSTRAN/storages.git
