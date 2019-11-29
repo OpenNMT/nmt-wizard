@@ -38,7 +38,7 @@ class RedisDatabase(redis.Redis):
         if compressed_value is None:
             logger.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
             value = function(*args, **kwargs)
-            str_value = json.dumps(value)
+            str_value = cust_jsondump(value)
             compressed_value = str_value.encode("zlib")
             result = self.hset(root_key, key, compressed_value)
             if result == 0:  # continue even in Redis error case , log a Warning
