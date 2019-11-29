@@ -4,6 +4,9 @@ import logging
 import redis
 import json
 
+# from app.routes import cust_jsonify
+from nmtwizard.helper import cust_jsondump
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +59,7 @@ class RedisDatabase(redis.Redis):
         v = self.hget(key, ser_parameter)
         if v is None:
             v = f(parameter)
-            ser_v = json.dumps(v)
+            ser_v = cust_jsondump(v)
             self.hset(key, ser_parameter, ser_v)
             self.expire(key, 300)
             return v
