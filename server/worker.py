@@ -11,7 +11,6 @@ import argparse
 import signal
 
 from redis.exceptions import ConnectionError
-
 from six.moves import configparser
 
 from nmtwizard import config, task

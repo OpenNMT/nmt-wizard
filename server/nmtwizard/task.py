@@ -157,7 +157,7 @@ def change(redis, task_id, service, priority, ngpus):
         prev_service = redis.hget(keyt, "service")
         status = redis.hget(keyt, "status")
         if status != "queued":
-            return (False, "cannot move task `%s` - not in queued status" % task_id)
+            return False, "cannot move task `%s` - not in queued status" % task_id
         if service:
             if prev_service != service:
                 disable(redis, task_id, prev_service)
@@ -169,7 +169,7 @@ def change(redis, task_id, service, priority, ngpus):
             redis.hset(keyt, "priority", priority)
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
-    return (True, "")
+    return True, ""
 
 
 def delete(redis, taskfile_dir, task_id):
@@ -177,9 +177,9 @@ def delete(redis, taskfile_dir, task_id):
     keyt = "task:" + task_id
     status = redis.hget(keyt, "status")
     if status is None:
-        return (False, "task does not exist")
+        return False, "task does not exist"
     if status != "stopped":
-        return (False, "status is not stopped")
+        return False, "status is not stopped"
     with redis.acquire_lock(keyt):
         redis.delete(keyt)
         redis.delete("queue:" + task_id)

@@ -1,8 +1,9 @@
 import time
 import json
 import logging
-import six
 import sys
+
+import six
 
 from nmtwizard import task
 from nmtwizard import workeradmin
@@ -143,7 +144,8 @@ class Worker(object):
                             task.service_queue(self._redis, task_id, service.name)
                             return
                 nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-                resource, available_xpus = self._allocate_resource(task_id, resource, service, nxpus)
+                resource, available_xpus = self._allocate_resource(task_id,
+                                                                   resource, service, nxpus)
                 if resource is not None:
                     self._logger.info('%s: resource %s reserved %s/%s',
                                       task_id, resource, available_xpus, nxpus)
@@ -325,8 +327,10 @@ class Worker(object):
         self._logger.debug('capacity = (%d, %d)', capacity.ngpus, capacity.ncpus)
         self._logger.debug('task_id = %s', task_id)
         self._logger.debug('nxpus = (%d, %d)', nxpus.ngpus, nxpus.ncpus)
-        self._logger.debug('br_available_xpus = (%d, %d)', br_available_xpus.ngpus, br_available_xpus.ncpus)
-        self._logger.debug('br_remaining_xpus = (%d, %d)', br_remaining_xpus.ngpus, br_remaining_xpus.ncpus)
+        self._logger.debug('br_available_xpus = (%d, %d)', br_available_xpus.ngpus,
+                           br_available_xpus.ncpus)
+        self._logger.debug('br_remaining_xpus = (%d, %d)', br_remaining_xpus.ngpus,
+                           br_remaining_xpus.ncpus)
 
         for idx, val in enumerate(capacity):
             if val < nxpus[idx]:
@@ -338,7 +342,8 @@ class Worker(object):
         key_reserved = 'reserved:%s:%s' % (service.name, resource)
 
         if no_need_to_check_reserved:
-            self._logger.debug('current resource is reserved to task: %s', self._redis.get(key_reserved))
+            self._logger.debug('current resource is reserved to task: %s',
+                               self._redis.get(key_reserved))
         elif self._redis.get(key_reserved) is not None:
             return False, False
 
@@ -371,7 +376,7 @@ class Worker(object):
                                            (allocated_gpu == br_available_xpus.ngpus and
                                             remaining_gpus < br_remaining_xpus.ngpus))):
                     idx = 1
-                    for i in xrange(allocated_gpu):
+                    for i in range(allocated_gpu):
                         while self._redis.hget(keygr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
@@ -408,7 +413,7 @@ class Worker(object):
                                            (allocated_cpu == br_available_xpus.ncpus and
                                             better_cpu_usage))):
                     idx = 0
-                    for i in xrange(allocated_cpu):
+                    for i in range(allocated_cpu):
                         while self._redis.hget(keycr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
@@ -416,7 +421,8 @@ class Worker(object):
                         self._redis.hset(keycr, str(idx), task_id)
                 else:
                     if allocated_gpu > 0:
-                        self._logger.warning('%s: allocated %d GPUs, but there are no CPUs', task_id, allocated_gpu)
+                        self._logger.warning('%s: allocated %d GPUs, but there are no CPUs',
+                                             task_id, allocated_gpu)
                     else:
                         return False, False
 
@@ -533,7 +539,8 @@ class Worker(object):
                                                    phase='dependency_error')
                                     continue
 
-                    nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
+                    nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'),
+                                     self._redis.hget(next_keyt, 'ncpus'))
 
                     foundResource = False
                     if next_task_id in preallocated_task_count:
@@ -549,8 +556,10 @@ class Worker(object):
                             # cannot launch a new task on a reserved node
                             if reserved[r]:
                                 continue
-                            if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus and v.ngpus > 0) or
-                               (nxpus.ngpus == 0 and resources[r].ncpus >= nxpus.ncpus and v.ncpus > 0)):
+                            if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus
+                                 and v.ngpus > 0) or
+                               (nxpus.ngpus == 0 and resources[r].ncpus >= nxpus.ncpus
+                                and v.ncpus > 0)):
                                 foundResource = True
                                 break
                     if not foundResource:
