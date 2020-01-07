@@ -1,10 +1,10 @@
-import os
 import logging
+
 import boto3
 import paramiko
 import six
-
 from botocore.exceptions import ClientError
+
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.ec2_instance_types import ec2_capacity_map
@@ -34,15 +34,15 @@ def _run_instance(client, launch_template_name, task_id="None", dry_run=False):
 
 
 def _get_params(templates, options):
-    templateName = options["server"]
-    p = templateName.rfind(":")
+    template_name = options["server"]
+    p = template_name.rfind(":")
     if p != -1:
-        templateName = templateName[:p]
+        template_name = template_name[:p]
     params = {}
     for t in templates:
-        if t["name"] == templateName:
+        if t["name"] == template_name:
             return t
-    raise ValueError('template %s not in template_pool' % templateName)
+    raise ValueError('template %s not in template_pool' % template_name)
 
 
 class EC2Service(Service):
@@ -83,7 +83,7 @@ class EC2Service(Service):
             template["gpus"] = range(xpu.ngpus)
             template["cpus"] = range(xpu.ncpus)
             self._templates.append(template)
-            for idx in xrange(maxInstances):
+            for idx in range(maxInstances):
                 self._resources["%s:%d" % (template["name"], idx)] = \
                     Capacity(len(template["gpus"]), len(template["cpus"]))
         logger.info("Initialized EC2 - found %d templates.",

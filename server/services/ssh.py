@@ -1,5 +1,4 @@
 import logging
-import paramiko
 
 from nmtwizard import common
 from nmtwizard.service import Service

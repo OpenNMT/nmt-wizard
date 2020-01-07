@@ -2,10 +2,10 @@
 Docker-based tasks.
 """
 
-import logging
 import abc
-import six
 from nmtwizard.capacity import Capacity
+
+import six
 
 
 @six.add_metaclass(abc.ABCMeta)

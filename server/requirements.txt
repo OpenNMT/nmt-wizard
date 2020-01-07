@@ -3,8 +3,7 @@ enum34
 flask
 ovh
 paramiko
-redis>=3.0.0
+redis
 flask_ini
 shutil
-hashlib
 semver

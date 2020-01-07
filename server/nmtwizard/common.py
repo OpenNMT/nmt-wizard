@@ -2,11 +2,11 @@ import time
 import json
 import re
 import logging
-import six
 import io
 import os
 
 import paramiko
+import six
 
 logger = logging.getLogger(__name__)
 
