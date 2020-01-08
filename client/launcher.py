@@ -328,8 +328,8 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
     res = None
     result = None
     if cmd == "service" and subcmd == "list":
-        params = {'all': ARGS.all}
-        r = requests.get(os.path.join(ARGS.url, "service/list"), auth=auth, params=params)
+        params = {'all': args.all}
+        r = requests.get(os.path.join(args.url, "service/list"), auth=auth, params=params)
         if r.status_code != 200:
             LOGGER.error('incorrect result from \'service/list\' service: %s', r.text)
             sys.exit(1)
@@ -351,7 +351,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                              result[k]['capacity'],
                              result[k]['busy'],
                              _format_message(result[k]['name'])])
-                if ARGS.verbose:
+                if args.verbose:
                     for r in result[k]['detail']:
                         if result[k]['detail'][r]['busy'] != '':
                             err = '**' + _format_message(result[k]['detail'][r]['busy'])
@@ -366,21 +366,21 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             if len(busymsg):
                 res += "\n" + "\n".join(busymsg)
     elif cmd == "task" and subcmd == "list":
-        r = requests.get(os.path.join(ARGS.url, "task/list", ARGS.prefix + '*'), auth=auth,
-                         params={"with_parent": ARGS.parent, "service": ARGS.service,
-                                 "status": ARGS.status})
+        r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth,
+                         params={"with_parent": args.parent, "service": args.service,
+                                 "status": args.status})
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
 
-        if ARGS.quiet:
+        if args.quiet:
             res = []
             for k in result:
                 res.append(k["task_id"])
         elif not is_json:
             headers = ["Task ID", "Service", "Resource", "Priority", "Launch Date",
                        "Image", "Status", "Message"]
-            if ARGS.parent:
+            if args.parent:
                 headers.append("parent")
 
             res = PrettyTable(headers)
@@ -396,7 +396,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                 if p != -1:
                     k["image"] = k["image"][p + 1:]
                 task_id = k["task_id"]
-                if ARGS.parent:
+                if args.parent:
                     res.add_row([task_id, k["service"], resource, int(k["priority"] or 0),
                                  date, k["image"], k["status"], k.get("message"), k.get("parent")])
                 else:
@@ -405,50 +405,50 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
         else:
             res = r.json()
     elif cmd == "service" and subcmd == "describe":
-        if ARGS.service not in service_list:
-            raise ValueError("ERROR: service '%s' not defined" % ARGS.service)
-        r = requests.get(os.path.join(ARGS.url, "service/describe", ARGS.service), auth=auth)
+        if args.service not in service_list:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
+        r = requests.get(os.path.join(args.url, "service/describe", args.service), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/describe\' service: %s' % r.text)
         res = r.json()
     elif cmd == "service" and subcmd == "check":
-        if ARGS.service not in service_list:
-            raise ValueError("ERROR: service '%s' not defined" % ARGS.service)
-        if ARGS.options == '{}' and ARGS.resource is not None:
-            options = {"server": ARGS.resource}
+        if args.service not in service_list:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
+        if args.options == '{}' and args.resource is not None:
+            options = {"server": args.resource}
         else:
-            options = getjson(ARGS.options)
-        r = requests.get(os.path.join(ARGS.url, "service/check", ARGS.service),
+            options = getjson(args.options)
+        r = requests.get(os.path.join(args.url, "service/check", args.service),
                          json=options, auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'service/check\' service: %s' % r.text)
         res = r.json()
     elif cmd == "exec" or cmd == "task" and subcmd == "launch":
-        if ARGS.trainer_id is None:
+        if args.trainer_id is None:
             raise RuntimeError('missing trainer_id (you can set LAUNCHER_TID)')
 
-        if ARGS.docker_image is None:
+        if args.docker_image is None:
             raise RuntimeError('missing docker image (you can set LAUNCHER_IMAGE)')
-        m = reimage.match(ARGS.docker_image)
+        m = reimage.match(args.docker_image)
         if not m:
             raise ValueError('incorrect docker image syntax (%s) -'
                              ' should be [registry:]organization/image[:tag]' %
-                             ARGS.docker_image)
+                             args.docker_image)
 
         if m.group(2):
-            ARGS.docker_registry = m.group(2)
+            args.docker_registry = m.group(2)
         if m.group(5):
-            ARGS.docker_tag = m.group(5)
-        ARGS.docker_image = m.group(3)
+            args.docker_tag = m.group(5)
+        args.docker_image = m.group(3)
 
-        if ARGS.service not in service_list:
-            raise ValueError("service '%s' not defined" % ARGS.service)
+        if args.service not in service_list:
+            raise ValueError("service '%s' not defined" % args.service)
 
         # for multi-part file sending
         files = {}
         docker_command = []
 
-        for c in ARGS.docker_command:
+        for c in args.docker_command:
             orgc = c
             if c.startswith("@"):
                 with open(c[1:], "rt") as f:
@@ -461,66 +461,66 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                 c = json.dumps(cjson)
             docker_command.append(c)
 
-        if ARGS.service not in service_list:
-            raise ValueError("ERROR: service '%s' not defined" % ARGS.service)
+        if args.service not in service_list:
+            raise ValueError("ERROR: service '%s' not defined" % args.service)
 
-        if ARGS.gpus < 0:
+        if args.gpus < 0:
             raise ValueError("ERROR: ngpus must be >= 0")
 
-        if ARGS.options == '{}' and ARGS.resource is not None:
-            options = {"server": ARGS.resource}
+        if args.options == '{}' and args.resource is not None:
+            options = {"server": args.resource}
         else:
-            options = getjson(ARGS.options)
+            options = getjson(args.options)
 
         content = {
             "docker": {
-                "registry": ARGS.docker_registry,
-                "image": ARGS.docker_image,
-                "tag": ARGS.docker_tag,
+                "registry": args.docker_registry,
+                "image": args.docker_image,
+                "tag": args.docker_tag,
                 "command": docker_command
             },
-            "wait_after_launch": ARGS.wait_after_launch,
-            "trainer_id": ARGS.trainer_id,
+            "wait_after_launch": args.wait_after_launch,
+            "trainer_id": args.trainer_id,
             "options": options,
-            "ngpus": ARGS.gpus,
-            "ncpus": ARGS.cpus
+            "ngpus": args.gpus,
+            "ncpus": args.cpus
         }
 
         if cmd == "exec":
             content["exec_mode"] = True
-        if ARGS.name:
-            content["name"] = ARGS.name
-        if ARGS.priority:
-            content["priority"] = ARGS.priority
+        if args.name:
+            content["name"] = args.name
+        if args.priority:
+            content["priority"] = args.priority
 
         if cmd == "task" and subcmd == "launch":
-            if ARGS.iterations:
-                content["iterations"] = ARGS.iterations
-            if ARGS.nochainprepr:
+            if args.iterations:
+                content["iterations"] = args.iterations
+            if args.nochainprepr:
                 content["nochainprepr"] = True
-            if ARGS.notransasrelease:
+            if args.notransasrelease:
                 content["notransasrelease"] = True
-            if 'totranslate' in args and ARGS.totranslate:
+            if 'totranslate' in args and args.totranslate:
                 content["totranslate"] = [(_parse_local_filename(i, files),
-                                           o) for (i, o) in ARGS.totranslate]
-            if 'toscore' in args and ARGS.toscore:
+                                           o) for (i, o) in args.totranslate]
+            if 'toscore' in args and args.toscore:
                 content["toscore"] = []
-                for (o, r) in ARGS.toscore:
+                for (o, r) in args.toscore:
                     ref_new = []
                     ref_split = r.split(",")
                     for ref in ref_split:
                         ref_new.append(_parse_local_filename(ref, files))
                     content["toscore"].append((o, ",".join(ref_new)))
-            if 'totuminer' in args and ARGS.totuminer:
+            if 'totuminer' in args and args.totuminer:
                 content["totuminer"] = [(_parse_local_filename(i, files),
                                          o) for (i, o) in ARGS.totuminer]
 
         LOGGER.debug("sending request: %s", json.dumps(content))
 
-        launch_url = os.path.join(ARGS.url, "task/launch", ARGS.service)
+        launch_url = os.path.join(args.url, "task/launch", args.service)
         data = {'content': json.dumps(content)}
         if "entity_owner" in args:
-            data['entity_owner'] = ARGS.entity_owner
+            data['entity_owner'] = args.entity_owner
         r = requests.post(launch_url,
                           files=files,
                           data=data,
@@ -534,7 +534,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             else:
                 res = result
     elif cmd == "task" and subcmd == "status":
-        r = requests.get(os.path.join(ARGS.url, "task/status", ARGS.task_id), auth=auth)
+        r = requests.get(os.path.join(args.url, "task/status", args.task_id), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/status\' service: %s' % r.text)
         result = r.json()
@@ -551,7 +551,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                 upd = current_time - float(result[sorted_times[-1]])
                 last_update = " - updated %d seconds ago" % upd
             res = ("TASK %s - TYPE %s - status %s (%s)%s\nPARENT %s\n" % (
-                ARGS.task_id, result.get('type'),
+                args.task_id, result.get('type'),
                 result.get('status'), result.get('message'), last_update,
                 result.get('parent', '')))
             if "service" in result:
@@ -582,7 +582,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             res += "CONTENT"
             res += json.dumps(content, indent=True) + "\n"
     elif cmd == "task" and subcmd == "delete":
-        r = requests.get(os.path.join(ARGS.url, "task/list", ARGS.prefix + '*'), auth=auth)
+        r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/list\' service: %s' % r.text)
         result = r.json()
@@ -597,25 +597,25 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                     k["task_id"], date, k["image"], k["status"], k.get("message")))
             if confirm():
                 for k in result:
-                    r = requests.delete(os.path.join(ARGS.url, "task", k["task_id"]), auth=auth)
+                    r = requests.delete(os.path.join(args.url, "task", k["task_id"]), auth=auth)
                     if r.status_code != 200:
                         raise RuntimeError(
                             'incorrect result from \'delete_task\' service: %s' % r.text)
     elif cmd == "task" and subcmd == "terminate":
-        r = requests.get(os.path.join(ARGS.url, "task/terminate", ARGS.task_id), auth=auth)
+        r = requests.get(os.path.join(args.url, "task/terminate", args.task_id), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/terminate\' service: %s' % r.text)
         result = r.json()
         if not is_json:
             res = result["message"]
     elif cmd == "task" and subcmd == "file":
-        r = requests.get(os.path.join(ARGS.url, "task/file", ARGS.task_id, ARGS.filename),
+        r = requests.get(os.path.join(args.url, "task/file", args.task_id, args.filename),
                          auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/file\' service: %s' % r.text)
         res = r.content
     elif cmd == "task" and subcmd == "log":
-        r = requests.get(os.path.join(ARGS.url, "task/log", ARGS.task_id), auth=auth)
+        r = requests.get(os.path.join(args.url, "task/log", args.task_id), auth=auth)
         if r.status_code != 200:
             raise RuntimeError('incorrect result from \'task/log\' service: %s' % r.text)
         res = r.text.encode("utf-8")
