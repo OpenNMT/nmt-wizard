@@ -2,11 +2,11 @@ import time
 import json
 import re
 import logging
-import six
 import io
 import os
 
 import paramiko
+import six
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def _patched_exec_command(self,
 paramiko.SSHClient.exec_command = _patched_exec_command
 
 
-def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True):
+def run_command(client, cmd, stdin_content=None, sudo=False, handle_private=True):
     if sudo:
         cmd = "sudo " + cmd
     if logger.getEffectiveLevel() == logging.DEBUG:
@@ -100,7 +100,7 @@ def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True)
             logger.info("RUN `%s`", cmd)
         else:
             logger.info("RUN `%s`...", cmd[:p])
-    if handlePrivate:
+    if handle_private:
         cmd = rmprivate(cmd)
     stdin, stdout, stderr = client.exec_command(cmd)
     if stdin_content is not None:
@@ -254,7 +254,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
                 "set -o pipefail; df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
 
             if exit_status != 0:
-                raise EnvironmentError("missing directory %s" % (path))
+                raise EnvironmentError("missing directory %s" % path)
             out = stdout.read().strip()
             m = re.search(b'([0-9]+)G', out)
             if check and (m is None or int(m.group(1).decode('utf-8')) < space_G):
@@ -274,7 +274,7 @@ def cmd_connect_private_registry(docker_registry):
                     docker_registry['region'])
     username = docker_registry['credentials']['username']
     password = docker_registry['credentials']['password']
-    return ('docker login --username %s --password %s') % (username, password)
+    return 'docker login --username %s --password %s' % (username, password)
 
 
 def cmd_docker_pull(image_ref, docker_path=None):
@@ -501,7 +501,7 @@ def launch_task(task_id,
     # get the process group id
     cmd += ' & ps -o pgid -p $!'
 
-    exit_status, stdout, stderr = run_command(client, cmd, handlePrivate=False)
+    exit_status, stdout, stderr = run_command(client, cmd, handle_private=False)
     if exit_status != 0:
         raise RuntimeError("%s run failed: %s" % (cmd, stderr.read()))
 
