@@ -272,7 +272,7 @@ def list_services():
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
                 pids = []
                 for keyw in redis.scan_iter("admin:worker:%s:*" % service):
-                    pids.append(keyw[len("admin:worker:%s:" % service):])
+                    pids.append(keyw[len("admin:worker:%s:" % service):].decode("utf-8"))
                 pid = ",".join(pids)
                 if len(pids) == 0:
                     busy = "yes"
