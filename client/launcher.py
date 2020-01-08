@@ -6,7 +6,7 @@ import sys
 import os
 import six
 import requests
-import regex as re
+import re
 from prettytable import PrettyTable, PLAIN_COLUMNS
 from datetime import datetime
 import math
@@ -75,7 +75,7 @@ def find_files_parameters(v, files):
             logger.info('transferring local file: %s -> ${TMP_DIR}/%s', f[0], f[1])
         return "${TMP_DIR}/%s" % global_basename
     elif isinstance(v, list):
-        for idx in xrange(len(v)):
+        for idx in range(len(v)):
             v[idx] = find_files_parameters(v[idx], files)
     elif isinstance(v, dict):
         for k in v:
