@@ -8,7 +8,7 @@ import time
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
-import __builtin__
+import builtins
 import semver
 import six
 import flask
@@ -856,7 +856,7 @@ def launch(service):
                 while j < len(content["docker"]["command"]) - 1:
                     if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
                         model_name = content["docker"]["command"][j + 1]
-                        __builtin__.pn9model_db.model_set_release_state(model_name, content.get("trainer_id"), task_id,
+                        builtins.pn9model_db.model_set_release_state(model_name, content.get("trainer_id"), task_id,
                                                                         "in progress")
                         break
                     j = j + 1
