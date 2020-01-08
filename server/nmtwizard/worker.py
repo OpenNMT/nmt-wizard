@@ -371,7 +371,7 @@ class Worker(object):
                                            (allocated_gpu == br_available_xpus.ngpus and
                                             remaining_gpus < br_remaining_xpus.ngpus))):
                     idx = 1
-                    for i in xrange(allocated_gpu):
+                    for i in range(allocated_gpu):
                         while self._redis.hget(keygr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
@@ -408,7 +408,7 @@ class Worker(object):
                                            (allocated_cpu == br_available_xpus.ncpus and
                                             better_cpu_usage))):
                     idx = 0
-                    for i in xrange(allocated_cpu):
+                    for i in range(allocated_cpu):
                         while self._redis.hget(keycr, str(idx)) is not None:
                             idx += 1
                             assert idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
