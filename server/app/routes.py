@@ -258,7 +258,7 @@ def list_services():
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
     for keys in redis.scan_iter("admin:service:*"):
-        service = keys[14:]
+        service = keys[14:].decode("utf-8")
         pool_entity = service[0:2].upper()
         if not showall and pool_entity != flask.g.user.entity.entity_code:
             continue
