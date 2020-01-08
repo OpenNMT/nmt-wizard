@@ -1,10 +1,10 @@
 from datetime import datetime
-import random
 import json
 import time
 import uuid
 
 from bson import json_util
+
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
 from nmtwizard.funnynames.french import generate_name_fr
@@ -22,6 +22,7 @@ def our_default_encoder(obj):
 
 def cust_jsondump(obj):
     return json.dumps(obj, default=our_default_encoder)
+
 
 def _generate_name(xxyy, length=15):
     if xxyy.startswith("de") or xxyy[2:].find("de") != -1:
@@ -73,11 +74,11 @@ def shallow_command_analysis(command):
     yy = 'yy'
     parent_task = None
     while i < len(command):
-        if (command[i] == '-m' or command[i] == '--model') and i+1 < len(command):
-            parent_task = command[i+1]
+        if (command[i] == '-m' or command[i] == '--model') and i + 1 < len(command):
+            parent_task = command[i + 1]
             i += 1
-        elif (command[i] == '-c' or command[i] == '--config') and i+1 < len(command):
-            config = json.loads(command[i+1])
+        elif (command[i] == '-c' or command[i] == '--config') and i + 1 < len(command):
+            config = json.loads(command[i + 1])
             if not parent_task and "model" in config:
                 parent_task = config["model"]
             if "source" in config:
@@ -86,14 +87,14 @@ def shallow_command_analysis(command):
                 yy = config["target"]
             i += 1
         i += 1
-    return (xx+yy, parent_task)
+    return xx + yy, parent_task
 
 
 def change_parent_task(command, task_id):
     i = 0
     while i < len(command):
-        if (command[i] == '-m' or command[i] == '--model') and i+1 < len(command):
-            command[i+1] = task_id
+        if (command[i] == '-m' or command[i] == '--model') and i + 1 < len(command):
+            command[i + 1] = task_id
             return
         i += 1
     command.insert(0, task_id)
@@ -103,8 +104,8 @@ def change_parent_task(command, task_id):
 def remove_config_option(command):
     i = 0
     while i < len(command):
-        if (command[i] == '-c' or command[i] == '--config') and i+1 < len(command):
-            del command[i:i+2]
+        if (command[i] == '-c' or command[i] == '--config') and i + 1 < len(command):
+            del command[i:i + 2]
             return
         i += 1
 
@@ -178,7 +179,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
         if (xxyy is None or xxyy == 'xxyy') and "xxyy" in struct_name:
             xxyy = struct_name["xxyy"]
         if "uuid" in struct_name:
-            parent_uuid = '-'+struct_name["uuid"][0:5]
+            parent_uuid = '-' + struct_name["uuid"][0:5]
         if "nn" in struct_name:
             nn = int(struct_name["nn"])
 
@@ -195,7 +196,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
     if not name:
         name = _generate_name(xxyy)
         if isinstance(name, tuple):
-            explicitname = name[1]+" ("+name[2]+")"
+            explicitname = name[1] + " (" + name[2] + ")"
             name = name[0]
 
     the_uuid = str(uuid.uuid4()).replace("-", "")
@@ -204,7 +205,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
         task_id = '%s_%s_%s_%s' % (trid, xxyy, name, the_uuid)
     else:
         task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
-    task_id = task_id[0:47-len(parent_uuid)] + parent_uuid
+    task_id = task_id[0:47 - len(parent_uuid)] + parent_uuid
     if task_type != "train":
         task_id += '_' + model_type_map.get(task_type, task_type)
     return task_id, explicitname
@@ -223,7 +224,7 @@ def get_params(lparam, listcmd):
     idx = 0
     while idx < len(listcmd):
         if listcmd[idx] in lparam:
-            idx = idx+1
+            idx = idx + 1
             while idx < len(listcmd) and not listcmd[idx].startswith('-'):
                 res.append(listcmd[idx])
                 idx += 1
@@ -233,9 +234,9 @@ def get_params(lparam, listcmd):
 
 
 def boolean_param(value):
-    return not(value is None or
-               value is False or
-               value == "" or
-               value == "0" or
-               value == "False" or
-               value == "false")
+    return not (value is None or
+                value is False or
+                value == "" or
+                value == "0" or
+                value == "False" or
+                value == "false")
