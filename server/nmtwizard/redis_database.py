@@ -1,6 +1,8 @@
 import uuid
 import time
 import logging
+import zlib
+
 import redis
 import json
 
@@ -50,7 +52,7 @@ class RedisDatabase(redis.Redis):
 
         logger.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
         self.expire(root_key, EXPIRED_TIME_SS)
-        uncompressed_value = compressed_value.decode("zlib")
+        uncompressed_value = zlib.decompress(compressed_value)
         return json.loads(uncompressed_value)
 
     def get_cache(self, name, parameter, f):
