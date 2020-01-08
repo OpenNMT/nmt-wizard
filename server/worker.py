@@ -1,4 +1,3 @@
-import logging
 import logging.config
 import hashlib
 import time
@@ -6,12 +5,11 @@ import json
 import pickle
 import os
 import sys
-import six
 import argparse
 import signal
 
 from redis.exceptions import ConnectionError
-
+import six
 from six.moves import configparser
 
 from nmtwizard import config, task
