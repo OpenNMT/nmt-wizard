@@ -6,13 +6,13 @@ import shutil
 import sys
 import time
 import argparse
-import json
 import signal
 import logging
 
-from nmtwizard.redis_database import RedisDatabase
 from redis.exceptions import ConnectionError
 from six.moves import configparser
+
+from nmtwizard.redis_database import RedisDatabase
 
 # connecting to redis to monitor the worker process
 cfg = configparser.ConfigParser()
@@ -69,7 +69,8 @@ if os.path.isfile("%s.json" % service):
     current_config_md5 = md5file("%s.json" % service)
     assert current_config_md5 in config_service_md5, "current configuration file not " \
                                                      "in `configurations`"
-    print("[%s] ** current configuration is: %s" % (service, config_service_md5[current_config_md5]))
+    print("[%s] ** current configuration is: %s" % (service,
+                                                    config_service_md5[current_config_md5]))
     sys.stdout.flush()
 else:
     shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
