@@ -3012,9 +3012,9 @@ def generate_name_zh(length=15):
         name = adj[0]+noun[0]
         if len(name) <= length:
             english = adj[2]+" "+noun[2]
-            return (name, adj[1]+noun[1], english)
+            return name, adj[1] + noun[1], english
 
 
 if __name__ == "__main__":
     for i in range(100):
-        print "\t".join(generate_name_zh())
+        print("\t".join(generate_name_zh()))
