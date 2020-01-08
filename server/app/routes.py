@@ -38,7 +38,7 @@ TASK_RELEASE_TYPE = "relea"
 
 
 def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, the_permission, ent_code)]
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, str) and has_ability(g, the_permission, ent_code)]
 
 
 @app.errorhandler(Exception)
