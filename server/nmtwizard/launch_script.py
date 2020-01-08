@@ -10,7 +10,7 @@ cmd = """
 """.strip().split("\n")
 log_file = "%s"
 callback_url = "%s"
-myenv = %s
+myenv = "%s"
 
 
 def displaycmd(lst):
