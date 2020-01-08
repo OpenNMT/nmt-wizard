@@ -1,10 +1,9 @@
 import logging
-import paramiko
+import time
 
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.capacity import Capacity
-import time
 
 logger = logging.getLogger(__name__)
 
