@@ -258,4 +258,4 @@ def generate_name_de(length=15):
 
 if __name__ == "__main__":
     for i in range(100):
-        print generate_name_de()
+        print(generate_name_de())
