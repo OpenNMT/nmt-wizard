@@ -5,9 +5,10 @@ import json
 
 from flask import Flask
 from flask_ini import FlaskIni
+from redis.exceptions import ConnectionError
+
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
-from redis.exceptions import ConnectionError
 
 VERSION = "1.10.1"
 
@@ -31,7 +32,8 @@ assert os.path.isfile(default_file), "Cannot find default.json: %s" % default_fi
 with open(default_file) as default_fh:
     default_config = default_fh.read()
     base_config = json.loads(default_config)
-    assert 'storages' in base_config, "incomplete configuration - missing `storages` in %s" % default_file
+    assert 'storages' in base_config, "incomplete configuration - missing " \
+                                      "`storages` in %s" % default_file
 
 app.iniconfig = FlaskIni()
 with app.app_context():
