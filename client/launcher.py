@@ -74,10 +74,10 @@ def find_files_parameters(v, files):
             files[f[1]] = (f[1], open(f[0], 'rb'))
             LOGGER.info('transferring local file: %s -> ${TMP_DIR}/%s', f[0], f[1])
         return "${TMP_DIR}/%s" % global_basename
-    elif isinstance(v, list):
+    if isinstance(v, list):
         for idx, item in enumerate(v):
             v[idx] = find_files_parameters(v[idx], files)
-    elif isinstance(v, dict):
+    if isinstance(v, dict):
         for k in v:
             v[k] = find_files_parameters(v[k], files)
     return v
