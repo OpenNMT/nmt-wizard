@@ -64,30 +64,34 @@ mutex = Lock()
 completed = False
 
 
-def _update_log_loop():
-    global current_log
-    while True:
-        for i in range(60):
-            time.sleep(1)
-            if completed:
-                return
-        mutex.acquire()
-        copy_log = current_log
-        current_log = ""
-        mutex.release()
-        if copy_log:
-            try:
-                p = subprocess.Popen(["curl", "--retry", "3", "-X", "PATCH",
-                                      callback_url+"/task/log/"+task_id+"?duration=%d",
-                                      "--data-binary", "@-"],
-                                     stdin=subprocess.PIPE)
-                p.communicate(copy_log)
-            except Exception:
-                pass
+class UpdateLog:
+    def __init__(self, current_log):
+        self.current_log = current_log
+
+    def update_log_loop(self):
+        while True:
+            for i in range(60):
+                time.sleep(1)
+                if completed:
+                    return
+            mutex.acquire()
+            copy_log = self.current_log
+            self.current_log = ""
+            mutex.release()
+            if copy_log:
+                try:
+                    p = subprocess.Popen(["curl", "--retry", "3", "-X", "PATCH",
+                                          callback_url + os.path.join("task",
+                                                                      "log") + task_id +
+                                          "?duration=%d", "--data-binary", "@-"],
+                                         stdin=subprocess.PIPE)
+                    p.communicate(copy_log)
+                except Exception:
+                    pass
 
 
 if callback_url:
-    log_thread = Thread(target=_update_log_loop)
+    log_thread = Thread(target=UpdateLog.update_log_loop)
     log_thread.daemon = True
     log_thread.start()
 
@@ -117,7 +121,9 @@ if callback_url:
     mutex.acquire()
     current_log = ""
     mutex.release()
-    subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url+"/task/log/"+task_id,
-                     "--data-binary", "@"+log_file])
+    subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url +
+                     os.path.join("task", "log")
+                     + task_id, "--data-binary", "@" + log_file])
     subprocess.call(["curl", "-X", "GET",
-                     callback_url+"/task/terminate/"+task_id+"?phase=" + phase])
+                     callback_url + os.path.join("task", "terminate")
+                     + task_id + "?phase=" + phase])
