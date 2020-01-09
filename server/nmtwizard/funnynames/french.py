@@ -731,7 +731,7 @@ def generate_name_fr(length=15):
             realname = realnoun+" "+realadj
         trad = tradadj+" "+tradnoun
         if len(name) <= length and re.match(r"[A-Z][a-z]+[A-Z][a-z]+$", name):
-            return (name, realname, trad)
+            return name, realname, trad
 
 
 if __name__ == "__main__":
