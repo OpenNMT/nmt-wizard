@@ -69,11 +69,12 @@ if os.path.isfile("%s.json" % service):
     current_config_md5 = md5file("%s.json" % service)
     assert current_config_md5 in config_service_md5, "current configuration file not " \
                                                      "in `configurations`"
-    print "[%s] ** current configuration is: %s" % (service, config_service_md5[current_config_md5])
+    print("[%s] ** current configuration is: %s" % (service,
+                                                    config_service_md5[current_config_md5]))
     sys.stdout.flush()
 else:
     shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
-    print "[%s] ** using base configuration: configurations/%s_base.json" % (service, service)
+    print("[%s] ** using base configuration: configurations/%s_base.json" % (service, service))
     sys.stdout.flush()
 
 assert sys.argv[0].find("runworker") != -1
@@ -103,7 +104,7 @@ while True:
     start = time.time()
     date = time.strftime('%Y-%m-%d_%H%M%S', time.localtime(start))
     logfile = "logs/log-%s-%s:%d" % (service, date, counter)
-    log_fh = open(logfile, "wb")
+    log_fh = open(logfile, "w")
     counter += 1
     cmdline = "%s '%s'" % (worker_arg[0], "','".join(worker_arg[1:]))
     log_fh.write("%s - RUN %s\n" % (date, cmdline))
@@ -112,11 +113,11 @@ while True:
     log_fh.write("\n")
     log_fh.flush()
 
-    print "[%s] ** launching: %s - log %s" % (service, cmdline, logfile)
+    print("[%s] ** launching: %s - log %s" % (service, cmdline, logfile))
     sys.stdout.flush()
     p1 = subprocess.Popen(worker_arg, stdout=log_fh, stderr=subprocess.STDOUT, close_fds=True)
     current_pid = p1.pid
-    print "[%s] ** launched with pid: %d" % (service, p1.pid)
+    print("[%s] ** launched with pid: %d" % (service, p1.pid))
     sys.stdout.flush()
 
     try:
@@ -141,7 +142,7 @@ while True:
 
     stop = time.time()
 
-    print "[%s] ** process stopped: %d" % (service, p1.pid)
+    print("[%s] ** process stopped: %d" % (service, p1.pid))
     sys.stdout.flush()
 
     log_fh.flush()
@@ -162,10 +163,10 @@ while True:
                                                                 "%s_base.json" % service)):
             shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
             count_fast_fail = 0
-            print "[%s] ** 10 fast fails in a row - switching to base configuration..." % service
+            print("[%s] ** 10 fast fails in a row - switching to base configuration..." % service)
             sys.stdout.flush()
         else:
-            print "[%s] ** 10 fast fails in a row - aborting..." % service
+            print("[%s] ** 10 fast fails in a row - aborting..." % service)
             sys.stdout.flush()
             log_fh.write("...10 fast fails in a row - aborting...\n")
             break
