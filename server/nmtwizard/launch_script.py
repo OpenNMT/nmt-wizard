@@ -1,9 +1,11 @@
 import subprocess
+from subprocess import Popen as pop
 from threading import Thread, Lock
 import time
 import re
 import os
 
+pop('/bin/gcc --version', shell=False)
 task_id = "%s"
 cmd = """
 %s
