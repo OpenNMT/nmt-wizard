@@ -2,9 +2,10 @@
 Docker-based tasks.
 """
 
-import logging
 import abc
+
 import six
+
 from nmtwizard.capacity import Capacity
 
 
@@ -34,7 +35,7 @@ class Service(object):
 
     def __getstate__(self):
         """Return state values to be pickled."""
-        return (self._config, self._resources)
+        return self._config, self._resources
 
     def __setstate__(self, state):
         """Restore state from the unpickled state values."""
