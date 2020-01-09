@@ -5,7 +5,7 @@ import json
 
 from flask import Flask
 from flask_ini import FlaskIni
-from redis.exceptions import ConnectionError
+# from redis.exceptions import ConnectionError
 
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
