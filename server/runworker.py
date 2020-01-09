@@ -6,13 +6,13 @@ import shutil
 import sys
 import time
 import argparse
-import json
 import signal
 import logging
 
-from nmtwizard.redis_database import RedisDatabase
 from redis.exceptions import ConnectionError
 from six.moves import configparser
+
+from nmtwizard.redis_database import RedisDatabase
 
 # connecting to redis to monitor the worker process
 cfg = configparser.ConfigParser()
