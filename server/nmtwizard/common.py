@@ -2,11 +2,11 @@ import time
 import json
 import re
 import logging
-import six
 import io
 import os
 
 import paramiko
+import six
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +41,17 @@ def rmprivate(lst):
         for k, v in six.iteritems(lst):
             lst[k] = rmprivate(v)
         return lst
-    else:
-        t = lst
-        if isinstance(t, six.string_types):
-            p = t.find("[[private:")
-            while p != -1:
-                t = t[0:p] + t[p+10:]
-                q = t.find("]]")
-                if q != -1:
-                    t = t[0:q] + t[q+2:]
-                    p = t.find("[[private:", q)
-                else:
-                    p = -1
-        return t
+    t = lst
+    if isinstance(t, six.string_types):
+        p = t.find("[[private:")
+        while p != -1:
+            t = t[0:p] + t[p + 10:]
+            q = t.find("]]")
+            if q != -1:
+                t = t[0:q] + t[q + 2:]
+                p = t.find("[[private:", q)
+            p = -1
+    return t
 
 
 # read the launch_script that will be used to launched and monitor tasks
@@ -89,7 +87,7 @@ def _patched_exec_command(self,
 paramiko.SSHClient.exec_command = _patched_exec_command
 
 
-def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True):
+def run_command(client, cmd, stdin_content=None, sudo=False, handle_private=True):
     if sudo:
         cmd = "sudo " + cmd
     if logger.getEffectiveLevel() == logging.DEBUG:
@@ -100,7 +98,7 @@ def run_command(client, cmd, stdin_content=None, sudo=False, handlePrivate=True)
             logger.info("RUN `%s`", cmd)
         else:
             logger.info("RUN `%s`...", cmd[:p])
-    if handlePrivate:
+    if handle_private:
         cmd = rmprivate(cmd)
     stdin, stdout, stderr = client.exec_command(cmd)
     if stdin_content is not None:
@@ -175,10 +173,9 @@ def ssh_connect_with_retry(hostname,
             retry -= 1
             if retry < 0:
                 raise EnvironmentError('cannot connect to node: %s', str(e))
-            else:
-                logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
-                               hostname, str(e), retry_delay)
-                time.sleep(retry_delay)
+            logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
+                           hostname, str(e), retry_delay)
+            time.sleep(retry_delay)
 
 
 def fuse_s3_bucket(client, corpus):
@@ -254,7 +251,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
                 "set -o pipefail; df --output=avail -BG %s | tail -1 | awk '{print $1}'" % path)
 
             if exit_status != 0:
-                raise EnvironmentError("missing directory %s" % (path))
+                raise EnvironmentError("missing directory %s" % path)
             out = stdout.read().strip()
             m = re.search(b'([0-9]+)G', out)
             if check and (m is None or int(m.group(1).decode('utf-8')) < space_G):
@@ -274,7 +271,7 @@ def cmd_connect_private_registry(docker_registry):
                     docker_registry['region'])
     username = docker_registry['credentials']['username']
     password = docker_registry['credentials']['password']
-    return ('docker login --username %s --password %s') % (username, password)
+    return 'docker login --username %s --password %s' % (username, password)
 
 
 def cmd_docker_pull(image_ref, docker_path=None):
@@ -299,76 +296,75 @@ def cmd_docker_run(lxpu, docker_options, task_id,
 
     if docker_options.get('dev') == 1:
         return "sleep 35"
-    else:
-        docker_cmd = 'docker' if gpu_id == '0' else 'nvidia-docker'
-        docker_path = docker_options.get('path')
-        if docker_path:
-            docker_cmd = docker_path + '/' + docker_cmd
+    docker_cmd = 'docker' if gpu_id == '0' else 'nvidia-docker'
+    docker_path = docker_options.get('path')
+    if docker_path:
+        docker_cmd = docker_path + '/' + docker_cmd
 
-        # launch the task
-        cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
-        if 'mount' in docker_options:
-            for k in docker_options['mount']:
-                cmd += '_o_-v_o_%s' % k
-        if 'envvar' in docker_options:
-            for k, v in six.iteritems(docker_options['envvar']):
-                if isinstance(v, six.string_types):
-                    cmd += '_o_-e_o_%s=%s' % (k, v)
-                elif isinstance(v, dict) and k == "specific" and docker_image in v:
-                    # specific options for a given image
-                    for ks, vs in six.iteritems(v[docker_image]):
-                        cmd += '_o_-e_o_%s=%s' % (ks, vs)
+    # launch the task
+    cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
+    if 'mount' in docker_options:
+        for k in docker_options['mount']:
+            cmd += '_o_-v_o_%s' % k
+    if 'envvar' in docker_options:
+        for k, v in six.iteritems(docker_options['envvar']):
+            if isinstance(v, six.string_types):
+                cmd += '_o_-e_o_%s=%s' % (k, v)
+            elif isinstance(v, dict) and k == "specific" and docker_image in v:
+                # specific options for a given image
+                for ks, vs in six.iteritems(v[docker_image]):
+                    cmd += '_o_-e_o_%s=%s' % (ks, vs)
 
-        if lcpu is not None:
-            # only set cpu setting if provided list of CPU
-            # this allows dedicated instance (such as EC2) to not enforce CPU restriction
-            cmd += '_o_-e_o_NB_CPU=%d' % len(lcpu)
-            cmd += '_o_--cpuset-cpus_o_%s' % ",".join([str(v) for v in lcpu])
+    if lcpu is not None:
+        # only set cpu setting if provided list of CPU
+        # this allows dedicated instance (such as EC2) to not enforce CPU restriction
+        cmd += '_o_-e_o_NB_CPU=%d' % len(lcpu)
+        cmd += '_o_--cpuset-cpus_o_%s' % ",".join([str(v) for v in lcpu])
 
-        # mount TMP_DIR used to store potential transfered files
-        cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id
+    # mount TMP_DIR used to store potential transfered files
+    cmd += '_o_-e_o_TMP_DIR=/root/tmp/%s' % task_id
 
-        cmd += '_o_%s' % image_ref
+    cmd += '_o_%s' % image_ref
 
-        if storages is not None and storages != {}:
-            v = json.dumps(storages)
-            v = v.replace("<TASK_ID>", task_id)
-            v = v.replace("<CALLBACK_URL>", callback_url)
-            cmd += '_o_-s_o_%s' % v
+    if storages is not None and storages != {}:
+        v = json.dumps(storages)
+        v = v.replace("<TASK_ID>", task_id)
+        v = v.replace("<CALLBACK_URL>", callback_url)
+        cmd += '_o_-s_o_%s' % v
 
-            # if model storage is not specified, check if there is a default
-            # model storage (in read/write or both)
-            if '-ms' not in docker_command and ('-msr' not in docker_command or
-                                                '-msw' not in docker_command):
-                for s in storages:
-                    if storages[s].get('default_ms'):
-                        docker_command = ['-ms', s + ':'] + docker_command
-                        break
-                    elif storages[s].get('default_msr') and '-msr' not in docker_command:
-                        docker_command = ['-msr', s + ':'] + docker_command
-                        break
-                    elif storages[s].get('default_msw') and '-msw' not in docker_command:
-                        docker_command = ['-msw', s + ':'] + docker_command
-                        break
+        # if model storage is not specified, check if there is a default
+        # model storage (in read/write or both)
+        if '-ms' not in docker_command and ('-msr' not in docker_command or
+                                            '-msw' not in docker_command):
+            for s in storages:
+                if storages[s].get('default_ms'):
+                    docker_command = ['-ms', s + ':'] + docker_command
+                    break
+                elif storages[s].get('default_msr') and '-msr' not in docker_command:
+                    docker_command = ['-msr', s + ':'] + docker_command
+                    break
+                elif storages[s].get('default_msw') and '-msw' not in docker_command:
+                    docker_command = ['-msw', s + ':'] + docker_command
+                    break
 
-        cmd += '_o_-g_o_%s' % gpu_id
-        cmd += '_o_-t_o_%s' % task_id
-        if callback_url is not None and callback_url != '':
-            cmd += '_o_-b_o_%s' % callback_url
-            if callback_interval is not None:
-                cmd += '_o_-bi_o_%d' % callback_interval
-            if support_statistics:
-                cmd += '_o_--statistics_url_o_%s/task/stat/%s' % (callback_url, task_id)
+    cmd += '_o_-g_o_%s' % gpu_id
+    cmd += '_o_-t_o_%s' % task_id
+    if callback_url is not None and callback_url != '':
+        cmd += '_o_-b_o_%s' % callback_url
+        if callback_interval is not None:
+            cmd += '_o_-bi_o_%d' % callback_interval
+        if support_statistics:
+            cmd += '_o_--statistics_url_o_%s/task/stat/%s' % (callback_url, task_id)
 
-        cmd += '_o_-i_o_%s' % image_ref
+    cmd += '_o_-i_o_%s' % image_ref
 
-        for arg in docker_command:
-            if arg.startswith('${TMP_DIR}'):
-                # when there are multi-files, use replace instead of concatenate
-                arg = arg.replace('${TMP_DIR}', '/root/tmp/%s' % task_id)
-            cmd += '_o_' + arg.replace("'", "'\"'\"'")
+    for arg in docker_command:
+        if arg.startswith('${TMP_DIR}'):
+            # when there are multi-files, use replace instead of concatenate
+            arg = arg.replace('${TMP_DIR}', '/root/tmp/%s' % task_id)
+        cmd += '_o_' + arg.replace("'", "'\"'\"'")
 
-        return cmd.replace("\n", "\\\\n").replace("_o_", "\n"), str(env).replace("'", '"')
+    return cmd.replace("\n", "\\\\n").replace("_o_", "\n"), str(env).replace("'", '"')
 
 
 def update_log(task_id,
@@ -377,7 +373,7 @@ def update_log(task_id,
                callback_url):
     log_file = "%s/%s.log" % (log_dir, task_id)
     cmd = 'curl -X POST "%s/task/log/%s" --data-binary "@%s"' % (
-                callback_url, task_id, log_file)
+        callback_url, task_id, log_file)
     _, stdout, stderr = run_command(client, cmd)
 
 
@@ -496,12 +492,12 @@ def launch_task(task_id,
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
                                                callback_url or '', env, callback_interval) + \
-        "' > %s/%s_launch.log" % (log_dir, task_id)
+          "' > %s/%s_launch.log" % (log_dir, task_id)
 
     # get the process group id
     cmd += ' & ps -o pgid -p $!'
 
-    exit_status, stdout, stderr = run_command(client, cmd, handlePrivate=False)
+    exit_status, stdout, stderr = run_command(client, cmd, handle_private=False)
     if exit_status != 0:
         raise RuntimeError("%s run failed: %s" % (cmd, stderr.read()))
 
