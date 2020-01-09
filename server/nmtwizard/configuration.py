@@ -58,7 +58,8 @@ def load_service_config(filename, base_config):
     """Load configured service given a json file applying on a provided base configuration
 
     Args:
-      directory: The path to the json file configuring the service.
+      filename: The path to the json file configuring the service.
+      base_config: Configuration for service
 
     Returns:
       A map of service name to service module.
