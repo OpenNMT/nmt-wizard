@@ -1,9 +1,9 @@
-import subprocess
-from subprocess import Popen as pop
 from threading import Thread, Lock
 import time
 import re
 import os
+import subprocess
+from subprocess import Popen as pop
 
 pop('/bin/gcc --version', shell=False)
 task_id = "%s"
@@ -22,14 +22,14 @@ def displaycmd(lst):
         while p != -1:
             q = t.find("]]", p)
             if q != -1:
-                t = t[0:p+9] + t[q:]
+                t = t[0:p + 9] + t[q:]
             else:
-                t = t[0:p+9]
-            p = t.find("[[private:", p+11)
+                t = t[0:p + 9]
+            p = t.find("[[private:", p + 11)
         if s != "":
             s += " "
         if re.search(r"[ \"!{};$]", t):
-            s += chr(39)+t+chr(39)
+            s += chr(39) + t + chr(39)
         else:
             s += t
     return s
@@ -40,10 +40,10 @@ def rmprivate(lst):
     for t in lst:
         p = t.find("[[private:")
         while p != -1:
-            t = t[0:p] + t[p+10:]
+            t = t[0:p] + t[p + 10:]
             q = t.find("]]")
             if q != -1:
-                t = t[0:q] + t[q+2:]
+                t = t[0:q] + t[q + 2:]
                 p = t.find("[[private:", q)
             else:
                 p = -1
@@ -52,13 +52,13 @@ def rmprivate(lst):
 
 
 f = open(log_file, "w")
-f.write("COMMAND: "+displaycmd(cmd)+"\n")
+f.write("COMMAND: " + displaycmd(cmd) + "\n")
 
-p1 = subprocess.Popen(rmprivate(cmd),
-                      stdout=subprocess.PIPE,
-                      stderr=subprocess.STDOUT,
-                      universal_newlines=True,
-                      env=dict(os.environ, **myenv))
+p1 = pop(rmprivate(cmd),
+         stdout=subprocess.PIPE,
+         stderr=subprocess.STDOUT,
+         universal_newlines=True,
+         env=dict(os.environ, **myenv))
 
 current_log = ""
 
@@ -82,13 +82,13 @@ class UpdateLog:
             mutex.release()
             if copy_log:
                 try:
-                    p = subprocess.Popen(["curl", "--retry", "3", "-X", "PATCH",
-                                          callback_url + os.path.join("task",
-                                                                      "log") + task_id +
-                                          "?duration=%d", "--data-binary", "@-"],
-                                         stdin=subprocess.PIPE)
+                    p = pop(["curl", "--retry", "3", "-X", "PATCH",
+                             callback_url + os.path.join("task",
+                                                         "log") + task_id +
+                             "?duration=%d", "--data-binary", "@-"],
+                            stdin=subprocess.PIPE)
                     p.communicate(copy_log)
-                except Exception:
+                except ZeroDivisionError:
                     pass
 
 
@@ -96,7 +96,6 @@ if callback_url:
     log_thread = Thread(target=UpdateLog.update_log_loop)
     log_thread.daemon = True
     log_thread.start()
-
 
 while p1.poll() is None:
     line = p1.stdout.readline()
