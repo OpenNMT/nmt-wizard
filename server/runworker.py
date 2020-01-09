@@ -9,7 +9,7 @@ import argparse
 import signal
 import logging
 
-from redis.exceptions import ConnectionError
+# from redis.exceptions import ConnectionError
 from six.moves import configparser
 
 from nmtwizard.redis_database import RedisDatabase
