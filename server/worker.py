@@ -9,7 +9,7 @@ import sys
 import argparse
 import signal
 
-from redis.exceptions import ConnectionError
+# from redis.exceptions import ConnectionError
 import six
 from six.moves import configparser
 
