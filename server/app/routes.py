@@ -19,10 +19,9 @@ from flask import abort, make_response, jsonify, Response
 
 from app import app, redis_db, get_version, taskfile_dir
 from nmtwizard import task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, \
-    get_docker_action, cust_jsondump
+from nmtwizard.helper import build_task_id, shallow_command_analysis, \
+    get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
-from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity
 
