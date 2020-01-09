@@ -3017,4 +3017,4 @@ def generate_name_zh(length=15):
 
 if __name__ == "__main__":
     for i in range(100):
-        print "\t".join(generate_name_zh())
+        print("\t".join(generate_name_zh()))
