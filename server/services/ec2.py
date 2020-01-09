@@ -83,7 +83,7 @@ class EC2Service(Service):
             template["gpus"] = range(xpu.ngpus)
             template["cpus"] = range(xpu.ncpus)
             self._templates.append(template)
-            for idx in xrange(maxInstances):
+            for idx in range(maxInstances):
                 self._resources["%s:%d" % (template["name"], idx)] = \
                     Capacity(len(template["gpus"]), len(template["cpus"]))
         logger.info("Initialized EC2 - found %d templates.",
