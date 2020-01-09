@@ -1,4 +1,5 @@
-"""Base class for services: objects that can start, monitor, and terminate
+"""
+Base class for services: objects that can start, monitor, and terminate
 Docker-based tasks.
 """
 
