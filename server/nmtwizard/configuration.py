@@ -14,7 +14,7 @@ def add_log_handler(fh):
 def merge_config(a, b, name):
     if isinstance(a, dict):
         for k in six.iterkeys(b):
-            if k not in a or type(a[k]) != type(b[k]):
+            if k not in a or not isinstance(type(a[k]), type(b[k])):
                 a[k] = b[k]
             elif isinstance(a[k], dict):
                 merge_config(a[k], b[k], name)
