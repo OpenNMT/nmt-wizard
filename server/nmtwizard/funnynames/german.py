@@ -5,17 +5,22 @@ nouns = [
     ('Affenbrotbaum', 'm'), ('Ahorn', 'm'), ('Akazie', 'f'), ('Albatros', 'm'), ('Alligator', 'm'),
     ('Alpaka', 'n'), ('Amarant', 'm'), ('Ameise', 'f'), ('Ameisenigel', 'm'), ('Amsel', 'f'),
     ('Ananas', 'f'), ('Anglerfisch', 'm'), ('Anis', 'm'), ('Antilope', 'f'), ('Apfelbaum', 'm'),
-    ('Apfelbeere', 'f'), ('Apfel', 'm'), ('Aprikose', 'f'), ('Aprikosenbaum', 'm'), ('Archaeopteryx', 'm'),
+    ('Apfelbeere', 'f'), ('Apfel', 'm'), ('Aprikose', 'f'), ('Aprikosenbaum', 'm'),
+    ('Archaeopteryx', 'm'),
     ('Arnika', 'f'), ('Aronia', 'f'), ('Artischocke', 'f'), ('Aubergine', 'f'), ('Auerhuhn', 'n'),
-    ('Auerochse', 'm'), ('Auster', 'f'), ('Austernfischer', 'm'), ('Avocado', 'f'), ('Bachforelle', 'f'),
+    ('Auerochse', 'm'), ('Auster', 'f'), ('Austernfischer', 'm'), ('Avocado', 'f'),
+    ('Bachforelle', 'f'),
     ('Bachstelze', 'f'), ('Baldrian', 'm'), ('Banane', 'f'), ('Bandwurm', 'm'), ('Barbe', 'f'),
-    ('Barrakuda', 'm'), ('Basilikum', 'n'), ('Baummarder', 'm'), ('Beifuss', 'm'), ('Bergamotte', 'f'),
+    ('Barrakuda', 'm'), ('Basilikum', 'n'), ('Baummarder', 'm'), ('Beifuss', 'm'),
+    ('Bergamotte', 'f'),
     ('Beutelwolf', 'm'), ('Biber', 'm'), ('Biene', 'f'), ('Bienenfresser', 'm'), ('Birke', 'f'),
     ('Birne', 'f'), ('Bisamratte', 'f'), ('Bison', 'm'), ('Blattlaus', 'f'), ('Blaukraut', 'n'),
     ('Blaumeise', 'f'), ('Blauwal', 'm'), ('Blindschleiche', 'f'), ('Blobfisch', 'm'),
-    ('Blumenkohl', 'm'), ('Blutegel', 'm'), ('Bohnenkraut', 'n'), ('Bonobo', 'm'), ('Boysenbeere', 'f'),
+    ('Blumenkohl', 'm'), ('Blutegel', 'm'), ('Bohnenkraut', 'n'), ('Bonobo', 'm'),
+    ('Boysenbeere', 'f'),
     ('Brachiosaurus', 'm'), ('Breitmaulnashorn', 'n'), ('Brennnessel', 'f'), ('Brokkoli', 'm'),
-    ('Brombeere', 'f'), ('Buchfink', 'm'), ('Buchweizen', 'm'), ('Buckelwal', 'm'), ('Buntspecht', 'm'),
+    ('Brombeere', 'f'), ('Buchfink', 'm'), ('Buchweizen', 'm'), ('Buckelwal', 'm'),
+    ('Buntspecht', 'm'),
     ('Bussard', 'm'), ('Cashewnuss', 'f'), ('Champignon', 'm'), ('Chia', 'f'), ('Chinakohl', 'm'),
     ('Chinchilla', 'n'), ('Clownfisch', 'm'), ('Dachs', 'm'), ('Damhirsch', 'm'), ('Dattel', 'f'),
     ('Delfin', 'm'), ('Dill', 'm'), ('Dingo', 'm'), ('Dinkel', 'm'), ('Diplodokus', 'm'),
@@ -24,7 +29,8 @@ nouns = [
     ('Eberesche', 'f'), ('Efeu', 'm'), ('Eibe', 'f'), ('Eiche', 'f'), ('Eidechse', 'f'),
     ('Eintagsfliege', 'f'), ('Eisenhut', 'm'), ('Eisvogel', 'm'), ('Elch', 'm'), ('Elefant', 'm'),
     ('Elster', 'f'), ('Emu', 'm'), ('Ente', 'f'), ('Erdbeere', 'f'), ('Erdferkel', 'n'),
-    ('Erle', 'f'), ('Esche', 'f'), ('Esel', 'm'), ('Estragon', 'm'), ('Eule', 'f'), ('Eulenfalter', 'm'),
+    ('Erle', 'f'), ('Esche', 'f'), ('Esel', 'm'), ('Estragon', 'm'), ('Eule', 'f'),
+    ('Eulenfalter', 'm'),
     ('Falke', 'm'), ('Fasan', 'm'), ('Faultier', 'n'), ('Feige', 'f'), ('Feigenbaum', 'm'),
     ('Feldhase', 'm'), ('Feldsalat', 'm'), ('Fenchel', 'm'), ('Fennek', 'm'), ('Feuerqualle', 'f'),
     ('Feuersalamander', 'm'), ('Feuerwanze', 'f'), ('Fichte', 'f'), ('Fingerhut', 'm'),
@@ -37,7 +43,8 @@ nouns = [
     ('Goldammer', 'f'), ('Goldfisch', 'm'), ('Gorilla', 'm'), ('Gottesanbeterin', 'f'),
     ('Granatapfel', 'm'), ('Grapefruit', 'f'), ('Graureiher', 'm'), ('Grottenolm', 'm'),
     ('Gummibaum', 'm'), ('Gurke', 'f'), ('Habicht', 'm'), ('Hafer', 'm'), ('Haflinger', 'm'),
-    ('Hagebutte', 'f'), ('Hai', 'm'), ('Hainbuche', 'f'), ('Hallimasch', 'm'), ('Halsbandsittich', 'm'),
+    ('Hagebutte', 'f'), ('Hai', 'm'), ('Hainbuche', 'f'), ('Hallimasch', 'm'),
+    ('Halsbandsittich', 'm'),
     ('Hammerhai', 'm'), ('Hamster', 'm'), ('Harpyie', 'f'), ('Hasel', 'f'), ('Haselmaus', 'f'),
     ('Haselnuss', 'f'), ('Hase', 'm'), ('Haubentaucher', 'm'), ('Haussperling', 'm'),
     ('Hecht', 'm'), ('Heidelbeere', 'f'), ('Heimchen', 'n'), ('Herbstzeitlose', 'f'),
@@ -46,10 +53,12 @@ nouns = [
     ('Huhn', 'n'), ('Hummer', 'm'), ('Igel', 'm'), ('Iltis', 'm'), ('Impala', 'f'), ('Ingwer', 'm'),
     ('Inlandtaipan', 'm'), ('Islandpferd', 'n'), ('Jaguar', 'm'), ('Johanniskraut', 'n'),
     ('Kabeljau', 'm'), ('Kaiman', 'm'), ('Kaiserpinguin', 'm'), ('Kakadu', 'm'), ('Kaki', 'f'),
-    ('Kaktusfeige', 'f'), ('Kamel', 'n'), ('Kamille', 'f'), ('Kanarienvogel', 'm'), ('Kaninchen', 'n'),
+    ('Kaktusfeige', 'f'), ('Kamel', 'n'), ('Kamille', 'f'), ('Kanarienvogel', 'm'),
+    ('Kaninchen', 'n'),
     ('Kapuzineraffe', 'm'), ('Kapuzinerkresse', 'f'), ('Kardamom', 'm'), ('Karfiol', 'm'),
     ('Karotte', 'f'), ('Karpfen', 'm'), ('Kartoffel', 'f'), ('Kastanie', 'f'), ('Katta', 'f'),
-    ('Katze', 'f'), ('Katzenhai', 'm'), ('Kellerassel', 'f'), ('Kichererbse', 'f'), ('Kiebitz', 'm'),
+    ('Katze', 'f'), ('Katzenhai', 'm'), ('Kellerassel', 'f'), ('Kichererbse', 'f'),
+    ('Kiebitz', 'm'),
     ('Kiefer', 'f'), ('Kirschbaum', 'm'), ('Kiwi', 'f'), ('Kiwi', 'm'), ('Klapperschlange', 'f'),
     ('Kleiber', 'm'), ('Kleidermotte', 'f'), ('Knoblauch', 'm'), ('Knollensellerie', 'm'),
     ('Koala', 'm'), ('Koboldmaki', 'm'), ('Kohl', 'm'), ('Kohlmeise', 'f'), ('Kohlrabi', 'm'),
@@ -61,7 +70,8 @@ nouns = [
     ('Lavendel', 'm'), ('Lebensbaum', 'm'), ('Leguan', 'm'), ('Leistenkrokodil', 'n'),
     ('Lemming', 'm'), ('Lemur', 'm'), ('Leopard', 'm'), ('Lerche', 'f'), ('Leuchtqualle', 'f'),
     ('Libelle', 'f'), ('Liger', 'm'), ('Limette', 'f'), ('Linde', 'f'), ('Litschi', 'f'),
-    ('Lorbeerkirsche', 'f'), ('Lorbeer', 'm'), ('Luchs', 'm'), ('Macadamia', 'f'), ('Mahagoni', 'n'),
+    ('Lorbeerkirsche', 'f'), ('Lorbeer', 'm'), ('Luchs', 'm'), ('Macadamia', 'f'),
+    ('Mahagoni', 'n'),
     ('Mais', 'm'), ('Majoran', 'm'), ('Makrele', 'f'), ('Mammutbaum', 'm'), ('Mammut', 'n'),
     ('Mandarine', 'f'), ('Mandrill', 'm'), ('Mangold', 'm'), ('Mango', 'f'), ('Manul', 'm'),
     ('Maracuja', 'f'), ('Marder', 'm'), ('Mauersegler', 'm'), ('Maulbeere', 'f'), ('Maulwurf', 'm'),
@@ -84,10 +94,12 @@ nouns = [
     ('Pomelo', 'f'), ('Porree', 'm'), ('Portulak', 'm'), ('Pottwal', 'm'), ('Preiselbeere', 'f'),
     ('Puma', 'm'), ('Qualle', 'f'), ('Quappe', 'f'), ('Quastenflosser', 'm'), ('Quinoa', 'f'),
     ('Quitte', 'f'), ('Rabe', 'm'), ('Ratte', 'f'), ('Rauchschwalbe', 'f'), ('Rebhuhn', 'n'),
-    ('Regenbogenforelle', 'f'), ('Regenwurm', 'm'), ('Reiher', 'm'), ('Reis', 'm'), ('Rentier', 'n'),
+    ('Regenbogenforelle', 'f'), ('Regenwurm', 'm'), ('Reiher', 'm'), ('Reis', 'm'),
+    ('Rentier', 'n'),
     ('Rettich', 'm'), ('Rhabarber', 'm'), ('Rhesusaffe', 'm'), ('Rind', 'n'), ('Ringelblume', 'f'),
     ('Ringelnatter', 'f'), ('Robbe', 'f'), ('Robinie', 'f'), ('Rochen', 'm'), ('Roggen', 'm'),
-    ('Rosenkohl', 'm'), ('Rosmarin', 'm'), ('Rotbarsch', 'm'), ('Rotbuche', 'f'), ('Rotkehlchen', 'n'),
+    ('Rosenkohl', 'm'), ('Rosmarin', 'm'), ('Rotbarsch', 'm'), ('Rotbuche', 'f'),
+    ('Rotkehlchen', 'n'),
     ('Rotkohl', 'm'), ('Rotkraut', 'n'), ('Rotmilan', 'm'), ('Rucola', 'm'), ('Safran', 'm'),
     ('Salat', 'm'), ('Salbei', 'm'), ('Sardelle', 'f'), ('Sauerampfer', 'm'), ('Schafgarbe', 'f'),
     ('Schaf', 'n'), ('Schakal', 'm'), ('Schimpanse', 'm'), ('Schleie', 'f'), ('Schleiereule', 'f'),
@@ -108,7 +120,8 @@ nouns = [
     ('Tanne', 'f'), ('Tapir', 'm'), ('Taube', 'f'), ('Teichmolch', 'm'), ('Termite', 'f'),
     ('Thunfisch', 'm'), ('Thymian', 'm'), ('Tigerhai', 'm'), ('Tiger', 'm'), ('Tintenfisch', 'm'),
     ('Tomate', 'f'), ('Totenkopfaffe', 'm'), ('Trampeltier', 'n'), ('Truthuhn', 'n'),
-    ('Tukan', 'm'), ('Tulpe', 'f'), ('Uhu', 'm'), ('Ulme', 'f'), ('Unke', 'f'), ('Urzeitkrebs', 'm'),
+    ('Tukan', 'm'), ('Tulpe', 'f'), ('Uhu', 'm'), ('Ulme', 'f'), ('Unke', 'f'),
+    ('Urzeitkrebs', 'm'),
     ('Vanille', 'f'), ('Veilchen', 'n'), ('Viper', 'f'), ('Vogelspinne', 'f'), ('Wacholder', 'm'),
     ('Wachtel', 'f'), ('Waldkauz', 'm'), ('Waldohreule', 'f'), ('Wallaby', 'n'), ('Wal', 'm'),
     ('Walnuss', 'f'), ('Walross', 'n'), ('Wanderfalke', 'm'), ('Waran', 'm'), ('Wassermelone', 'f'),
@@ -124,7 +137,7 @@ nouns = [
     ('Zwetschge', 'f'), ('Zwiebel', 'f'), ('Zypresse', 'f')
 ]
 
-adjs = { "m": [
+adjs = {"m": [
     'absoluter', 'adretter', 'agiler', 'akkurater', 'aktiver', 'aktueller', 'angenehmer',
     'anteiliger', 'artiger', 'aufrechter', 'autonomer', 'begehrter', 'behutsamer', 'bejubelter',
     'bekannter', 'beliebter', 'bequemer', 'bereiter', 'besonderer', 'besonnener', 'besserer',
@@ -251,11 +264,11 @@ def generate_name_de(length=15):
     while True:
         noun, gender = random.choice(nouns)
         adj = random.choice(adjs[gender])
-        name = adj[:1].upper()+adj[1:]+noun
+        name = adj[:1].upper() + adj[1:] + noun
         if len(name) <= length:
             return name
 
 
 if __name__ == "__main__":
     for i in range(100):
-        print generate_name_de()
+        print(generate_name_de())

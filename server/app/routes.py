@@ -1,4 +1,3 @@
-from datetime import datetime
 import io
 import pickle
 import json
@@ -8,24 +7,24 @@ import time
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
-import __builtin__
+import builtins
+import re
+import traceback
+
 import semver
 import six
+from werkzeug.exceptions import HTTPException
 import flask
-from bson import json_util
 from flask import abort, make_response, jsonify, Response
 
-from app import app, redis, get_version, taskfile_dir
+from app import app, redis_db, get_version, taskfile_dir
 from nmtwizard import task
-from nmtwizard.helper import build_task_id, shallow_command_analysis, boolean_param, get_docker_action, cust_jsondump
+from nmtwizard.helper import build_task_id, shallow_command_analysis, \
+    get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
-from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
-import re
-
 from nmtwizard.task import get_task_entity
-from werkzeug.exceptions import HTTPException
-import traceback
+
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -38,7 +37,8 @@ TASK_RELEASE_TYPE = "relea"
 
 
 def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, the_permission, ent_code)]
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, str) and
+            has_ability(g, the_permission, ent_code)]
 
 
 @app.errorhandler(Exception)
@@ -46,7 +46,7 @@ def handle_error(e):
     # return a nice message when any exception occured, keeping the orignal Http error
     # https://stackoverflow.com/questions/29332056/global-error-handler-for-any-exception
     if 'user' in flask.g:
-       app.logger.error("User:'%s'" % flask.g.user.user_code)
+        app.logger.error("User:'%s'" % flask.g.user.user_code)
 
     app.logger.error(traceback.format_exc())
 
@@ -60,9 +60,10 @@ def cust_jsonify(obj):
     result = cust_jsondump(obj)
     return Response(result, mimetype='application/json')
 
+
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    def_string = redis.hget("admin:service:"+service, "def")
+    def_string = redis_db.hget("admin:service:" + service, "def")
     if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
         abort(flask.make_response(response, 404))
@@ -99,7 +100,7 @@ def _usagecapacity(service):
         r_capacity = service.list_resources()[resource]
         detail[resource]['capacity'] = r_capacity
         capacity_xpus += r_capacity
-        reserved = redis.get("reserved:%s:%s" % (service.name, resource))
+        reserved = redis_db.get("reserved:%s:%s" % (service.name, resource))
         if reserved:
             detail[resource]['reserved'] = reserved
 
@@ -108,32 +109,30 @@ def _usagecapacity(service):
         task_type = {}
         count_used_xpus = Capacity()
 
-        r_usage_gpu = redis.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
+        r_usage_gpu = redis_db.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_gpu:
             if t not in task_type:
-                task_type[t] = redis.hget("task:%s" % t, "type")
+                task_type[t] = redis_db.hget("task:%s" % t, "type")
             count_map_gpu[t] += 1
             count_used_xpus.incr_ngpus(1)
 
-        r_usage_cpu = redis.hgetall("cpu_resource:%s:%s" % (service.name, resource)).values()
+        r_usage_cpu = redis_db.hgetall("cpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_cpu:
             if t not in task_type:
-                task_type[t] = redis.hget("task:%s" % t, "type")
+                task_type[t] = redis_db.hget("task:%s" % t, "type")
             count_map_cpu[t] += 1
             count_used_xpus.incr_ncpus(1)
 
-        detail[resource]['usage'] = ["%s %s: %d (%d)" % (task_type[t],
-                                                         t,
-                                                         count_map_gpu[t],
+        detail[resource]['usage'] = ["%s %s: %d (%d)" % (task_type[t], t, count_map_gpu[t],
                                                          count_map_cpu[t]) for t in task_type]
         detail[resource]['avail_gpus'] = r_capacity.ngpus - count_used_xpus.ngpus
         detail[resource]['avail_cpus'] = r_capacity.ncpus - count_used_xpus.ncpus
-        err = redis.get("busy:%s:%s" % (service.name, resource))
+        err = redis_db.get("busy:%s:%s" % (service.name, resource))
         if err:
             detail[resource]['busy'] = err
             busy = busy + 1
         usage_xpu += count_used_xpus
-    queued = redis.llen("queued:"+service.name)
+    queued = redis_db.llen("queued:" + service.name)
     return ("%d (%d)" % (usage_xpu.ngpus, usage_xpu.ncpus), queued,
             "%d (%d)" % (capacity_xpus.ngpus, capacity_xpus.ncpus),
             busy, detail)
@@ -163,24 +162,27 @@ def _get_registry(service_module, image):
             break
     if registry is None:
         abort(flask.make_response(
-                flask.jsonify(message="cannot find registry for repository %s" % repository),
-                400))
+            flask.jsonify(message="cannot find registry for repository %s" % repository),
+            400))
     return registry
 
 
 def task_request(func):
     """minimal check on the request to check that tasks exists"""
+
     @wraps(func)
     def func_wrapper(*args, **kwargs):
-        if not task.exists(redis, kwargs['task_id']):
+        if not task.exists(redis_db, kwargs['task_id']):
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % kwargs['task_id']),
                                       404))
         return func(*args, **kwargs)
+
     return func_wrapper
 
 
 def task_write_control(func):
     """minimal check on the request to check that tasks exists"""
+
     @wraps(func)
     def func_wrapper(*args, **kwargs):
         ok = False
@@ -189,7 +191,7 @@ def task_write_control(func):
         if task_id is None:
             abort(flask.make_response(flask.jsonify(message="task empty"), 404))
 
-        if not task.exists(redis, task_id):
+        if not task.exists(redis_db, task_id):
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
 
         entity = get_task_entity(task_id)
@@ -200,9 +202,11 @@ def task_write_control(func):
             ok = True
 
         if not ok:
-            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
+            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id),
+                                403))
 
         return func(*args, **kwargs)
+
     return func_wrapper
 
 
@@ -210,11 +214,12 @@ def task_readonly_control(task_id):
     if task_id is None:
         abort(flask.make_response(flask.jsonify(message="task empty"), 404))
 
-    if not task.exists(redis, task_id):
+    if not task.exists(redis_db, task_id):
         abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     entity = get_task_entity(task_id)
     if not has_ability(flask.g, 'train', entity):
-        abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
+        abort(
+            make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
 
 # global variable to contains all filters on the routes
@@ -228,13 +233,16 @@ post_functions = {}
 def filter_request(route, ability=None):
     def wrapper(func):
         """generic request filter system for customization"""
+
         @wraps(func)
         def func_wrapper(*args, **kwargs):
             if len(filter_routes):
                 return filter_routes[0](route, ability, func, *args, **kwargs)
             # if no filter defined, just pass through
             return func(*args, **kwargs)
+
         return func_wrapper
+
     return wrapper
 
 
@@ -257,8 +265,8 @@ def list_services():
     minimal = boolean_param(flask.request.args.get('minimal'))
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
-    for keys in redis.scan_iter("admin:service:*"):
-        service = keys[14:]
+    for keys in redis_db.scan_iter("admin:service:*"):
+        service = keys[14:].decode("utf-8")
         pool_entity = service[0:2].upper()
         if not showall and pool_entity != flask.g.user.entity.entity_code:
             continue
@@ -271,8 +279,8 @@ def list_services():
             else:
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
                 pids = []
-                for keyw in redis.scan_iter("admin:worker:%s:*" % service):
-                    pids.append(keyw[len("admin:worker:%s:" % service):])
+                for keyw in redis_db.scan_iter("admin:worker:%s:*" % service):
+                    pids.append(keyw[len("admin:worker:%s:" % service):].decode("utf-8"))
                 pid = ",".join(pids)
                 if len(pids) == 0:
                     busy = "yes"
@@ -298,28 +306,29 @@ def server_listconfig(service):
     if not has_ability(flask.g, "edit_config", pool_entity):
         abort(make_response(jsonify(message="insufficient credentials for edit_config "
                                             "(entity %s)" % pool_entity), 403))
-    current_configuration = redis.hget("admin:service:%s" % service, "current_configuration")
-    configurations = redis.hget("admin:service:%s" % service, "configurations")
+    current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
+    configurations = redis_db.hget("admin:service:%s" % service, "configurations")
     return flask.jsonify({
-                            'current': current_configuration,
-                            'configurations': json.loads(configurations)
-                         })
+        'current': current_configuration,
+        'configurations': json.loads(configurations)
+    })
 
 
 def post_adminrequest(app, service, action, configname="base", value="1"):
     identifier = "%d.%d" % (os.getpid(), app._requestid)
     app._requestid += 1
-    redis.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
+    redis_db.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
     wait = 0
     while wait < 360:
-        configresult = redis.get("admin:configresult:%s:%s:%s:%s" % (service, action,
-                                                                     configname, identifier))
+        configresult = redis_db.get("admin:configresult:%s:%s:%s:%s" % (service, action,
+                                                                        configname, identifier))
         if configresult:
             break
         wait += 1
         time.sleep(1)
     if configresult is None:
-        redis.delete("admin:configresult:%s:%s:%s:%s" % (service, action, configname, identifier))
+        redis_db.delete(
+            "admin:configresult:%s:%s:%s:%s" % (service, action, configname, identifier))
         abort(flask.make_response(flask.jsonify(message="request time-out"), 408))
     elif configresult != "ok":
         abort(flask.make_response(flask.jsonify(message=configresult), 400))
@@ -394,11 +403,10 @@ def server_enable(service, resource):
         abort(make_response(jsonify(message="unknown resource '%s' in '%s'" % (resource, service)),
                             400))
     keyr = "busy:%s:%s" % (service, resource)
-    if redis.exists(keyr):
-        redis.delete("busy:%s:%s" % (service, resource))
+    if redis_db.exists(keyr):
+        redis_db.delete("busy:%s:%s" % (service, resource))
         return flask.jsonify("ok")
-    else:
-        abort(flask.make_response(flask.jsonify(message="resource was not disabled"), 400))
+    abort(flask.make_response(flask.jsonify(message="resource was not disabled"), 400))
 
 
 @app.route("/service/disable/<string:service>/<string:resource>", methods=["GET"])
@@ -415,7 +423,7 @@ def server_disable(service, resource):
     if resource not in service_module.list_resources():
         abort(make_response(jsonify(message="unknown resource '%s' in '%s'" % (resource, service)),
                             400))
-    redis.set("busy:%s:%s" % (service, resource), message)
+    redis_db.set("busy:%s:%s" % (service, resource), message)
     return flask.jsonify("ok")
 
 
@@ -449,9 +457,9 @@ def patch_config_explicitname(content, explicitname):
                 idx += 1
                 continue
             if command[idx] == '-c' or command[idx] == '--config':
-                config = json.loads(command[idx+1])
+                config = json.loads(command[idx + 1])
                 config["modelname_description"] = explicitname
-                command[idx+1] = json.dumps(config)
+                command[idx + 1] = json.dumps(config)
                 return
             idx += 2
 
@@ -464,8 +472,8 @@ def launch(service):
         abort(make_response(jsonify(message="insufficient credentials for train "
                                             "(entity %s)" % pool_entity), 403))
 
-    current_configuration_name = redis.hget("admin:service:%s" % service, "current_configuration")
-    configurations = json.loads(redis.hget("admin:service:%s" % service, "configurations"))
+    current_configuration_name = redis_db.hget("admin:service:%s" % service, "current_configuration")
+    configurations = json.loads(redis_db.hget("admin:service:%s" % service, "configurations"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
 
     content = flask.request.form.get('content')
@@ -477,7 +485,8 @@ def launch(service):
     trainer_of_entities = get_entities_by_permission("train", flask.g)
 
     if not trainer_of_entities:
-        abort(flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
+        abort(
+            flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
 
     files = {}
     for k in flask.request.files:
@@ -519,7 +528,7 @@ def launch(service):
     if 'docker' not in content:
         abort(flask.make_response(flask.jsonify(message="missing docker field"), 400))
     if ('image' not in content['docker'] or 'registry' not in content['docker'] or
-       'tag' not in content['docker'] or 'command' not in content['docker']):
+            'tag' not in content['docker'] or 'command' not in content['docker']):
         abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
         content['docker']['registry'] = _get_registry(service_module, content['docker']['image'])
@@ -532,7 +541,8 @@ def launch(service):
     if "iterations" in content:
         iterations = content["iterations"]
         if exec_mode:
-            abort(flask.make_response(flask.jsonify(message="chain mode unavailable in exec mode"), 400))
+            abort(flask.make_response(flask.jsonify(message="chain mode unavailable in exec mode"),
+                                      400))
         if (task_type != "train" and iterations != 1) or iterations < 1:
             abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
@@ -544,26 +554,29 @@ def launch(service):
     # check that we have a resource able to run such a request
     if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
         abort(flask.make_response(
-                    flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
+            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
                                   (service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
         if exec_mode:
-            abort(flask.make_response(flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
+            abort(flask.make_response(
+                flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
         totranslate = content["totranslate"]
         del content["totranslate"]
     else:
         totranslate = None
     if "toscore" in content:
         if exec_mode:
-            abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"), 400))
+            abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"),
+                                      400))
         toscore = content["toscore"]
         del content["toscore"]
     else:
         toscore = None
     if "totuminer" in content:
         if exec_mode:
-            abort(flask.make_response(flask.jsonify(message="tuminer chain mode unavailable for exec cmd"), 400))
+            abort(flask.make_response(
+                flask.jsonify(message="tuminer chain mode unavailable for exec cmd"), 400))
         totuminer = content["totuminer"]
         del content["totuminer"]
     else:
@@ -596,9 +609,11 @@ def launch(service):
     # check that parent model type matches current command
     if parent_task_type:
         if (parent_task_type == "trans" or parent_task_type == "relea" or
-           (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
+                (
+                        task_type == "prepr" and parent_task_type != "train"
+                        and parent_task_type != "vocab")):
             abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" %
-                                      (parent_task_type)), 400))
+                                                            parent_task_type), 400))
 
     task_ids = []
     task_create = []
@@ -626,19 +641,20 @@ def launch(service):
             content["docker"]["command"] = prepr_command
 
             content["ncpus"] = ncpus or \
-                get_cpu_count(current_configuration, 0, "preprocess")
+                               get_cpu_count(current_configuration, 0, "preprocess")
             content["ngpus"] = 0
 
             preprocess_resource = service_module.select_resource_from_capacity(
-                                            resource, Capacity(content["ngpus"], content["ncpus"]))
+                resource, Capacity(content["ngpus"], content["ncpus"]))
 
             # launch preprocess task on cpus only
             task_create.append(
-                    (redis, taskfile_dir,
-                     prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
-                     _duplicate_adapt(service_module, content),
-                     files, priority, 0, content["ncpus"], {}))
-            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
+                (redis_db, taskfile_dir,
+                 prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
+                 _duplicate_adapt(service_module, content),
+                 files, priority, 0, content["ncpus"], {}))
+            task_ids.append(
+                "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
             change_parent_task(train_command, prepr_task_id)
             parent_task_id = prepr_task_id
@@ -650,10 +666,14 @@ def launch(service):
                 entity_owner = flask.request.form.get('entity_owner')
                 if entity_owner:
                     if entity_owner not in trainer_of_entities:
-                        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
+                        abort(flask.make_response(
+                            flask.jsonify(message="you are not a trainer of %s" % entity_owner),
+                            403))
                 else:
                     if len(trainer_of_entities) > 1:
-                        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
+                        abort(flask.make_response(flask.jsonify(
+                            message="model owner is ambigious between these entities: (%s)" % str(
+                                ",".join(trainer_of_entities))), 400))
                     entity_owner = trainer_of_entities[0]
 
                 if not entity_owner:
@@ -669,14 +689,15 @@ def launch(service):
             if task_type == "trans":
                 try:
                     idx = content["docker"]["command"].index("trans")
-                    output_files = get_params(("-o", "--output"), content["docker"]["command"][idx+1:])
+                    output_files = get_params(("-o", "--output"),
+                                              content["docker"]["command"][idx + 1:])
                     for ofile in output_files:
                         file_to_transtaskid[ofile] = task_id
                 except Exception:
                     pass
 
             content["ncpus"] = ncpus or \
-                get_cpu_count(current_configuration, ngpus, task_type)
+                               get_cpu_count(current_configuration, ngpus, task_type)
             content["ngpus"] = ngpus
 
             if task_type == "trans" and can_trans_as_release:
@@ -685,19 +706,19 @@ def launch(service):
                     content["ngpus"] = ngpus = 0
 
             task_resource = service_module.select_resource_from_capacity(
-                                            resource, Capacity(content["ngpus"],
-                                                               content["ncpus"]))
+                resource, Capacity(content["ngpus"],
+                                   content["ncpus"]))
 
             task_create.append(
-                    (redis, taskfile_dir,
-                     task_id, task_type, parent_task_id, task_resource, service,
-                     _duplicate_adapt(service_module, content),
-                     files, priority,
-                     content["ngpus"], content["ncpus"],
-                     other_task_info))
+                (redis_db, taskfile_dir,
+                 task_id, task_type, parent_task_id, task_resource, service,
+                 _duplicate_adapt(service_module, content),
+                 files, priority,
+                 content["ngpus"], content["ncpus"],
+                 other_task_info))
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                        task_type, task_id,
-                        content["ngpus"], content["ncpus"]))
+                task_type, task_id,
+                content["ngpus"], content["ncpus"]))
             parent_task_type = task_type[:5]
             remove_config_option(content["docker"]["command"])
 
@@ -710,30 +731,31 @@ def launch(service):
                     content_translate["ngpus"] = min(ngpus, 1)
 
                 content_translate["ncpus"] = ncpus or \
-                    get_cpu_count(current_configuration,
-                                  content_translate["ngpus"], "trans")
+                                             get_cpu_count(current_configuration,
+                                                           content_translate["ngpus"], "trans")
 
                 translate_resource = service_module.select_resource_from_capacity(
-                                                resource, Capacity(content_translate["ngpus"],
-                                                                   content_translate["ncpus"]))
+                    resource, Capacity(content_translate["ngpus"],
+                                       content_translate["ncpus"]))
 
                 if ngpus == 0 or trans_as_release:
                     file_per_gpu = len(totranslate)
                 else:
-                    file_per_gpu = (len(totranslate)+ngpus-1) / ngpus
+                    file_per_gpu = (len(totranslate) + ngpus - 1) / ngpus
                 subset_idx = 0
                 while subset_idx * file_per_gpu < len(totranslate):
                     content_translate["docker"]["command"] = ["trans"]
                     if trans_as_release:
                         content_translate["docker"]["command"].append("--as_release")
                     content_translate["docker"]["command"].append('-i')
-                    subset_totranslate = totranslate[subset_idx*file_per_gpu:
-                                                     (subset_idx+1)*file_per_gpu]
+                    subset_totranslate = totranslate[subset_idx * file_per_gpu:
+                                                     (subset_idx + 1) * file_per_gpu]
                     for f in subset_totranslate:
                         content_translate["docker"]["command"].append(f[0])
 
                     change_parent_task(content_translate["docker"]["command"], task_id)
-                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans", task_id)
+                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans",
+                                                                task_id)
 
                     content_translate["docker"]["command"].append('-o')
                     for f in subset_totranslate:
@@ -742,15 +764,15 @@ def launch(service):
                         content_translate["docker"]["command"].append(ofile)
 
                     task_create.append(
-                            (redis, taskfile_dir,
-                             trans_task_id, "trans", task_id, translate_resource, service,
-                             _duplicate_adapt(service_module, content_translate),
-                             (), content_translate["priority"],
-                             content_translate["ngpus"], content_translate["ncpus"],
-                             {}))
+                        (redis_db, taskfile_dir,
+                         trans_task_id, "trans", task_id, translate_resource, service,
+                         _duplicate_adapt(service_module, content_translate),
+                         (), content_translate["priority"],
+                         content_translate["ngpus"], content_translate["ncpus"],
+                         {}))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                                           "trans", trans_task_id,
-                                           content_translate["ngpus"], content_translate["ncpus"]))
+                        "trans", trans_task_id,
+                        content_translate["ngpus"], content_translate["ncpus"]))
                     subset_idx += 1
 
             if toscore:
@@ -772,7 +794,8 @@ def launch(service):
                     content_score["ngpus"] = 0
                     content_score["ncpus"] = 1
 
-                    score_resource = service_module.select_resource_from_capacity(resource, Capacity(0, 1))
+                    score_resource = service_module.select_resource_from_capacity(resource,
+                                                                                  Capacity(0, 1))
 
                     image_score = "nmtwizard/score"
 
@@ -785,34 +808,37 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f', "launcher:scores"]
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref[
+                            "ref"] + option_lang + ['-f', "launcher:scores"]
                     }
 
-                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score", parent_task_id)
+                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
+                                                                parent_task_id)
                     task_create.append(
-                            (redis, taskfile_dir,
-                             score_task_id, "exec", parent_task_id, score_resource, service,
-                             content_score,
-                             files, priority+2,
-                             0, 1,
-                             other_task_info))
+                        (redis_db, taskfile_dir,
+                         score_task_id, "exec", parent_task_id, score_resource, service,
+                         content_score,
+                         files, priority + 2,
+                         0, 1,
+                         other_task_info))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                                           "score", score_task_id,
-                                           0, 1))
+                        "score", score_task_id,
+                        0, 1))
 
             if totuminer:
                 # tuminer can run in CPU only mode, but it will be very slow for large data
                 ngpus_recommend = ngpus
                 ncpus_recommend = ncpus or \
-                    get_cpu_count(current_configuration, 0, "tuminer")
+                                  get_cpu_count(current_configuration, 0, "tuminer")
 
                 totuminer_parent = {}
                 for (ifile, ofile) in totuminer:
-                    #ofile = ofile.replace('<MODEL>', task_id)
+                    # ofile = ofile.replace('<MODEL>', task_id)
                     parent_task_id = file_to_transtaskid.get(ofile)
                     if parent_task_id:
                         if parent_task_id not in totuminer_parent:
-                            totuminer_parent[parent_task_id] = {"infile": [], "outfile": [], "scorefile": []}
+                            totuminer_parent[parent_task_id] = {"infile": [], "outfile": [],
+                                                                "scorefile": []}
                         ofile_split = ofile.split(':')
                         if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
                             ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
@@ -828,7 +854,10 @@ def launch(service):
                     content_tuminer["ngpus"] = ngpus_recommend
                     content_tuminer["ncpus"] = ncpus_recommend
 
-                    tuminer_resource = service_module.select_resource_from_capacity(resource, Capacity(ngpus_recommend, ncpus_recommend))
+                    tuminer_resource = service_module.select_resource_from_capacity(resource,
+                                                                                    Capacity(
+                                                                                        ngpus_recommend,
+                                                                                        ncpus_recommend))
 
                     image_score = "nmtwizard/tuminer"
 
@@ -836,28 +865,34 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] + in_out["outfile"]+ ["--output"] + in_out["scorefile"]
+                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out[
+                            "infile"] + ["--tgtfile"] + in_out["outfile"] + ["--output"] + in_out[
+                                       "scorefile"]
                     }
 
-                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
+                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer",
+                                                                  parent_task_id)
                     task_create.append(
-                            (redis, taskfile_dir,
-                             tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
-                             content_tuminer,
-                             (), priority+2,
-                             ngpus_recommend, ncpus_recommend,
-                             {}))
+                        (redis_db, taskfile_dir,
+                         tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
+                         content_tuminer,
+                         (), priority + 2,
+                         ngpus_recommend, ncpus_recommend,
+                         {}))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                                           "tuminer", tuminer_task_id,
-                                           ngpus_recommend, ncpus_recommend))
+                        "tuminer", tuminer_task_id,
+                        ngpus_recommend, ncpus_recommend))
 
             if task_type == TASK_RELEASE_TYPE:
                 j = 0
                 while j < len(content["docker"]["command"]) - 1:
-                    if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
+                    if content["docker"]["command"][j] == "-m" \
+                            or content["docker"]["command"][j] == "--model":
                         model_name = content["docker"]["command"][j + 1]
-                        __builtin__.pn9model_db.model_set_release_state(model_name, content.get("trainer_id"), task_id,
-                                                                        "in progress")
+                        builtins.pn9model_db.model_set_release_state(model_name,
+                                                                     content.get("trainer_id"),
+                                                                     task_id,
+                                                                     "in progress")
                         break
                     j = j + 1
 
@@ -880,7 +915,6 @@ def launch(service):
 @app.route("/task/status/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/status")
 def status(task_id):
-
     task_readonly_control(task_id)
 
     fields = flask.request.args.get('fields', None)
@@ -889,7 +923,7 @@ def status(task_id):
     else:
         fields = None
 
-    response = task.info(redis, taskfile_dir, task_id, fields)
+    response = task.info(redis_db, taskfile_dir, task_id, fields)
     if response.get("alloc_lgpu"):
         response["alloc_lgpu"] = response["alloc_lgpu"].split(",")
     if response.get("alloc_lcpu"):
@@ -901,7 +935,7 @@ def status(task_id):
 @filter_request("DELETE/task")
 @task_write_control
 def del_task(task_id):
-    response = task.delete(redis, taskfile_dir, task_id)
+    response = task.delete(redis_db, taskfile_dir, task_id)
     if isinstance(response, list) and not response[0]:
         abort(flask.make_response(flask.jsonify(message=response[1]), 400))
     return flask.jsonify(message="deleted %s" % task_id)
@@ -919,7 +953,8 @@ def to_regex_format(pattern):
 
 
 def is_regex_matched(pattern, regex_filter_expression):
-    is_matched = isinstance(pattern, six.string_types) and re.match(regex_filter_expression, pattern) is not None
+    is_matched = isinstance(pattern, six.string_types) and re.match(regex_filter_expression,
+                                                                    pattern) is not None
     return is_matched
 
 
@@ -944,31 +979,36 @@ def list_tasks(pattern):
         suffix = '*'
 
     task_where_clauses = []
-    if has_ability(flask.g, '', ''):  # super admin so no control on the prefix of searching criteria
+    if has_ability(flask.g, '',
+                   ''):  # super admin so no control on the prefix of searching criteria
         task_where_clauses.append(prefix)
     else:
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
         search_user_expression = prefix[2:5]
         search_remaining_expression = prefix[5:]
 
-        filtered_entities = [ent for ent in flask.g.entities if is_regex_matched(ent, search_entity_expression)]
+        filtered_entities = [ent for ent in flask.g.entities if
+                             is_regex_matched(ent, search_entity_expression)]
 
         for entity in filtered_entities:
             if has_ability(flask.g, 'train', entity):
-                task_where_clauses.append(entity + search_user_expression + search_remaining_expression)
+                task_where_clauses.append(
+                    entity + search_user_expression + search_remaining_expression)
             else:
                 continue
 
         if not task_where_clauses:
-            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern), 403))
+            abort(make_response(jsonify(message="insufficient credentials for tasks %s" % pattern),
+                                403))
 
     for clause in task_where_clauses:
-        for task_key in task.scan_iter(redis, clause + suffix):
+        for task_key in task.scan_iter(redis_db, clause + suffix):
             task_id = task.id(task_key)
             info = task.info(
-                    redis, taskfile_dir, task_id,
-                    ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
-                     "status", "message", "type", "iterations", "priority", "service", "parent"])
+                redis_db, taskfile_dir, task_id,
+                ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource",
+                 "content",
+                 "status", "message", "type", "iterations", "priority", "service", "parent"])
 
             if (service_filter and info["service"] != service_filter) \
                     or (status_filter and info["status"] != status_filter):
@@ -991,10 +1031,11 @@ def list_tasks(pattern):
                 info["image"] = content["docker"]["image"] + ':' + content["docker"]["tag"]
                 j = 0
                 while j < len(content["docker"]["command"]) - 1:
-                    if content["docker"]["command"][j] == "-m" or content["docker"]["command"][j] == "--model":
-                        info["model"] = content["docker"]["command"][j+1]
+                    if content["docker"]["command"][j] == "-m" \
+                            or content["docker"]["command"][j] == "--model":
+                        info["model"] = content["docker"]["command"][j + 1]
                         break
-                    j = j+1
+                    j = j + 1
                 del info['content']
             info['task_id'] = task_id
 
@@ -1009,8 +1050,8 @@ def list_tasks(pattern):
 @filter_request("GET/task/terminate")
 @task_write_control
 def terminate(task_id):
-    with redis.acquire_lock(task_id):
-        current_status = task.info(redis, taskfile_dir, task_id, "status")
+    with redis_db.acquire_lock(task_id):
+        current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
         elif current_status == "stopped":
@@ -1019,10 +1060,10 @@ def terminate(task_id):
 
     res = post_function('GET/task/terminate', task_id, phase)
     if res:
-        task.terminate(redis, task_id, phase="publish_error")
+        task.terminate(redis_db, task_id, phase="publish_error")
         return flask.jsonify(message="problem while posting model: %s" % res)
 
-    task.terminate(redis, task_id, phase=phase)
+    task.terminate(redis_db, task_id, phase=phase)
     return flask.jsonify(message="terminating %s" % task_id)
 
 
@@ -1038,7 +1079,7 @@ def task_beat(task_id):
         abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
     container_id = flask.request.args.get('container_id')
     try:
-        task.beat(redis, task_id, duration, container_id)
+        task.beat(redis_db, task_id, duration, container_id)
     except Exception as e:
         abort(flask.make_response(flask.jsonify(message=str(e)), 400))
     return flask.jsonify(200)
@@ -1048,7 +1089,7 @@ def task_beat(task_id):
 @app.route("/task/file/<string:task_id>/<path:filename>", methods=["GET"])
 @task_request
 def get_file(task_id, filename):
-    content = task.get_file(redis, taskfile_dir, task_id, filename)
+    content = task.get_file(redis_db, taskfile_dir, task_id, filename)
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
@@ -1062,17 +1103,16 @@ def get_file(task_id, filename):
 @task_request
 def post_file(task_id, filename):
     content = flask.request.get_data()
-    task.set_file(redis, taskfile_dir, task_id, content, filename)
+    task.set_file(redis_db, taskfile_dir, task_id, content, filename)
     return flask.jsonify(200)
 
 
 @app.route("/task/log/<string:task_id>", methods=["GET"])
 @filter_request("GET/task/log")
 def get_log(task_id):
-
     task_readonly_control(task_id)
 
-    content = task.get_log(redis, taskfile_dir, task_id)
+    content = task.get_log(redis_db, taskfile_dir, task_id)
 
     (task_id, content) = post_function('GET/task/log', task_id, content)
     if content is None:
@@ -1087,7 +1127,7 @@ def get_log(task_id):
 @task_request
 def append_log(task_id):
     content = flask.request.get_data()
-    task.append_log(redis, taskfile_dir, task_id, content, max_log_size)
+    task.append_log(redis_db, taskfile_dir, task_id, content, max_log_size)
     duration = flask.request.args.get('duration')
     try:
         if duration is not None:
@@ -1095,7 +1135,7 @@ def append_log(task_id):
     except ValueError:
         abort(flask.make_response(flask.jsonify(message="invalid duration value"), 400))
     try:
-        task.beat(redis, task_id, duration, None)
+        task.beat(redis_db, task_id, duration, None)
     except Exception as e:
         abort(flask.make_response(flask.jsonify(message=str(e)), 400))
     return flask.jsonify(200)
@@ -1106,7 +1146,7 @@ def append_log(task_id):
 @task_request
 def post_log(task_id):
     content = flask.request.get_data()
-    content = task.set_log(redis, taskfile_dir, task_id, content, max_log_size)
+    content = task.set_log(redis_db, taskfile_dir, task_id, content, max_log_size)
     (task_id, content) = post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
 
@@ -1126,7 +1166,7 @@ def post_stat(task_id):
     start_time = float(stats.get('start_time'))
     end_time = float(stats.get('end_time'))
     statistics = stats.get('statistics')
-    task.set_stat(redis, task_id, end_time-start_time, statistics)
+    task.set_stat(redis_db, task_id, end_time - start_time, statistics)
     return flask.jsonify(200)
 
 
