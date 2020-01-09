@@ -41,7 +41,7 @@ class RedisDatabase(redis.Redis):
             LOGGER.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
             value = function(*args, **kwargs)
             str_value = cust_jsondump(value)
-            compressed_value = zlib.compress(str_value)
+            compressed_value = zlib.compress(str_value.encode("utf-8"))
             result = self.hset(root_key, key, compressed_value)
             if result == 0:  # continue even in Redis error case , log a Warning
                 LOGGER.error('Cannot save the model cache: %s %s', root_key, key)
