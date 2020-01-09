@@ -2,13 +2,14 @@ import uuid
 import time
 import logging
 import zlib
-import redis
 import json
+
+import redis
 
 # from app.routes import cust_jsonify
 from nmtwizard.helper import cust_jsondump
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 class RedisDatabase(redis.Redis):
@@ -16,7 +17,7 @@ class RedisDatabase(redis.Redis):
     ROOT_CACHE_KEY = "cache"
 
     @staticmethod
-    def get_cache_key (cache_key):
+    def get_cache_key(cache_key):
         return RedisDatabase.ROOT_CACHE_KEY + ":" + cache_key
 
     def __init__(self, host, port, db, password):
@@ -32,25 +33,25 @@ class RedisDatabase(redis.Redis):
         return RedisLock(self, name, acquire_timeout=acquire_timeout, expire_time=expire_time)
 
     def get_model(self, name, function, *args, **kwargs):
-        EXPIRED_TIME_SS = 3600*24*3  # 3 days
+        expired_time_ss = 3600 * 24 * 3  # 3 days
         root_key = RedisDatabase.get_cache_key(name)
-        key = "||".join(map(str,args))
+        key = "||".join(map(str, args))
         compressed_value = self.hget(root_key, key)
         if compressed_value is None:
-            logger.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
+            LOGGER.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
             value = function(*args, **kwargs)
             str_value = cust_jsondump(value)
             compressed_value = str_value.encode("zlib")
             result = self.hset(root_key, key, compressed_value)
             if result == 0:  # continue even in Redis error case , log a Warning
-                logger.error('Cannot save the model cache: %s %s', root_key, key)
+                LOGGER.error('Cannot save the model cache: %s %s', root_key, key)
             else:
-                self.expire(root_key, EXPIRED_TIME_SS)
+                self.expire(root_key, expired_time_ss)
 
             return value
 
-        logger.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
-        self.expire(root_key, EXPIRED_TIME_SS)
+        LOGGER.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
+        self.expire(root_key, expired_time_ss)
         uncompressed_value = zlib.decompress(compressed_value)
         return json.loads(uncompressed_value)
 
@@ -82,7 +83,7 @@ class RedisLock(object):
 
     def __enter__(self):
         """Adds a lock for a specific name and expires the lock after some delay."""
-        logger.debug('Acquire lock for %s', self._name)
+        LOGGER.debug('Acquire lock for %s', self._name)
         self._identifier = str(uuid.uuid4())
         end = time.time() + self._acquire_timeout
         lock = 'lock:%s' % self._name
@@ -97,7 +98,7 @@ class RedisLock(object):
         """Releases a lock given some identifier and makes sure it is the one we set
         (could have been destroyed in the meantime).
         """
-        logger.debug('Release lock for %s', self._name)
+        LOGGER.debug('Release lock for %s', self._name)
         pipe = self._redis.pipeline(True)
         lock = 'lock:%s' % self._name
         while True:
