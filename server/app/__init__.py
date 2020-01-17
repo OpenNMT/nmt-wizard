@@ -40,12 +40,12 @@ with app.app_context():
     app.iniconfig.read(config_file)
 
 app.logger.setLevel(logging.getLevelName(
-                    app.iniconfig.get('default', 'log_level', fallback='ERROR')))
+    app.iniconfig.get('default', 'log_level', fallback='ERROR')))
 
 redis_db = RedisDatabase(app.iniconfig.get('redis', 'host'),
-                      app.iniconfig.get('redis', 'port', fallback=6379),
-                      app.iniconfig.get('redis', 'db', fallback=0),
-                      app.iniconfig.get('redis', 'password', fallback=None))
+                         app.iniconfig.get('redis', 'port', fallback=6379),
+                         app.iniconfig.get('redis', 'db', fallback=0),
+                         app.iniconfig.get('redis', 'password', fallback=None))
 
 assert app.iniconfig.get('default', 'taskfile_dir'), "missing taskfile_dir from settings.ini"
 taskfile_dir = app.iniconfig.get('default', 'taskfile_dir')
@@ -55,7 +55,7 @@ retry = 0
 while retry < 10:
     try:
         current_default_config = redis_db.exists("default") \
-                                 and redis_db.hget("default", "configuration")
+                                 and redis_db.hget("default", "configuration").decode("utf-8")
         break
     except (ConnectionError, AssertionError) as e:
         retry += 1

@@ -64,7 +64,7 @@ def terminate(redis, task_id, phase):
     if phase is None:
         phase = "aborted"
     keyt = "task:" + task_id
-    if redis.hget(keyt, "status") in ("terminating", "stopped"):
+    if redis.hget(keyt, "status").decode("utf-8") in ("terminating", "stopped"):
         return
 
     # remove from service queue if it was there
@@ -79,7 +79,7 @@ def terminate(redis, task_id, phase):
 
 def work_queue(redis, task_id, service=None, delay=0):
     if service is None:
-        service = redis.hget('task:'+task_id, 'service')
+        service = redis.hget('task:'+task_id, 'service').decode("utf-8")
     """Queues the task in the work queue with a delay."""
     if delay == 0:
         redis.lpush('work:'+service, task_id)
@@ -104,14 +104,14 @@ def service_queue(redis, task_id, service):
 
 def enable(redis, task_id, service=None):
     if service is None:
-        service = redis.hget('task:'+task_id, 'service')
+        service = redis.hget('task:'+task_id, 'service').decode("utf-8")
     """Marks a task as enabled."""
     redis.sadd("active:"+service, task_id)
 
 
 def disable(redis, task_id, service=None):
     if service is None:
-        service = redis.hget('task:'+task_id, 'service')
+        service = redis.hget('task:'+task_id, 'service').decode("utf-8")
     """Marks a task as disabled."""
     redis.srem("active:"+service, task_id)
     redis.delete("beat:"+task_id)
@@ -140,7 +140,10 @@ def info(redis, taskfile_dir, task_id, fields):
     r = {}
     for f in fields:
         if f != "ttl":
-            r[f] = redis.hget(keyt, f)
+            try:
+                r[f] = redis.hget(keyt, f).decode("utf-8")
+            except:
+                r[f] = None
         else:
             r[f] = redis.ttl("beat:" + task_id)
     if field:
@@ -154,8 +157,8 @@ def change(redis, task_id, service, priority, ngpus):
         check task_id is queued """
     keyt = "task:" + task_id
     with redis.acquire_lock(keyt):
-        prev_service = redis.hget(keyt, "service")
-        status = redis.hget(keyt, "status")
+        prev_service = redis.hget(keyt, "service").decode("utf-8")
+        status = redis.hget(keyt, "status").decode("utf-8")
         if status != "queued":
             return False, "cannot move task `%s` - not in queued status" % task_id
         if service:
@@ -175,7 +178,7 @@ def change(redis, task_id, service, priority, ngpus):
 def delete(redis, taskfile_dir, task_id):
     """Delete a given task."""
     keyt = "task:" + task_id
-    status = redis.hget(keyt, "status")
+    status = redis.hget(keyt, "status").decode("utf-8")
     if status is None:
         return False, "task does not exist"
     if status != "stopped":
@@ -203,12 +206,12 @@ def beat(redis, task_id, duration, container_id):
     (set duration to 0 to disable expiration). The task must be running.
     """
     keyt = "task:" + task_id
-    if redis.hget(keyt, "status") != "running":
+    if redis.hget(keyt, "status").decode("utf-8") != "running":
         return
     with redis.acquire_lock(keyt):
         # a beat can only be sent in running mode except if in between, the task stopped
         # or in development mode, no need to raise an alert
-        if redis.hget(keyt, "status") != "running":
+        if redis.hget(keyt, "status").decode("utf-8") != "running":
             return
         if duration is not None:
             if duration == 0:

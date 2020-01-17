@@ -104,7 +104,7 @@ class RedisLock(object):
         while True:
             try:
                 pipe.watch(lock)
-                if pipe.get(lock) == self._identifier:
+                if pipe.get(lock).decode("utf-8") == self._identifier:
                     pipe.multi()
                     pipe.delete(lock)
                     pipe.execute()

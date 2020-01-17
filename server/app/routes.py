@@ -25,7 +25,6 @@ from nmtwizard.helper import change_parent_task, remove_config_option, model_nam
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity
 
-
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
 # get maximum log size from configuration
@@ -112,14 +111,14 @@ def _usagecapacity(service):
         r_usage_gpu = redis_db.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_gpu:
             if t not in task_type:
-                task_type[t] = redis_db.hget("task:%s" % t, "type")
+                task_type[t] = redis_db.hget("task:%s" % t, "type").decode("utf-8")
             count_map_gpu[t] += 1
             count_used_xpus.incr_ngpus(1)
 
         r_usage_cpu = redis_db.hgetall("cpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_cpu:
             if t not in task_type:
-                task_type[t] = redis_db.hget("task:%s" % t, "type")
+                task_type[t] = redis_db.hget("task:%s" % t, "type").decode("utf-8")
             count_map_cpu[t] += 1
             count_used_xpus.incr_ncpus(1)
 
@@ -266,7 +265,8 @@ def list_services():
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
     for keys in redis_db.scan_iter("admin:service:*"):
-        service = keys[14:].decode("utf-8")
+        keys = keys.decode("utf-8")
+        service = keys[14:]
         pool_entity = service[0:2].upper()
         if not showall and pool_entity != flask.g.user.entity.entity_code:
             continue
@@ -280,7 +280,8 @@ def list_services():
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
                 pids = []
                 for keyw in redis_db.scan_iter("admin:worker:%s:*" % service):
-                    pids.append(keyw[len("admin:worker:%s:" % service):].decode("utf-8"))
+                    keyw = keyw.decode('utf-8')
+                    pids.append(keyw[len("admin:worker:%s:" % service):])
                 pid = ",".join(pids)
                 if len(pids) == 0:
                     busy = "yes"
@@ -306,8 +307,10 @@ def server_listconfig(service):
     if not has_ability(flask.g, "edit_config", pool_entity):
         abort(make_response(jsonify(message="insufficient credentials for edit_config "
                                             "(entity %s)" % pool_entity), 403))
-    current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
-    configurations = redis_db.hget("admin:service:%s" % service, "configurations")
+    current_configuration = redis_db.hget("admin:service:%s" % service,
+                                          "current_configuration").decode("utf-8")
+    configurations = redis_db.hget("admin:service:%s" % service,
+                                   "configurations").decode("utf-8")
     return flask.jsonify({
         'current': current_configuration,
         'configurations': json.loads(configurations)
@@ -472,8 +475,10 @@ def launch(service):
         abort(make_response(jsonify(message="insufficient credentials for train "
                                             "(entity %s)" % pool_entity), 403))
 
-    current_configuration_name = redis_db.hget("admin:service:%s" % service, "current_configuration")
-    configurations = json.loads(redis_db.hget("admin:service:%s" % service, "configurations"))
+    current_configuration_name = redis_db.hget("admin:service:%s" % service,
+                                               "current_configuration").decode("utf-8")
+    configurations = json.loads(redis_db.hget("admin:service:%s" % service,
+                                              "configurations").decode("utf-8"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
 
     content = flask.request.form.get('content')
@@ -640,8 +645,7 @@ def launch(service):
 
             content["docker"]["command"] = prepr_command
 
-            content["ncpus"] = ncpus or \
-                               get_cpu_count(current_configuration, 0, "preprocess")
+            content["ncpus"] = ncpus or get_cpu_count(current_configuration, 0, "preprocess")
             content["ngpus"] = 0
 
             preprocess_resource = service_module.select_resource_from_capacity(
@@ -730,9 +734,9 @@ def launch(service):
                 else:
                     content_translate["ngpus"] = min(ngpus, 1)
 
-                content_translate["ncpus"] = ncpus or \
-                                             get_cpu_count(current_configuration,
-                                                           content_translate["ngpus"], "trans")
+                content_translate["ncpus"] = ncpus or get_cpu_count(current_configuration,
+                                                                    content_translate["ngpus"],
+                                                                    "trans")
 
                 translate_resource = service_module.select_resource_from_capacity(
                     resource, Capacity(content_translate["ngpus"],
@@ -828,8 +832,7 @@ def launch(service):
             if totuminer:
                 # tuminer can run in CPU only mode, but it will be very slow for large data
                 ngpus_recommend = ngpus
-                ncpus_recommend = ncpus or \
-                                  get_cpu_count(current_configuration, 0, "tuminer")
+                ncpus_recommend = ncpus or get_cpu_count(current_configuration, 0, "tuminer")
 
                 totuminer_parent = {}
                 for (ifile, ofile) in totuminer:
@@ -1003,6 +1006,7 @@ def list_tasks(pattern):
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis_db, clause + suffix):
+            task_key = task_key.decode("utf-8")
             task_id = task.id(task_key)
             info = task.info(
                 redis_db, taskfile_dir, task_id,
@@ -1039,7 +1043,8 @@ def list_tasks(pattern):
                 del info['content']
             info['task_id'] = task_id
 
-            if not with_parent:  # bc the parent could make the response more heavy for a http transport.
+            # bc the parent could make the response more heavy for a http transport.
+            if not with_parent:
                 del info["parent"]
 
             ltask.append(info)
