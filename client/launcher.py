@@ -45,7 +45,7 @@ class VersionAction(argparse.Action):
 
 reimage = re.compile(r"(([-A-Za-z_.0-9]+):|)"
                      "([-A-Za-z_.0-9]+/[-A-Za-z_.0-9]+)(:([-A-Za-z_.0-9]+)|)$")
-logger = None
+LOGGER = None
 
 
 def getjson(config):
@@ -161,13 +161,15 @@ exec_arguments = [
      {"help": "alternatively to `options`, resource name to use"}],
     ['-g', '--gpus', {"type": int, "default": 1, "help": 'number of gpus'}],
     ['-c', '--cpus', {"type": int,
-                      "help": 'number of cpus - if not provided, will be obtained from pool config'}],
+                      "help": 'number of cpus - if not provided, will be obtained '
+                              'from pool config'}],
     ['-w', '--wait_after_launch', {
         "default": 2, "type": int,
         "help": 'if not 0, wait for this number of seconds after launch '
                 'to check that launch is ok - by default wait for 2 seconds'}],
     ['--docker_registry', {"default": 'auto',
-                           "help": 'docker registry (as configured on server side), default is `auto`'}],
+                           "help": 'docker registry (as configured on server side), '
+                                   'default is `auto`'}],
     ['-i', '--docker_image', {"default": os.getenv('LAUNCHER_IMAGE', None),
                               "help": 'Docker image (can be prefixed by docker_registry:)'}],
     ['-t', '--docker_tag',
@@ -175,7 +177,8 @@ exec_arguments = [
     ['-n', '--name',
      {"help": 'Friendly name for the model, for subsequent tasks, inherits from previous'}],
     ['-T', '--trainer_id', {"default": os.getenv('LAUNCHER_TID', None),
-                            "help": 'trainer id, used as a prefix to generated models (default ENV[LAUNCHER_TID])'}],
+                            "help": 'trainer id, used as a prefix to generated models '
+                                    '(default ENV[LAUNCHER_TID])'}],
     ['-P', '--priority', {"type": int, "default": 0, "help": 'task priority - highest better'}],
 ]
 

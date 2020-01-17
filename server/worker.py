@@ -123,9 +123,11 @@ for key in redis.keys('queued:%s' % service):
 # On startup, add all active tasks in the work queue or service queue
 for task_id in task.list_active(redis, service):
     with redis.acquire_lock(task_id):
-        status = redis.hget('task:'+task_id, 'status')
+        task_id = task_id.decode("utf-8")
+        status = redis.hget('task:'+task_id, 'status').decode("utf-8")
         if status == 'queued' or status == 'allocating' or status == 'allocated':
-            task.service_queue(redis, task_id, redis.hget('task:'+task_id, 'service'))
+            task.service_queue(redis, task_id,
+                               redis.hget('task:'+task_id, 'service').decode("utf-8"))
             task.set_status(redis, 'task:'+task_id, 'queued')
         else:
             task.work_queue(redis, task_id, service)
@@ -142,7 +144,7 @@ if services[service].valid:
 
     # TODO:
     # if multiple workers are for same service with different configurations
-    # or storage definition change - restart all workers
+    # or storage definition change - restart all workers`
 
     redis.delete('admin:resources:'+service)
     for resource in resources:
@@ -150,15 +152,18 @@ if services[service].valid:
         keygr = 'gpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keygr)
         for g, task_id in six.iteritems(running_tasks):
+            task_id = task_id.decode("utf-8")
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:'+task_id, 'status')
+                status = redis.hget('task:'+task_id, 'status').decode("utf-8")
                 if not(status == 'running' or status == 'terminating'):
                     redis.hdel(keygr, g)
         keycr = 'cpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keycr)
         for c, task_id in six.iteritems(running_tasks):
+            c = c.decode("utf-8")
+            task_id = task_id.decode("utf-8")
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:'+task_id, 'status')
+                status = redis.hget('task:'+task_id, 'status').decode("utf-8")
                 if not(status == 'running' or status == 'terminating'):
                     redis.hdel(keycr, c)
 
