@@ -25,7 +25,6 @@ from nmtwizard.helper import change_parent_task, remove_config_option, model_nam
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity
 
-
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
 # get maximum log size from configuration
@@ -472,8 +471,10 @@ def launch(service):
         abort(make_response(jsonify(message="insufficient credentials for train "
                                             "(entity %s)" % pool_entity), 403))
 
-    current_configuration_name = redis_db.hget("admin:service:%s" % service, "current_configuration")
-    configurations = json.loads(redis_db.hget("admin:service:%s" % service, "configurations"))
+    current_configuration_name = redis_db.hget("admin:service:%s" % service,
+                                               "current_configuration").decode("utf-8")
+    configurations = json.loads(redis_db.hget("admin:service:%s" % service,
+                                              "configurations").decode("utf-8"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
 
     content = flask.request.form.get('content')
@@ -640,8 +641,7 @@ def launch(service):
 
             content["docker"]["command"] = prepr_command
 
-            content["ncpus"] = ncpus or \
-                               get_cpu_count(current_configuration, 0, "preprocess")
+            content["ncpus"] = ncpus or get_cpu_count(current_configuration, 0, "preprocess")
             content["ngpus"] = 0
 
             preprocess_resource = service_module.select_resource_from_capacity(
@@ -730,9 +730,9 @@ def launch(service):
                 else:
                     content_translate["ngpus"] = min(ngpus, 1)
 
-                content_translate["ncpus"] = ncpus or \
-                                             get_cpu_count(current_configuration,
-                                                           content_translate["ngpus"], "trans")
+                content_translate["ncpus"] = ncpus or get_cpu_count(current_configuration,
+                                                                    content_translate["ngpus"],
+                                                                    "trans")
 
                 translate_resource = service_module.select_resource_from_capacity(
                     resource, Capacity(content_translate["ngpus"],
@@ -828,8 +828,7 @@ def launch(service):
             if totuminer:
                 # tuminer can run in CPU only mode, but it will be very slow for large data
                 ngpus_recommend = ngpus
-                ncpus_recommend = ncpus or \
-                                  get_cpu_count(current_configuration, 0, "tuminer")
+                ncpus_recommend = ncpus or get_cpu_count(current_configuration, 0, "tuminer")
 
                 totuminer_parent = {}
                 for (ifile, ofile) in totuminer:
@@ -925,9 +924,9 @@ def status(task_id):
 
     response = task.info(redis_db, taskfile_dir, task_id, fields)
     if response.get("alloc_lgpu"):
-        response["alloc_lgpu"] = response["alloc_lgpu"].split(",")
+        response["alloc_lgpu"] = response["alloc_lgpu"].decode("utf-8").split(",")
     if response.get("alloc_lcpu"):
-        response["alloc_lcpu"] = response["alloc_lcpu"].split(",")
+        response["alloc_lcpu"] = response["alloc_lcpu"].decode("utf-8").split(",")
     return flask.jsonify(response)
 
 
@@ -1003,7 +1002,7 @@ def list_tasks(pattern):
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis_db, clause + suffix):
-            task_id = task.id(task_key)
+            task_id = task.id(task_key).decode("utf-8")
             info = task.info(
                 redis_db, taskfile_dir, task_id,
                 ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource",
@@ -1039,7 +1038,8 @@ def list_tasks(pattern):
                 del info['content']
             info['task_id'] = task_id
 
-            if not with_parent:  # bc the parent could make the response more heavy for a http transport.
+            # bc the parent could make the response more heavy for a http transport.
+            if not with_parent:
                 del info["parent"]
 
             ltask.append(info)
