@@ -79,7 +79,7 @@ assert retry < 10, "Cannot retrieve default config from redis DB - aborting"
 
 base_config = json.loads(default_config)
 
-services = config.load_service_config(args.config, base_config)
+services, merged_config = config.load_service_config(args.config, base_config)
 assert len(services) == 1, "workers are now dedicated to one single service"
 service = next(iter(services))
 

@@ -3,10 +3,11 @@ import json
 import logging
 import six
 import sys
-
+import traceback
 from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
+from nmtwizard.config import get_service_cfg_from_redis, CONFIG_DEFAULT
 
 
 def _compatible_resource(resource, request_resource):
@@ -188,6 +189,7 @@ class Worker(object):
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
                 self._logger.info('%s: launching on %s', task_id, service.name)
+                entity_config = self._get_current_config(task_id)
                 try:
                     keygr = 'gpu_resource:%s:%s' % (service.name, resource)
                     lgpu = []
@@ -206,6 +208,8 @@ class Worker(object):
                         content['options'],
                         (lgpu, lcpu),
                         resource,
+                        entity_config["storages"],
+                        entity_config["docker"],
                         content['docker']['registry'],
                         content['docker']['image'],
                         content['docker']['tag'],
@@ -226,10 +230,12 @@ class Worker(object):
                     task.service_queue(self._redis, task_id, service.name)
                     self._logger.info('could not launch [%s] %s on %s: blocking resource',
                                       str(e), task_id, resource)
+                    self._logger.info(traceback.format_exc())
                     return
                 except Exception as e:
                     # all other errors make the task fail
                     self._logger.info('fail task [%s] - %s', task_id, str(e))
+                    self._logger.info(traceback.format_exc())
                     task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
                     task.terminate(self._redis, task_id, phase='launch_error')
                     return
@@ -568,3 +574,8 @@ class Worker(object):
                 self._logger.info('selected %s to be launched on %s', best_task_id, service.name)
                 task.work_queue(self._redis, best_task_id, service.name)
                 self._redis.lrem(queue, 0, best_task_id)
+
+    def _get_current_config(self, task_id):
+        task_entity = task.get_entity(self._redis, task_id)
+        config = get_service_cfg_from_redis(self._redis, self._service, task_entity)
+        return config

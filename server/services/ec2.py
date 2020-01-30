@@ -125,7 +125,7 @@ class EC2Service(Service):
             }
         }
 
-    def check(self, options):
+    def check(self, options, docker_registries_list):
         if "launchTemplateName" not in options:
             raise ValueError("missing launchTemplateName option")
         try:
@@ -145,6 +145,8 @@ class EC2Service(Service):
                options,
                xpulist,
                resource,
+               storages,
+               docker_config,
                docker_registry,
                docker_image,
                docker_tag,
@@ -195,8 +197,8 @@ class EC2Service(Service):
                 client,
                 (xpulist[0], None),
                 params['log_dir'],
-                self._config["docker"],
-                docker_registry,
+                docker_config,
+                [docker_registry],
                 docker_image,
                 docker_tag,
                 docker_command,

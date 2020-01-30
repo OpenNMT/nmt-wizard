@@ -491,6 +491,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             content["priority"] = args.priority
 
         if cmd == "task" and subcmd == "launch":
+            storage_names = set({})
             if args.iterations:
                 content["iterations"] = args.iterations
             if args.nochainprepr:
@@ -500,6 +501,9 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
             if 'totranslate' in args and args.totranslate:
                 content["totranslate"] = [(_parse_local_filename(i, files),
                                            o) for (i, o) in args.totranslate]
+                for (i, o) in content["totranslate"]:
+                    storage_names.add(i.split(":", 1)[0])
+                    storage_names.add(o.split(":", 1)[0])
             if 'toscore' in args and args.toscore:
                 content["toscore"] = []
                 for (o, r) in args.toscore:
@@ -508,9 +512,17 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
                     for ref in ref_split:
                         ref_new.append(_parse_local_filename(ref, files))
                     content["toscore"].append((o, ",".join(ref_new)))
+
+                for (i, o) in content["toscore"]:
+                    storage_names.add(i.split(":", 1)[0])
+                    storage_names.add(o.split(":", 1)[0])
+
             if 'totuminer' in args and args.totuminer:
                 content["totuminer"] = [(_parse_local_filename(i, files),
                                            o) for (i, o) in args.totuminer]
+                for (i, o) in content["totuminer"]:
+                    storage_names.add(i.split(":", 1)[0])
+                    storage_names.add(o.split(":", 1)[0])
 
         logger.debug("sending request: %s", json.dumps(content))
 
@@ -518,6 +530,7 @@ def process_request(serviceList, cmd, subcmd, is_json, args, auth=None):
         data = {'content': json.dumps(content) }
         if "entity_owner" in args:
             data['entity_owner'] = args.entity_owner
+
         r = requests.post(launch_url,
                           files=files,
                           data=data,

@@ -2,6 +2,10 @@ import time
 import json
 import os
 import shutil
+from enum import Enum
+
+
+ENTITY_OWNER = "owner"
 
 ttl_policy_func = None
 
@@ -170,6 +174,15 @@ def change(redis, task_id, service, priority, ngpus):
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
     return (True, "")
+
+
+def get_entity(redis, task_id):
+    key_task_id = "task:" + task_id
+    task_storage_entity = redis.hget(key_task_id, ENTITY_OWNER)
+    if not task_storage_entity:  # TODO: usefull only for the first deployment
+        service = redis.hget(key_task_id, "service")
+        task_storage_entity = service[:2]
+    return task_storage_entity.upper()
 
 
 def delete(redis, taskfile_dir, task_id):

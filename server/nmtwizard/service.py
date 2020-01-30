@@ -5,6 +5,7 @@ Docker-based tasks.
 import logging
 import abc
 import six
+from nmtwizard import config
 from nmtwizard.capacity import Capacity
 
 
@@ -101,6 +102,9 @@ class Service(object):
         """
         raise NotImplementedError()
 
+    def get_docker_config(self, entity_name):
+        return config.get_docker(self._config, entity_name)
+
     def select_resource_from_capacity(self, request_resource, capacity):
         """Given expected capacity, restrict or not resource list to the capacity
 
@@ -123,11 +127,12 @@ class Service(object):
         return {}
 
     @abc.abstractmethod
-    def check(self, options):
+    def check(self, options, docker_registries_list):
         """Checks if a task can be launched on the service.
 
         Args:
           options: The user options to use for the launch.
+          docker_registries_list: a registry list to check.
 
         Returns:
           A (possibly empty) string with details on the target service and
@@ -141,6 +146,8 @@ class Service(object):
                options,
                gpulist,
                resource,
+               storages,
+               docker_config,
                docker_registry,
                docker_image,
                docker_tag,
