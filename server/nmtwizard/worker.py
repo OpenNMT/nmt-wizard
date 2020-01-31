@@ -7,7 +7,7 @@ import traceback
 from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
-from nmtwizard.config import get_service_cfg_from_redis, CONFIG_DEFAULT
+from nmtwizard import config
 
 
 def _compatible_resource(resource, request_resource):
@@ -189,8 +189,8 @@ class Worker(object):
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
                 self._logger.info('%s: launching on %s', task_id, service.name)
-                entity_config = self._get_current_config(task_id)
                 try:
+                    entity_config = self._get_current_config(task_id)
                     keygr = 'gpu_resource:%s:%s' % (service.name, resource)
                     lgpu = []
                     for k, v in six.iteritems(self._redis.hgetall(keygr)):
@@ -576,6 +576,7 @@ class Worker(object):
                 self._redis.lrem(queue, 0, best_task_id)
 
     def _get_current_config(self, task_id):
-        task_entity = task.get_entity(self._redis, task_id)
-        config = get_service_cfg_from_redis(self._redis, self._service, task_entity)
-        return config
+        task_entity = task.get_owner_entity(self._redis, task_id)
+        storages_entities_filter = task.get_storages_entity(self._redis, task_id)
+        current_config = config.get_entity_cfg_from_redis(self._redis, self._service, storages_entities_filter, task_entity)
+        return current_config

@@ -4,8 +4,9 @@ import os
 import shutil
 from enum import Enum
 
-
-ENTITY_OWNER = "owner"
+class TaskInfo(Enum):
+    ENTITY_OWNER = "owner"
+    STORAGE_ENTITIES = "STORAGE_ENTITIES"
 
 ttl_policy_func = None
 
@@ -176,13 +177,20 @@ def change(redis, task_id, service, priority, ngpus):
     return (True, "")
 
 
-def get_entity(redis, task_id):
+def get_owner_entity(redis, task_id):
     key_task_id = "task:" + task_id
-    task_storage_entity = redis.hget(key_task_id, ENTITY_OWNER)
-    if not task_storage_entity:  # TODO: usefull only for the first deployment
+    owner_entity = redis.hget(key_task_id, TaskInfo.ENTITY_OWNER.value)
+    if not owner_entity:  # TODO: usefull only for the first deployment
         service = redis.hget(key_task_id, "service")
-        task_storage_entity = service[:2]
-    return task_storage_entity.upper()
+        owner_entity = service[:2]
+    return owner_entity.upper()
+
+
+def get_storages_entity(redis, task_id):
+    key_task_id = "task:" + task_id
+    task_storage_entities = redis.hget(key_task_id, TaskInfo.STORAGE_ENTITIES.value)
+    return json.loads(task_storage_entities) if task_storage_entities else None
+
 
 
 def delete(redis, taskfile_dir, task_id):

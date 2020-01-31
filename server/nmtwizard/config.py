@@ -1,9 +1,10 @@
+import abc
 import os
 import json
 import logging
 import importlib
 import six
-from jsonschema import Draft3Validator
+
 logger = logging.getLogger(__name__)
 CONFIG_DEFAULT = "CONF_DEFAULT"
 
@@ -46,6 +47,12 @@ def get_entities(config):
     return entities
 
 
+def get_entities_from_service(redis, service_name):
+    service_config = _get_config_from_redis(redis, service_name)
+    entities = get_entities(service_config)
+    return entities
+
+
 def is_polyentity_config(config):
     return "entities" in config
 
@@ -60,37 +67,55 @@ def get_docker(config, entity):
         return config["docker"]
 
 
-def get_registries(config):
+def get_registries(redis, service):
+    base_config = get_default_storage(redis)
+    service_config = _get_config_from_redis(redis, service)
     registries=[]
-    if is_polyentity_config(config):
-        configs = config["entities"]
-        registries = [config["entities"][ent]["docker"]["registries"] for ent in configs
-                      if config["entities"][ent].get("docker") and config["entities"][ent]["docker"].get("registries")]
-    elif config.get("docker") and config["docker"].get("registries"):
-        registries = [config["docker"]["registries"]]
+    if "docker" in base_config and "registries" in base_config["docker"]:
+        registries = base_config["docker"]["registries"]
+
+    if is_polyentity_config(service_config):
+        for ent in service_config["entities"]:
+            if service_config["entities"][ent].get("docker") and service_config["entities"][ent]["docker"].get("registries"):
+                registries.update(service_config["entities"][ent]["docker"]["registries"])
+    elif service_config.get("docker") and service_config["docker"].get("registries"):
+        registries.update (service_config["docker"]["registries"])
 
     return registries
 
 
-def get_service_cfg_from_redis(redis, service, entity_filter):
-    def get_default_storage():
-        default_config = redis.hget('default', 'configuration')
-        base_config = json.loads(default_config)
-        return base_config
+def _get_config_from_redis(redis, service):
+    current_configuration_name = redis.hget("admin:service:%s" % service, "current_configuration")
+    configurations = json.loads(redis.hget("admin:service:%s" % service, "configurations"))
+    current_configuration = json.loads(configurations[current_configuration_name][1])
+    return current_configuration
 
-    def get_config_from_redis():
-        current_configuration_name = redis.hget("admin:service:%s" % service, "current_configuration")
-        configurations = json.loads(redis.hget("admin:service:%s" % service, "configurations"))
-        current_configuration = json.loads(configurations[current_configuration_name][1])
-        return current_configuration
 
-    base_config = get_default_storage()
-    service_config = get_config_from_redis()
+def get_default_storage(redis):
+    default_config = redis.hget('default', 'configuration')
+    base_config = json.loads(default_config)
+    return base_config
 
-    if "entities" in service_config and entity_filter in service_config["entities"] :
+
+def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner ):
+    base_config = get_default_storage(redis)
+    service_config = _get_config_from_redis(redis, service)
+
+    if is_polyentity_config(service_config) and entity_owner in service_config["entities"]:
         # remove other entities + and entities tag to have the same format as default config.
-        for k in service_config["entities"][entity_filter].keys():
-            service_config[k] =  service_config["entities"][entity_filter][k]
+        owner_config = service_config["entities"][entity_owner]
+        if entities_filters:
+            for ent in entities_filters:
+                if ent in service_config["entities"]:
+                    ent_config = service_config["entities"][ent]
+                    if "storages" in ent_config:
+                        if "storages" in owner_config:
+                            owner_config["storages"].update(service_config["entities"][ent]["storages"])
+                        else:
+                            owner_config["storages"] = service_config["entities"][ent]["storages"]
+        # put entity config outside entities
+        for k in owner_config:
+            service_config[k] = owner_config[k]
         del service_config["entities"]
 
     merge_config(service_config, base_config, "")
@@ -137,6 +162,7 @@ def load_service(config_path, base_config=None):
 
     raise ValueError("cannot open the config (%s)" % config_path)
 
+
 def load_service_config(filename, base_config):
     """Load configured service given a json file applying on a provided base configuration
 
@@ -162,4 +188,57 @@ def load_service_config(filename, base_config):
     logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
 
     return services, merged_config
+
+@six.add_metaclass(abc.ABCMeta)
+class ServiceConfig(object):
+
+    @abc.abstractmethod
+    def __init__(self, config_obj, redis):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_service_cfg_from_redis(self, redis, service, entities_filters, entity_owner):
+        raise NotImplementedError()
+
+    class RedisConfigAccess(object):
+        def __init__(self, redis):
+            self._redis = redis
+
+        def get_default_storage(self):
+            default_config = self._redis.hget('default', 'configuration')
+            base_config = json.loads(default_config)
+            return base_config
+
+
+class ServiceConfigMonoEntity (ServiceConfig):
+    def __init__(self, config_obj, redis):
+        self.config = dict(config_obj)
+        self.redis_access = ServiceConfig.RedisConfigAccess(redis)
+
+    def get_service_cfg_from_redis(self, redis, service, entities_filters, entity_owner):
+        base_config = self.redis_access.get_default_storage()
+        service_config = _get_config_from_redis(redis, service)
+
+        if is_polyentity_config(service_config) and entity_owner in service_config["entities"]:
+            # remove other entities + and entities tag to have the same format as default config.
+            owner_config = service_config["entities"][entity_owner]
+            if entities_filters:
+                for ent in entities_filters:
+                    if ent in service_config["entities"]:
+                        ent_config = service_config["entities"][ent]
+                        if "storages" in ent_config:
+                            if "storages" in owner_config:
+                                owner_config["storages"].update(service_config["entities"][ent]["storages"])
+                            else:
+                                owner_config["storages"] = service_config["entities"][ent]["storages"]
+            # put entity config outside entities
+            for k in owner_config:
+                service_config[k] = owner_config[k]
+            del service_config["entities"]
+
+        merge_config(service_config, base_config, "")
+        return service_config
+
+
+
 

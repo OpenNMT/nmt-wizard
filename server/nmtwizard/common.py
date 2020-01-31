@@ -213,39 +213,39 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
         if registry['type'] == 'aws' and not program_exists(client, 'aws'):
             raise EnvironmentError("missing aws client")
 
-    # check log_dir
-    if not run_and_check_command(client, "test -d '%s'" % log_dir):
-        raise EnvironmentError("missing log directory: %s" % log_dir)
+        # check log_dir
+        if not run_and_check_command(client, "test -d '%s'" % log_dir):
+            raise EnvironmentError("missing log directory: %s" % log_dir)
 
-    if not program_exists(client, "docker"):
-        raise EnvironmentError("docker not available")
-    if len(lgpu) != 0:
-        if not program_exists(client, "nvidia-docker"):
-            raise EnvironmentError("nvidia-docker not available")
+        if not program_exists(client, "docker"):
+            raise EnvironmentError("docker not available")
+        if len(lgpu) != 0:
+            if not program_exists(client, "nvidia-docker"):
+                raise EnvironmentError("nvidia-docker not available")
 
-    usage = {'gpus': [], 'disk': []}
-    for gpu_id in lgpu:
-        gpu_id = int(gpu_id)
-        exit_status, stdout, stderr = run_command(
-            client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
-        if exit_status != 0:
-            raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
-                exit_status, stderr.read()))
+        usage = {'gpus': [], 'disk': []}
+        for gpu_id in lgpu:
+            gpu_id = int(gpu_id)
+            exit_status, stdout, stderr = run_command(
+                client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
+            if exit_status != 0:
+                raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
+                    exit_status, stderr.read()))
 
-        out = stdout.read()
-        gpu = '?'
-        mem = '?'
-        m = re.search(b'Gpu *: (.*) *\n', out)
-        if m:
-            gpu = m.group(1).decode('utf-8')
-        m = re.search(b'Free *: (.*) MiB *\n', out)
-        if m:
-            mem = int(m.group(1).decode('utf-8'))
-        usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem': mem})
-        if check and requirements:
-            if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
-                raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
-                                       % (gpu_id, mem, requirements["free_gpu_memory"]))
+            out = stdout.read()
+            gpu = '?'
+            mem = '?'
+            m = re.search(b'Gpu *: (.*) *\n', out)
+            if m:
+                gpu = m.group(1).decode('utf-8')
+            m = re.search(b'Free *: (.*) MiB *\n', out)
+            if m:
+                mem = int(m.group(1).decode('utf-8'))
+            usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem': mem})
+            if check and requirements:
+                if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
+                    raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
+                                           % (gpu_id, mem, requirements["free_gpu_memory"]))
 
     if requirements and "free_disk_space" in requirements:
         for path, space_G in six.iteritems(requirements["free_disk_space"]):

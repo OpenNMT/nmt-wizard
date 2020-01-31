@@ -22,7 +22,7 @@ from nmtwizard.helper import get_cpu_count, get_params, boolean_param
 from nmtwizard.capacity import Capacity
 import re
 
-from nmtwizard.task import get_task_entity
+from nmtwizard.task import get_task_entity, TaskInfo
 from werkzeug.exceptions import HTTPException
 import traceback
 
@@ -91,9 +91,8 @@ def get_entity_owner(service_entities, service_name):
             entity_owner = service_entities[0]
 
     if not entity_owner:
-        abort(flask.make_response(flask.jsonify(
-            message="model owner is ambigious between these entities: (%s)" % str(
-                ",".join(trainer_of_entities))), 400))
+        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" %
+                                                        str(",".join(trainer_of_entities))), 400))
     elif not has_ability(flask.g, 'train', entity_owner):
         abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
     elif entity_owner not in service_entities:
@@ -225,9 +224,7 @@ def _get_registry(service, image, entity_owner):
                                   400))
     repository = image[:p]
     registry = None
-    service_config = config.get_service_cfg_from_redis(redis, service, entity_owner)
-    docker_config = service_config['docker']
-    docker_registries = docker_config['registries']
+    docker_registries = config.get_registries(redis, service)
     for r in docker_registries:
         v = docker_registries[r]
         if "default_for" in v and repository in v['default_for']:
@@ -512,8 +509,7 @@ def check(service):
         service_options = {}
 
     service_module = get_service(service)
-    service_config = config.get_service_cfg_from_redis(redis, service, None)
-    registries = config.get_registries(service_config)
+    registries = config.get_registries(redis, service)
     try:
         details = service_module.check(service_options, registries)
     except ValueError as e:
@@ -547,14 +543,13 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "train", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for train "
-                                            "(entity %s)" % pool_entity), 403))
-
     current_configuration_name = redis.hget("admin:service:%s" % service, "current_configuration")
     configurations = json.loads(redis.hget("admin:service:%s" % service, "configurations"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
+
+    pool_entities = config.get_entities(current_configuration)
+    if all(not has_ability(flask.g, "train", entity) for entity in pool_entities):
+        abort(make_response(jsonify(message="insufficient credentials for train (entity %s)" % service), 403))
 
     content = flask.request.form.get('content')
     if content is not None:
@@ -598,7 +593,9 @@ def launch(service):
 
     service_entities = config.get_entities(current_configuration)
     entity_owner = get_entity_owner(service_entities, get_model_from_task(content["docker"]["command"]))
-    other_task_info = {task.ENTITY_OWNER: entity_owner}
+    trainer_entities = get_entities_by_permission("train", flask.g)
+    assert trainer_entities  # Here: almost sure you are trainer
+    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner, TaskInfo.STORAGE_ENTITIES.value:json.dumps(trainer_entities)}
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
