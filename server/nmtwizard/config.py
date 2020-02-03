@@ -1,4 +1,3 @@
-import abc
 import os
 import json
 import logging
@@ -19,15 +18,6 @@ def merge_config(a, b, name):
                 a[k] = b[k]
             elif isinstance(a[k], dict):
                 merge_config(a[k], b[k], name)
-
-
-def merge_polyentity_config(polyentity_config, default_config):
-    if isinstance(polyentity_config, dict):
-        for k in six.iterkeys(default_config):
-            if k not in polyentity_config or type(polyentity_config[k]) != type(default_config[k]):
-                polyentity_config[k] = default_config[k]
-            elif isinstance(polyentity_config[k], dict):
-                merge_polyentity_config(polyentity_config[k], default_config[k])
 
 
 def validate_polyentity_pool_format(config):
@@ -97,7 +87,7 @@ def get_default_storage(redis):
     return base_config
 
 
-def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner ):
+def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner):
     base_config = get_default_storage(redis)
     service_config = _get_config_from_redis(redis, service)
 
@@ -188,56 +178,6 @@ def load_service_config(filename, base_config):
     logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
 
     return services, merged_config
-
-@six.add_metaclass(abc.ABCMeta)
-class ServiceConfig(object):
-
-    @abc.abstractmethod
-    def __init__(self, config_obj, redis):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_service_cfg_from_redis(self, redis, service, entities_filters, entity_owner):
-        raise NotImplementedError()
-
-    class RedisConfigAccess(object):
-        def __init__(self, redis):
-            self._redis = redis
-
-        def get_default_storage(self):
-            default_config = self._redis.hget('default', 'configuration')
-            base_config = json.loads(default_config)
-            return base_config
-
-
-class ServiceConfigMonoEntity (ServiceConfig):
-    def __init__(self, config_obj, redis):
-        self.config = dict(config_obj)
-        self.redis_access = ServiceConfig.RedisConfigAccess(redis)
-
-    def get_service_cfg_from_redis(self, redis, service, entities_filters, entity_owner):
-        base_config = self.redis_access.get_default_storage()
-        service_config = _get_config_from_redis(redis, service)
-
-        if is_polyentity_config(service_config) and entity_owner in service_config["entities"]:
-            # remove other entities + and entities tag to have the same format as default config.
-            owner_config = service_config["entities"][entity_owner]
-            if entities_filters:
-                for ent in entities_filters:
-                    if ent in service_config["entities"]:
-                        ent_config = service_config["entities"][ent]
-                        if "storages" in ent_config:
-                            if "storages" in owner_config:
-                                owner_config["storages"].update(service_config["entities"][ent]["storages"])
-                            else:
-                                owner_config["storages"] = service_config["entities"][ent]["storages"]
-            # put entity config outside entities
-            for k in owner_config:
-                service_config[k] = owner_config[k]
-            del service_config["entities"]
-
-        merge_config(service_config, base_config, "")
-        return service_config
 
 
 
