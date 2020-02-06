@@ -32,14 +32,14 @@ class Service(object):
         # check exclusivity of default_msr/default_msw and default_ms
         if self._default_ms and (self._default_msr or self._default_msw):
             raise ValueError('default_ms and default_ms[rw] are exclusive')
-
+        self._machines = None
     def __getstate__(self):
         """Return state values to be pickled."""
-        return (self._config, self._resources)
+        return (self._config, self._machines, self._resources)
 
     def __setstate__(self, state):
         """Restore state from the unpickled state values."""
-        self._config, self._resources = state
+        self._config, self._machines, self._resources = state
 
     @property
     def valid(self):
@@ -167,4 +167,8 @@ class Service(object):
     @abc.abstractmethod
     def terminate(self, params):
         """Terminates a (possibly) running task."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_server_detail(self, server, field_name):
         raise NotImplementedError()

@@ -33,8 +33,8 @@ def validate_polyentity_pool_format(config):
 
 
 def get_entities(config):
-    entities = config["entities"].keys() if is_polyentity_config(config) else [config["name"][0:2].upper()]
-    return entities
+    entities = config["entities"].keys() if is_polyentity_config(config) else [config["name"][0:2]]
+    return [i.upper() for i in entities if i]
 
 
 def get_entities_from_service(redis, service_name):
@@ -100,9 +100,16 @@ def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner):
                     ent_config = service_config["entities"][ent]
                     if "storages" in ent_config:
                         if "storages" in owner_config:
-                            owner_config["storages"].update(service_config["entities"][ent]["storages"])
+                            owner_config["storages"].update(ent_config["storages"])
                         else:
-                            owner_config["storages"] = service_config["entities"][ent]["storages"]
+                            owner_config["storages"] = ent_config["storages"]
+
+                    if "docker" in ent_config and "envvar" in ent_config["docker"]:
+                        if "docker" in owner_config and "envvar" in owner_config["docker"]:
+                            owner_config["docker"]["envvar"].update(ent_config["docker"]["envvar"])
+                        else:
+                            owner_config["docker"]["envvar"] = ent_config["docker"]["envvar"]
+
         # put entity config outside entities
         for k in owner_config:
             service_config[k] = owner_config[k]

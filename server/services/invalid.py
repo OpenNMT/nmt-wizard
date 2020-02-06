@@ -65,6 +65,8 @@ class InvalidService(Service):
     def terminate(self, params):
         raise NotImplementedError()
 
+    def get_server_detail(self, server, field_name):
+        raise NotImplementedError()
 
 def init(config):
     return InvalidService(config)

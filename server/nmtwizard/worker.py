@@ -98,7 +98,7 @@ class Worker(object):
                     with self._redis.acquire_lock(task_id):
                         task.set_log(self._redis, self._taskfile_dir, task_id, str(e))
                         task.terminate(self._redis, task_id, phase="launch_error")
-
+                    self._logger.info(traceback.format_exc())
             # every 0.01s * refresh_counter - check if we can find some free resource
             if counter > self._refresh_counter:
                 # if there are some queued tasks, look for free resources
@@ -238,6 +238,7 @@ class Worker(object):
                     self._logger.info(traceback.format_exc())
                     task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
                     task.terminate(self._redis, task_id, phase='launch_error')
+                    self._logger.info(traceback.format_exc())
                     return
                 self._logger.info('%s: task started on %s', task_id, service.name)
                 self._redis.hset(keyt, 'job', json.dumps(data))
@@ -255,6 +256,7 @@ class Worker(object):
                 except Exception as e:
                     self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
                     self._redis.hincrby(keyt, 'status_fail', 1)
+                    self._logger.info(traceback.format_exc())
                     if self._redis.hget(keyt, 'status_fail') > 4:
                         task.terminate(self._redis, task_id, phase='lost_connection')
                         return
@@ -281,6 +283,7 @@ class Worker(object):
                         self._logger.info('%s: terminated', task_id)
                     except Exception:
                         self._logger.warning('%s: failed to terminate', task_id)
+                        self._logger.info(traceback.format_exc())
                 else:
                     self._logger.info('%s: terminating task (on error)', task_id)
                 resource = self._redis.hget(keyt, 'alloc_resource')
@@ -296,7 +299,7 @@ class Worker(object):
         self._redis.set(keyb, err)
         self._redis.expire(keyb, self._quarantine_time)
 
-    def _allocate_resource(self, task_id, request_resource, service, nxpus):
+    def _allocate_resource(self, task_id, request_resource, service, task_expected_capacity):
         """Allocates a resource for task_id and returns the name of the resource
            (or None if none where allocated), and the number of allocated gpus/cpus
         """
@@ -306,13 +309,17 @@ class Worker(object):
         resources = service.list_resources()
 
         for name, capacity in six.iteritems(resources):
+            is_only_gpu_task = service.get_server_detail(name, "only_gpu_task")
+            if is_only_gpu_task is True and task_expected_capacity.ngpus <= 0:
+                self._logger.debug('%s excluded for %s' % (name, task_id))
+                continue
             if _compatible_resource(name, request_resource):
                 available_xpus, remaining_xpus = self._reserve_resource(
                     service, name, capacity, task_id,
-                    nxpus, br_available_xpus, br_remaining_xpus)
+                    task_expected_capacity, br_available_xpus, br_remaining_xpus)
                 if available_xpus is not False:
                     if best_resource is not None:
-                        self._release_resource(service, best_resource, task_id, nxpus)
+                        self._release_resource(service, best_resource, task_id, task_expected_capacity)
                     best_resource = name
                     br_remaining_xpus = remaining_xpus
                     br_available_xpus = available_xpus

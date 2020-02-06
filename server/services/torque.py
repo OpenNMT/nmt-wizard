@@ -217,6 +217,8 @@ class TorqueService(Service):
             '%s %s' % (os.path.join(params['torque_install_path'], "qdel"), params['qsub_id']))
         client.close()
 
+    def get_server_detail(self, server, field_name):
+        raise NotImplementedError()
 
 def init(config):
     return TorqueService(config)

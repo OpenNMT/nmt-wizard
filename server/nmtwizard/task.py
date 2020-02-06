@@ -4,9 +4,11 @@ import os
 import shutil
 from enum import Enum
 
+
 class TaskInfo(Enum):
     ENTITY_OWNER = "owner"
-    STORAGE_ENTITIES = "STORAGE_ENTITIES"
+    STORAGE_ENTITIES = "storage_entities"
+
 
 ttl_policy_func = None
 
