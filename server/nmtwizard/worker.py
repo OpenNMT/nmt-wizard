@@ -303,16 +303,29 @@ class Worker(object):
         """Allocates a resource for task_id and returns the name of the resource
            (or None if none where allocated), and the number of allocated gpus/cpus
         """
+        def _can_allocate_machine(machine):
+            only_entities = service.get_server_detail(name, "only_entities")
+            task_entity = task.get_owner_entity(self._redis, task_id)
+            if only_entities and task_entity not in only_entities:
+                self._logger.debug('%s excluded for %s, entity "%s"' % (machine, task_id, task_entity))
+                return False
+
+            is_only_gpu_task = service.get_server_detail(name, "only_gpu_task")
+            if is_only_gpu_task is True and task_expected_capacity.ngpus <= 0:
+                self._logger.debug('%s excluded for %s' % (machine, task_id))
+                return False
+
+            return True
+
         best_resource = None
         br_available_xpus = Capacity()
         br_remaining_xpus = Capacity(-1, -1)
         resources = service.list_resources()
 
         for name, capacity in six.iteritems(resources):
-            is_only_gpu_task = service.get_server_detail(name, "only_gpu_task")
-            if is_only_gpu_task is True and task_expected_capacity.ngpus <= 0:
-                self._logger.debug('%s excluded for %s' % (name, task_id))
+            if not _can_allocate_machine(name):
                 continue
+
             if _compatible_resource(name, request_resource):
                 available_xpus, remaining_xpus = self._reserve_resource(
                     service, name, capacity, task_id,
