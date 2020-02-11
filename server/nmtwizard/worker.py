@@ -104,7 +104,7 @@ class Worker(object):
                 # if there are some queued tasks, look for free resources
                 if self._redis.exists('queued:%s' % self._service):
                     self._logger.debug('checking processes on : %s', self._service)
-                    self._service_unqueue(self._services[self._service])
+                    self._select_best_task_to_process(self._services[self._service])
                 counter = 0
 
             counter += 1
@@ -169,7 +169,7 @@ class Worker(object):
                 for k, v in six.iteritems(self._redis.hgetall(keycr)):
                     if v == task_id:
                         already_allocated_xpus.incr_ncpus(1)
-                capacity = service.list_resources()[resource]
+                capacity = service.list_resources(self._redis)[resource]
                 available_xpus, remaining_xpus = self._reserve_resource(
                                                     service, resource, capacity, task_id,
                                                     nxpus - already_allocated_xpus,
@@ -304,7 +304,7 @@ class Worker(object):
            (or None if none where allocated), and the number of allocated gpus/cpus
         """
         def _can_allocate_machine(machine):
-            only_entities = service.get_server_detail(name, "only_entities")
+            only_entities = service.get_server_detail(name, "entities")
             task_entity = task.get_owner_entity(self._redis, task_id)
             if only_entities and task_entity not in only_entities:
                 self._logger.debug('%s excluded for %s, entity "%s"' % (machine, task_id, task_entity))
@@ -472,20 +472,106 @@ class Worker(object):
         if self._redis.get(key_reserved) == task_id:
             self._redis.delete(key_reserved)
 
-    def _service_unqueue(self, service):
+    def _select_best_task_to_process(self, service):
         """find the best next task to push to the work queue
         """
+        class EntityUsage():
+            def __init__(self, usage, entity_name, usage_rate_limit_capacitity):
+                self._usage= usage if usage else Capacity()
+                self._entity = entity_name
+                self._usage_rate_limit_capacity = usage_rate_limit_capacitity
+
+            def add_current_usage(self, current_usage):
+                if current_usage:
+                    self._usage += current_usage
+
+            def is_more_occupied(self, other_entity_usage):
+                return self._usage > other_entity_usage._usage
+
+            def is_exceeded_usage(self):
+                return self._usage < self._usage_rate_limit_capacity
+
+        class CandidateTask():
+            def __init__(self, task_id, task_entity, redis, is_preallocated, task_capacity):
+                assert task_id
+                self._task_id = task_id
+                self._entity = task_entity
+                self._task_capacity = task_capacity
+                self._is_preallocated = is_preallocated
+                next_keyt = 'task:%s' % next_task_id
+                self._priority = int(redis.hget(next_keyt, 'priority'))
+                self._queued_time = float(redis.hget(next_keyt, 'queued_time'))
+
+            def is_higher_priority(self, other_task):
+                if not other_task:
+                    return True
+
+                entity_usage = entities_usage[task_entity]
+
+                if entity_usage.is_exceeded_usage():
+                    return False
+
+                if self._entity == other_task._entity:  # same entity
+                    return self._priority > other_task._priority or \
+                        (self._priority == other_task._priority and other_task._queued_time > self._queued_time)
+                else:
+                    other_entity_usage = entities_usage[other_task._entity]
+                    return entity_usage.is_more_occupied(other_entity_usage)
+
+        def _exists_fit_machine_for_task(next_task_id, preallocated_task_count, reserved):
+            next_keyt = 'task:%s' % next_task_id
+            parent = self._redis.hget(next_keyt, 'parent')
+            # check parent dependency
+            if parent:
+                keyp = 'task:%s' % parent
+                if self._redis.exists(keyp):
+                    # if the parent task is in the database, check for dependencies
+                    parent_status = self._redis.hget(keyp, 'status')
+                    if parent_status != 'stopped':
+                        if parent_status == 'running':
+                            # parent is still running so update queued time to be as close
+                            # as possible to terminate time of parent task
+                            self._redis.hset(next_keyt, "queued_time", time.time())
+                        return None
+                    else:
+                        if self._redis.hget(keyp, 'message') != 'completed':
+                            task.terminate(self._redis, next_task_id,
+                                           phase='dependency_error')
+                            return None
+
+            nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
+
+            foundResource = False
+            if next_task_id in preallocated_task_count:
+                # if task is pre-allocated, can only continue on the same node
+                r = preallocated_task_resource[next_task_id]
+                nxpus -= preallocated_task_count[next_task_id]._usage()
+                avail_r = avail_resource[r]
+                foundResource = (nxpus.ngpus == 0 and avail_r.ncpus != 0) or (
+                        nxpus.ngpus != 0 and avail_r.ngpus != 0)
+            else:
+                # can the task be launched on any node
+                for r, v in six.iteritems(avail_resource):
+                    # cannot launch a new task on a reserved node
+                    if reserved[r]:
+                        continue
+                    if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus and v.ngpus > 0) or
+                            (nxpus.ngpus == 0 and resources[r].ncpus >= nxpus.ncpus and v.ncpus > 0)):
+                        foundResource = True
+                        break
+
+            return nxpus if foundResource else None
+
         with self._redis.acquire_lock('service:'+service.name):
             queue = 'queued:%s' % service.name
             count = self._redis.llen(queue)
-            idx = 0
-
             preallocated_task_count = {}
             preallocated_task_resource = {}
             avail_resource = {}
             resources = service.list_resources()
             reserved = {}
-
+            entity_rate_lim = config.get_entities_limit_rate(self._redis, service.name)
+            entities_usage = {e: EntityUsage(None, e, Capacity(r,r)) for e, r in six.iteritems(entity_rate_lim)}
             # list free cpu/gpus on each node
             for resource in resources:
                 current_xpu_usage = Capacity()
@@ -499,25 +585,28 @@ class Worker(object):
                 task_reserved = self._redis.get(key_reserved)
 
                 # can not launch multiple tasks on service with no multi-tasking (ec2)
-                if not service.resource_multitask and \
-                   not task_reserved and \
-                   (gpu_tasks or cpu_tasks):
+                if not service.resource_multitask and not task_reserved and (gpu_tasks or cpu_tasks):
                     continue
 
                 for k, v in six.iteritems(gpu_tasks):
+                    task_entity = task.get_owner_entity(self._redis, v)
                     if v in preallocated_task_count:
                         preallocated_task_count[v].incr_ngpus(1)
                     else:
                         preallocated_task_count[v] = Capacity(ngpus=1)
                         preallocated_task_resource[v] = resource
                     current_xpu_usage.incr_ngpus(1)
+                    entities_usage[task_entity].add_current_usage(Capacity(ngpus=1))
+
                 for k, v in six.iteritems(cpu_tasks):
+                    task_entity = task.get_owner_entity(self._redis, v)
                     if v in preallocated_task_count:
                         preallocated_task_count[v].incr_ncpus(1)
                     else:
                         preallocated_task_count[v] = Capacity(ncpus=1)
                         preallocated_task_resource[v] = resource
                     current_xpu_usage.incr_ncpus(1)
+                    entities_usage[task_entity].add_current_usage(Capacity(ncpus=1))
                 available_xpus = capacity - current_xpu_usage
                 avail_resource[resource] = available_xpus
                 reserved[resource] = task_reserved
@@ -530,70 +619,72 @@ class Worker(object):
 
             # Go through the tasks, find if there are tasks that can be launched and
             # queue the best one
-            best_task_id = None
-            best_task_priority = -10000
-            best_task_queued_time = 0
+            best_task = None
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)
-
-                if next_task_id is not None:
-                    next_keyt = 'task:%s' % next_task_id
+                accepted_task_capacity = _exists_fit_machine_for_task(next_task_id, preallocated_task_count, reserved)
+                if not next_task_id or not accepted_task_capacity:
+                    continue
+                #     # next_keyt = 'task:%s' % next_task_id
                     # self._logger.debug("\tcheck task: %s", next_task_id)
-                    parent = self._redis.hget(next_keyt, 'parent')
-                    # check parent dependency
-                    if parent:
-                        keyp = 'task:%s' % parent
-                        if self._redis.exists(keyp):
-                            # if the parent task is in the database, check for dependencies
-                            parent_status = self._redis.hget(keyp, 'status')
-                            if parent_status != 'stopped':
-                                if parent_status == 'running':
-                                    # parent is still running so update queued time to be as close
-                                    # as possible to terminate time of parent task
-                                    self._redis.hset(next_keyt, "queued_time", time.time())
-                                continue
-                            else:
-                                if self._redis.hget(keyp, 'message') != 'completed':
-                                    task.terminate(self._redis, next_task_id,
-                                                   phase='dependency_error')
-                                    continue
+                # parent = self._redis.hget(next_keyt, 'parent')
+                # # check parent dependency
+                # if parent:
+                #     keyp = 'task:%s' % parent
+                #     if self._redis.exists(keyp):
+                #         # if the parent task is in the database, check for dependencies
+                #         parent_status = self._redis.hget(keyp, 'status')
+                #         if parent_status != 'stopped':
+                #             if parent_status == 'running':
+                #                 # parent is still running so update queued time to be as close
+                #                 # as possible to terminate time of parent task
+                #                 self._redis.hset(next_keyt, "queued_time", time.time())
+                #             continue
+                #         else:
+                #             if self._redis.hget(keyp, 'message') != 'completed':
+                #                 task.terminate(self._redis, next_task_id,
+                #                                phase='dependency_error')
+                #                 continue
+                #
+                # nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
+                #
+                # foundResource = False
+                # if next_task_id in preallocated_task_count:
+                #     # if task is pre-allocated, can only continue on the same node
+                #     r = preallocated_task_resource[next_task_id]
+                #     nxpus -= preallocated_task_count[next_task_id]._usage()
+                #     avail_r = avail_resource[r]
+                #     foundResource = (nxpus.ngpus == 0 and avail_r.ncpus != 0) or (
+                #                         nxpus.ngpus != 0 and avail_r.ngpus != 0)
+                # else:
+                #     # can the task be launched on any node
+                #     for r, v in six.iteritems(avail_resource):
+                #         # cannot launch a new task on a reserved node
+                #         if reserved[r]:
+                #             continue
+                #         if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus and v.ngpus > 0) or
+                #            (nxpus.ngpus == 0 and resources[r].ncpus >= nxpus.ncpus and v.ncpus > 0)):
+                #             foundResource = True
+                #             break
+                # if not foundResource:
+                #     continue
 
-                    nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
+                is_task_already_preallocated = next_task_id in preallocated_task_count
+                task_entity = task.get_owner_entity(self._redis, next_task_id)
+                if not is_task_already_preallocated and task_entity not in entities_usage:
+                    self._logger.error("\tEntity %s / task %s - without usage limit ", task_entity, next_task_id)
+                    continue  # TODO: perhaps let it execute anyway ?
 
-                    foundResource = False
-                    if next_task_id in preallocated_task_count:
-                        # if task is pre-allocated, can only continue on the same node
-                        r = preallocated_task_resource[next_task_id]
-                        nxpus -= preallocated_task_count[next_task_id]
-                        avail_r = avail_resource[r]
-                        foundResource = (nxpus.ngpus == 0 and avail_r.ncpus != 0) or (
-                                            nxpus.ngpus != 0 and avail_r.ngpus != 0)
-                    else:
-                        # can the task be launched on any node
-                        for r, v in six.iteritems(avail_resource):
-                            # cannot launch a new task on a reserved node
-                            if reserved[r]:
-                                continue
-                            if ((nxpus.ngpus > 0 and resources[r].ngpus >= nxpus.ngpus and v.ngpus > 0) or
-                               (nxpus.ngpus == 0 and resources[r].ncpus >= nxpus.ncpus and v.ncpus > 0)):
-                                foundResource = True
-                                break
-                    if not foundResource:
-                        continue
+                next_task = CandidateTask(next_task_id, task_entity, self._redis, is_task_already_preallocated, accepted_task_capacity)
 
-                    priority = int(self._redis.hget(next_keyt, 'priority'))
-                    queued_time = float(self._redis.hget(next_keyt, 'queued_time'))
-                    if priority > best_task_priority or (
-                            priority == best_task_priority and best_task_queued_time > queued_time):
-                        best_task_priority = priority
-                        best_task_id = next_task_id
-                        best_task_queued_time = queued_time
+                if next_task.is_higher_priority(best_task):
+                    best_task = next_task
 
-            if best_task_id:
-                self._logger.info('selected %s to be launched on %s', best_task_id, service.name)
-                task.work_queue(self._redis, best_task_id, service.name)
-                self._redis.lrem(queue, 0, best_task_id)
+            if best_task:
+                self._logger.info('selected %s to be launched on %s', best_task._task_id, service.name)
+                task.work_queue(self._redis, best_task._task_id, service.name)
+                self._redis.lrem(queue, 0, best_task._task_id)
 
     def _get_current_config(self, task_id):
         task_entity = task.get_owner_entity(self._redis, task_id)

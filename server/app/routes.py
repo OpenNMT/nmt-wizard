@@ -63,19 +63,6 @@ class StorageId():
         return entities
 
 
-def get_model_from_task(task_command):
-    if task_command:
-        j = 0
-        while j < len(task_command) - 1:
-            if task_command[j] == "-m" or task_command[j] == "--model":
-                model_name = task_command[j + 1]
-                return model_name
-
-            j = j + 1
-
-    return None
-
-
 def get_entity_owner(service_entities, service_name):
 
     trainer_of_entities = get_entities_by_permission("train", flask.g)
@@ -590,7 +577,7 @@ def launch(service):
             task_suffix = task_type
 
     service_entities = config.get_entities(current_configuration)
-    entity_owner = get_entity_owner(service_entities, get_model_from_task(content["docker"]["command"]))
+    entity_owner = get_entity_owner(service_entities, service)
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner, TaskInfo.STORAGE_ENTITIES.value:json.dumps(trainer_entities)}
@@ -1038,7 +1025,7 @@ def list_tasks(pattern):
             info = task.info(
                 redis, taskfile_dir, task_id,
                 ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource", "content",
-                 "status", "message", "type", "iterations", "priority", "service", "parent"])
+                 "status", "message", "type", "iterations", "priority", "service", "parent", 'owner'])
 
             if (service_filter and info["service"] != service_filter) \
                     or (status_filter and info["status"] != status_filter):

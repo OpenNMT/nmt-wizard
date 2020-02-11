@@ -43,3 +43,6 @@ class Capacity(list):
 
     def __eq__(self, other):
         return self.ngpus == other.ngpus and self.ncpus == other.ncpus
+
+    def __div__(self, other):
+        return (self.ngpus / other.ngpus, self.ncpus / other.ncpus)
