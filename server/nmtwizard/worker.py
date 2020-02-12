@@ -145,14 +145,11 @@ class Worker(object):
                             return
                 nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
                 resource, available_xpus = self._allocate_resource(task_id, resource, service, nxpus)
-                if resource is not None:
+                if resource is not None and nxpus == available_xpus:
                     self._logger.info('%s: resource %s reserved %s/%s',
                                       task_id, resource, available_xpus, nxpus)
                     self._redis.hset(keyt, 'alloc_resource', resource)
-                    if nxpus == available_xpus:
-                        task.set_status(self._redis, keyt, 'allocated')
-                    else:
-                        task.set_status(self._redis, keyt, 'allocating')
+                    task.set_status(self._redis, keyt, 'allocated')
                     task.work_queue(self._redis, task_id, service_name)
                 else:
                     self._logger.warning('%s: no resources available, waiting', task_id)
@@ -371,6 +368,8 @@ class Worker(object):
                 # available gpu is the capacity of the node less number of gpu used
                 avail_gpu = capacity.ngpus - current_usage_gpu
                 self._logger.debug('avail_gpu = %d', avail_gpu)
+                if nxpus.ngpus > avail_gpu:
+                    return False, False
                 allocated_gpu = min(avail_gpu, nxpus.ngpus)
                 self._logger.debug('allocated_gpu = %d', allocated_gpu)
                 remaining_gpus = avail_gpu - allocated_gpu
@@ -401,6 +400,8 @@ class Worker(object):
                     return False, False
                 avail_cpu = capacity.ncpus - current_usage_cpu
                 self._logger.debug('avail_cpu = %d', avail_cpu)
+                if avail_cpu < nxpus.ncpus:
+                    return False, False
                 allocated_cpu = min(avail_cpu, nxpus.ncpus)
                 self._logger.debug('allocated_cpu = %d', allocated_cpu)
                 remaining_cpus = avail_cpu - allocated_cpu
@@ -432,6 +433,7 @@ class Worker(object):
             if allocated_gpu < nxpus.ngpus or allocated_cpu < nxpus.ncpus:
                 self._redis.set(key_reserved, task_id)
 
+            assert allocated_gpu == nxpus.ngpus and allocated_cpu == nxpus.ncpus
             return Capacity(allocated_gpu, allocated_cpu), Capacity(remaining_gpus, remaining_cpus)
 
     def _release_resource(self, service, resource, task_id, nxpus):
@@ -468,11 +470,20 @@ class Worker(object):
                 if current_usage:
                     self._current_usage_capactity += current_usage
 
-            def is_more_occupied(self, other_entity_usage):
-                return self._current_usage_capactity > other_entity_usage._current_usage_capactity
+            def __le__(self, other_entity_usage):
+                return self._current_usage_capactity <= other_entity_usage._current_usage_capactity
 
-            def is_exceeded_usage(self):
-                return self._current_usage_capactity < self._usage_rate_limit_capacity
+            def __lt__(self,other_entity_usage):
+                return self._current_usage_capactity < other_entity_usage._current_usage_capactity
+
+            def __eq__(self, other_entity_usage):
+                return self._current_usage_capactity == other_entity_usage._current_usage_capactity
+
+            def is_under_usage_limit(self):
+                is_under_limit = self._current_usage_capactity < self._usage_rate_limit_capacity
+                if not is_under_limit:
+                    self._logger.info("\t[exceeded] entity %s - usage limit exceeded: %s.", self._entity, self._current_usage_capactity)
+                return is_under_limit
 
             @staticmethod
             def initialize_entities_usage(redis, service_name):
@@ -504,10 +515,15 @@ class Worker(object):
                 return True
 
             @staticmethod
-            def try_create(next_task_id, preallocated_task_count, reserved):
+            def try_create(next_task_id):
                 next_keyt = 'task:%s' % next_task_id
                 parent = self._redis.hget(next_keyt, 'parent')
                 task_entity = task.get_owner_entity(self._redis, next_task_id)
+
+                if task_entity not in resource_mgr.entities_usage:
+                    self._logger.error("\t[Task %s] entity %s - without usage limit !", next_task_id, task_entity)
+                    return None
+
                 # check parent dependency
                 if parent:
                     keyp = 'task:%s' % parent
@@ -529,34 +545,27 @@ class Worker(object):
                 task_needed_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
 
                 foundResource = False
-                if next_task_id in preallocated_task_count:
+                if next_task_id in resource_mgr.preallocated_task_count:
                     # if task is pre-allocated, can only continue on the same node
-                    r = preallocated_task_resource[next_task_id]
-                    task_needed_capacity  -= preallocated_task_count[next_task_id]
-                    avail_r = avail_resource[r]
+                    r = resource_mgr.preallocated_task_resource[next_task_id]
+                    task_needed_capacity -= resource_mgr.preallocated_task_count[next_task_id]
+                    avail_r = resource_mgr.avail_resource[r]
                     foundResource = (task_needed_capacity.ngpus == 0 and avail_r.ncpus != 0) or (
                             task_needed_capacity.ngpus != 0 and avail_r.ngpus != 0)
                 else:
                     # can the task be launched on any node
-                    for r, v in six.iteritems(avail_resource):
+                    for r, v in six.iteritems(resource_mgr.avail_resource):
                         # cannot launch a new task on a reserved node
-                        if reserved[r]:
+                        if resource_mgr.reserved[r] or not CandidateTask._can_allocate_machine(r, next_task_id, task_entity, task_needed_capacity):
                             continue
 
-                        if not CandidateTask._can_allocate_machine(r, next_task_id, task_entity, task_needed_capacity):
-                            continue
-
-                        if ((0 < task_needed_capacity.ngpus <= resources[r].ngpus and v.ngpus > 0) or
-                                (task_needed_capacity.ngpus == 0 and resources[r].ncpus >= task_needed_capacity.ncpus and v.ncpus > 0)):
+                        if ((0 < task_needed_capacity.ngpus <= resource_mgr.resources[r].ngpus and v.ngpus > 0) or
+                                (task_needed_capacity.ngpus == 0 and resource_mgr.resources[r].ncpus >= task_needed_capacity.ncpus and v.ncpus > 0)):
                             foundResource = True
                             break
 
                 if foundResource:
-                    is_task_already_preallocated = next_task_id in preallocated_task_count
-                    if not is_task_already_preallocated and task_entity not in entities_usage:
-                        self._logger.error("\tEntity %s / task %s - without usage limit ", task_entity, next_task_id)
-                    else:
-                        return CandidateTask(next_task_id, task_entity, self._redis)
+                    return CandidateTask(next_task_id, task_entity, self._redis)
                 else:
                     return None
 
@@ -564,70 +573,123 @@ class Worker(object):
                 if not other_task:
                     return True
 
-                entity_usage = entities_usage[task_entity]
-
-                if entity_usage.is_exceeded_usage():
-                    return False
-
                 if self._entity == other_task._entity:  # same entity
                     return self._priority > other_task._priority or \
                         (self._priority == other_task._priority and other_task._queued_time > self._queued_time)
                 else:
-                    other_entity_usage = entities_usage[other_task._entity]
-                    return entity_usage.is_more_occupied(other_entity_usage)
+                    entity_usage = resource_mgr.entities_usage[self.task_entity]
+                    other_entity_usage = resource_mgr.entities_usage[other_task._entity]
+                    result = resource_mgr.entities_usage[self.task_entity].is_under_usage_limit() and entity_usage < other_entity_usage
+                    return result
+
+        class ResourceManager():
+            def __init__(self, worker):
+                self.preallocated_task_count = {}
+                self.preallocated_task_resource = {}
+                self.avail_resource = {}
+                self.resources = service.list_resources()
+                self.reserved = {}
+                self.entities_usage = {}
+                self.worker = worker
+
+            def compute_current_usage(self, service_name):
+                self.resources = service.list_resources()
+                self.entities_usage = EntityUsage.initialize_entities_usage(self.worker._redis, service_name)
+                for resource in self.resources:
+                    current_xpu_usage = Capacity()
+                    capacity = self.resources[resource]
+                    keygr = 'gpu_resource:%s:%s' % (self.worker._service, resource)
+                    keycr = 'cpu_resource:%s:%s' % (self.worker._service, resource)
+                    key_reserved = 'reserved:%s:%s' % (service.name, resource)
+
+                    gpu_tasks = self.worker._redis.hgetall(keygr)
+                    cpu_tasks = self.worker._redis.hgetall(keycr)
+                    task_reserved = self.worker._redis.get(key_reserved)
+
+                    # can not launch multiple tasks on service with no multi-tasking (ec2)
+                    if not service.resource_multitask and not task_reserved and (gpu_tasks or cpu_tasks):
+                        continue
+
+                    for k, v in six.iteritems(gpu_tasks):
+                        task_entity = task.get_owner_entity(self.worker._redis, v)
+                        if v in self.preallocated_task_count:
+                            self.preallocated_task_count[v].incr_ngpus(1)
+                        else:
+                            self.preallocated_task_count[v] = Capacity(ngpus=1)
+                            self.preallocated_task_resource[v] = resource
+                        current_xpu_usage.incr_ngpus(1)
+                        self.entities_usage[task_entity].add_current_usage(Capacity(ngpus=1))
+
+                    for k, v in six.iteritems(cpu_tasks):
+                        task_entity = task.get_owner_entity(self.worker._redis, v)
+                        if v in self.preallocated_task_count:
+                            self.preallocated_task_count[v].incr_ncpus(1)
+                        else:
+                            self.preallocated_task_count[v] = Capacity(ncpus=1)
+                            self.preallocated_task_resource[v] = resource
+                        current_xpu_usage.incr_ncpus(1)
+                        self.entities_usage[task_entity].add_current_usage(Capacity(ncpus=1))
+                    available_xpus = capacity - current_xpu_usage
+                    self.avail_resource[resource] = available_xpus
+                    self.reserved[resource] = task_reserved
+                    self.worker._logger.debug("\tresource %s - reserved: %s - free %s", resource, task_reserved or "False", available_xpus)
+
+                return len(resource_mgr.avail_resource)
 
         with self._redis.acquire_lock('service:'+service.name):
             queue = 'queued:%s' % service.name
             count = self._redis.llen(queue)
-            preallocated_task_count = {}
-            preallocated_task_resource = {}
-            avail_resource = {}
-            resources = service.list_resources()
-            reserved = {}
-            entities_usage = EntityUsage.initialize_entities_usage(self._redis, service.name)
-            # list free cpu/gpus on each node
-            for resource in resources:
-                current_xpu_usage = Capacity()
-                capacity = resources[resource]
-                keygr = 'gpu_resource:%s:%s' % (self._service, resource)
-                keycr = 'cpu_resource:%s:%s' % (self._service, resource)
-                key_reserved = 'reserved:%s:%s' % (service.name, resource)
-
-                gpu_tasks = self._redis.hgetall(keygr)
-                cpu_tasks = self._redis.hgetall(keycr)
-                task_reserved = self._redis.get(key_reserved)
-
-                # can not launch multiple tasks on service with no multi-tasking (ec2)
-                if not service.resource_multitask and not task_reserved and (gpu_tasks or cpu_tasks):
-                    continue
-
-                for k, v in six.iteritems(gpu_tasks):
-                    task_entity = task.get_owner_entity(self._redis, v)
-                    if v in preallocated_task_count:
-                        preallocated_task_count[v].incr_ngpus(1)
-                    else:
-                        preallocated_task_count[v] = Capacity(ngpus=1)
-                        preallocated_task_resource[v] = resource
-                    current_xpu_usage.incr_ngpus(1)
-                    entities_usage[task_entity].add_current_usage(Capacity(ngpus=1))
-
-                for k, v in six.iteritems(cpu_tasks):
-                    task_entity = task.get_owner_entity(self._redis, v)
-                    if v in preallocated_task_count:
-                        preallocated_task_count[v].incr_ncpus(1)
-                    else:
-                        preallocated_task_count[v] = Capacity(ncpus=1)
-                        preallocated_task_resource[v] = resource
-                    current_xpu_usage.incr_ncpus(1)
-                    entities_usage[task_entity].add_current_usage(Capacity(ncpus=1))
-                available_xpus = capacity - current_xpu_usage
-                avail_resource[resource] = available_xpus
-                reserved[resource] = task_reserved
-                self._logger.debug("\tresource %s - reserved: %s - free %s",
-                                   resource, task_reserved or "False",
-                                   available_xpus)
-
-            if len(avail_resource) == 0:
+            if count == 0:
+                return
+            # preallocated_task_count = {}
+            # preallocated_task_resource = {}
+            # avail_resource = {}
+            # resources = service.list_resources()
+            # reserved = {}
+            # entities_usage = EntityUsage.initialize_entities_usage(self._redis, service.name)
+            # # list free cpu/gpus on each node
+            # for resource in resources:
+            #     current_xpu_usage = Capacity()
+            #     capacity = resources[resource]
+            #     keygr = 'gpu_resource:%s:%s' % (self._service, resource)
+            #     keycr = 'cpu_resource:%s:%s' % (self._service, resource)
+            #     key_reserved = 'reserved:%s:%s' % (service.name, resource)
+            #
+            #     gpu_tasks = self._redis.hgetall(keygr)
+            #     cpu_tasks = self._redis.hgetall(keycr)
+            #     task_reserved = self._redis.get(key_reserved)
+            #
+            #     # can not launch multiple tasks on service with no multi-tasking (ec2)
+            #     if not service.resource_multitask and not task_reserved and (gpu_tasks or cpu_tasks):
+            #         continue
+            #
+            #     for k, v in six.iteritems(gpu_tasks):
+            #         task_entity = task.get_owner_entity(self._redis, v)
+            #         if v in preallocated_task_count:
+            #             preallocated_task_count[v].incr_ngpus(1)
+            #         else:
+            #             preallocated_task_count[v] = Capacity(ngpus=1)
+            #             preallocated_task_resource[v] = resource
+            #         current_xpu_usage.incr_ngpus(1)
+            #         entities_usage[task_entity].add_current_usage(Capacity(ngpus=1))
+            #
+            #     for k, v in six.iteritems(cpu_tasks):
+            #         task_entity = task.get_owner_entity(self._redis, v)
+            #         if v in preallocated_task_count:
+            #             preallocated_task_count[v].incr_ncpus(1)
+            #         else:
+            #             preallocated_task_count[v] = Capacity(ncpus=1)
+            #             preallocated_task_resource[v] = resource
+            #         current_xpu_usage.incr_ncpus(1)
+            #         entities_usage[task_entity].add_current_usage(Capacity(ncpus=1))
+            #     available_xpus = capacity - current_xpu_usage
+            #     avail_resource[resource] = available_xpus
+            #     reserved[resource] = task_reserved
+            #     self._logger.debug("\tresource %s - reserved: %s - free %s",
+            #                        resource, task_reserved or "False",
+            #                        available_xpus)
+            resource_mgr = ResourceManager(self)
+            if resource_mgr.compute_current_usage(service.name) == 0:
                 return
 
             # Go through the tasks, find if there are tasks that can be launched and
@@ -636,7 +698,7 @@ class Worker(object):
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)
-                candidate_task = CandidateTask.try_create(next_task_id, preallocated_task_count, reserved)
+                candidate_task = CandidateTask.try_create(next_task_id)
                 if candidate_task and candidate_task.is_higher_priority(best_task):
                     best_task = candidate_task
 
