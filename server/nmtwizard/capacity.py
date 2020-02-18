@@ -46,3 +46,12 @@ class Capacity(list):
 
     def __div__(self, other):
         return (self.ngpus / other.ngpus, self.ncpus / other.ncpus)
+
+    def __mul__(self, other):
+        return (self.ngpus * other.ngpus, self.ncpus * other.ncpus)
+
+    def __str__(self):
+        return "Capacity(cpu:%d, gpu:%d)" % (self.ncpus, self.ngpus)
+
+    def inf_or_eq(self, other):
+        return self == other or (self.ngpus <= other.ngpus and self.ncpus <= other.ncpus)

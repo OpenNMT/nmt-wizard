@@ -63,7 +63,7 @@ def get_entities_limit_rate(redis, service):
     entities_rate = {}
     if entities:
         weight_sum = float(sum([w["occup_weight"] for w in entities.itervalues()]))
-        entities_rate = {e.upper(): entities[e]["occup_weight"] / weight_sum for e in entities if "occup_weight" in entities[e]}
+        entities_rate = {e.upper(): entities[e]["occup_weight"] * 100 / weight_sum for e in entities if "occup_weight" in entities[e]}
     else: #mono entity so
         entity_name = service_config["name"][0:2].upper()
         entities_rate[entity_name] = 1
