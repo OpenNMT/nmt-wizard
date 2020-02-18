@@ -57,34 +57,35 @@ class Worker(object):
             if counter_beat % 100 == 0:
                 workeradmin.process(self._logger, self._redis, self._service)
                 if (self._default_config_timestamp and
-                        self._redis.hget('default', 'timestamp') != self._default_config_timestamp):
+                        self._redis.hget('default', 'timestamp').decode("utf-8") != self._default_config_timestamp):
                     self._logger.info('stopped by default configuration change')
                     sys.exit(0)
 
             # process one message from the queue
             message = pubsub.get_message()
             if message:
-                channel = message['channel'].decode("utf-8")
+                channel = message['channel']
                 data = message['data']
                 if data == 'expired':
                     # task expired, not beat was received
                     if channel.startswith('__keyspace@0__:beat:'):
-                        task_id = channel[20:].decode("utf-8")
-                        service = self._redis.hget('task:'+task_id, 'service').decode("utf8")
+                        channel = channel.decode("utf-8")
+                        task_id = channel[20:]
+                        service = self._redis.hget('task:'+task_id, 'service').decode("utf-8")
                         if service in self._services:
                             self._logger.info('%s: task expired', task_id)
                             with self._redis.acquire_lock(task_id):
                                 task.terminate(self._redis, task_id, phase='expired')
                     # expired in the queue - comes back in the work queue
                     elif channel.startswith('__keyspace@0__:queue:'):
-                        task_id = channel[21:].decode("utf-8")
+                        task_id = channel[21:]
                         service = self._redis.hget('task:'+task_id, 'service').decode("utf-8")
                         if service in self._services:
                             self._logger.info('%s: move to work queue', task_id)
                             task.work_queue(self._redis, task_id, service)
 
             # process one element from work queue
-            task_id = task.work_unqueue(self._redis, self._service).decode("utf-8")
+            task_id = task.work_unqueue(self._redis, self._service)
             if task_id is not None:
                 try:
                     self._advance_task(task_id)
@@ -128,9 +129,9 @@ class Worker(object):
 
             if status == 'queued':
                 resource = self._redis.hget(keyt, 'resource').decode("utf-8")
-                parent = self._redis.hget(keyt, 'parent')
+                parent = self._redis.hget(keyt, 'parent').decode("utf-8")
                 if parent:
-                    keyp = 'task:%s' % parent.decode("utf-8")
+                    keyp = 'task:%s' % parent
                     # if the parent task is in the database, check for dependencies
                     if self._redis.exists(keyp):
                         status = self._redis.hget(keyp, 'status').decode("utf-8")
@@ -160,7 +161,7 @@ class Worker(object):
             elif status == 'allocating':
                 resource = self._redis.hget(keyt, 'alloc_resource').decode("utf-8")
                 nxpus = Capacity(self._redis.hget(keyt, 'ngpus').decode("utf-8"),
-                                 self._redis.hget(keyt, 'ncpus').decode("utf-8"))
+                                 self._redis.hget(keyt, 'ncpus'))
                 already_allocated_xpus = Capacity()
                 keygr = 'gpu_resource:%s:%s' % (service.name, resource)
                 for k, v in six.iteritems(self._redis.hgetall(keygr)):
@@ -214,7 +215,7 @@ class Worker(object):
                         content['docker']['command'],
                         task.file_list(self._redis, self._taskfile_dir, task_id),
                         content['wait_after_launch'],
-                        self._redis.hget(keyt, 'token'),
+                        self._redis.hget(keyt, 'token').decode("utf-8"),
                         content.get('support_statistics'))
                 except EnvironmentError as e:
                     # the resource is not available and will be set busy
@@ -222,8 +223,9 @@ class Worker(object):
                     self._redis.hdel(keyt, 'alloc_resource')
                     # set the task as queued again
                     self._release_resource(service, resource, task_id,
-                                           Capacity(self._redis.hget(keyt, 'ngpus'),
-                                                    self._redis.hget(keyt, 'ncpus')))
+                                           Capacity(self._redis.hget(keyt, 'ngpus').decode("utf-8"),
+                                                    self._redis.hget(keyt, 'ncpus').decode("utf-8")
+                                                    ))
                     task.set_status(self._redis, keyt, 'queued')
                     task.service_queue(self._redis, task_id, service.name)
                     self._logger.info('could not launch [%s] %s on %s: blocking resource',
@@ -521,13 +523,13 @@ class Worker(object):
                 if next_task_id is not None:
                     next_keyt = 'task:%s' % next_task_id
                     # self._logger.debug("\tcheck task: %s", next_task_id)
-                    parent = self._redis.hget(next_keyt, 'parent')
+                    parent = self._redis.hget(next_keyt, 'parent').decode("utf-8")
                     # check parent dependency
                     if parent:
                         keyp = 'task:%s' % parent
                         if self._redis.exists(keyp):
                             # if the parent task is in the database, check for dependencies
-                            parent_status = self._redis.hget(keyp, 'status')
+                            parent_status = self._redis.hget(keyp, 'status').decode("utf-8")
                             if parent_status != 'stopped':
                                 if parent_status == 'running':
                                     # parent is still running so update queued time to be as close
@@ -535,13 +537,13 @@ class Worker(object):
                                     self._redis.hset(next_keyt, "queued_time", time.time())
                                 continue
                             else:
-                                if self._redis.hget(keyp, 'message') != 'completed':
+                                if self._redis.hget(keyp, 'message').decode("utf-8") != 'completed':
                                     task.terminate(self._redis, next_task_id,
                                                    phase='dependency_error')
                                     continue
 
-                    nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus'),
-                                     self._redis.hget(next_keyt, 'ncpus'))
+                    nxpus = Capacity(self._redis.hget(next_keyt, 'ngpus').decode("utf-8"),
+                                     self._redis.hget(next_keyt, 'ncpus').decode("utf-8"))
 
                     foundResource = False
                     if next_task_id in preallocated_task_count:
@@ -566,8 +568,8 @@ class Worker(object):
                     if not foundResource:
                         continue
 
-                    priority = int(self._redis.hget(next_keyt, 'priority'))
-                    queued_time = float(self._redis.hget(next_keyt, 'queued_time'))
+                    priority = int(self._redis.hget(next_keyt, 'priority').decode("utf-8"))
+                    queued_time = float(self._redis.hget(next_keyt, 'queued_time').decode("utf-8"))
                     if priority > best_task_priority or (
                             priority == best_task_priority and best_task_queued_time > queued_time):
                         best_task_priority = priority

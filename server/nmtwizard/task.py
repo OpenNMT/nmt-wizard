@@ -68,7 +68,7 @@ def terminate(redis, task_id, phase):
         return
 
     # remove from service queue if it was there
-    service = redis.hget(keyt, "service").decode("utf-8")
+    service = redis.hget(keyt, "service")
     if service is not None:
         redis.lrem('queued:'+service, 0, task_id)
 
