@@ -443,34 +443,40 @@ class Worker(object):
         """find the best next task to push to the work queue
         """
         class EntityUsage():
-            def __init__(self, usage, entity_name, usage_rate_limit_capacitity):
+            def __init__(self, current_usage, entity_name, usage_coeff):
                 self._entity = entity_name
-                self._current_usage_capactity = usage if usage else Capacity()
-                self._usage_rate_limit_capacity = usage_rate_limit_capacitity
-                self._task = []
+                self._current_usage_capacity = current_usage if current_usage else Capacity()
+                self._usage_coeff = usage_coeff
 
             def __str__(self):
-                return 'EntityUsage (%s, current:%s, limit:%s)' % (self._entity, self._current_usage_capactity, self._usage_rate_limit_capacity)
+                return 'EntityUsage (%s, current:%s, limit:%s)' % (self._entity, self._scaled_up_usage, self._usage_coeff*1000)
+
+            @property
+            def _scaled_up_usage(self):
+                return self._current_usage_capacity.mult_scalar(self._usage_coeff*1000)
 
             def add_current_usage(self, current_usage):
-                if current_usage:
-                    self._current_usage_capactity += current_usage
+                self._current_usage_capacity += current_usage
 
-            def get_current_rate(self):
-                coeff_cap = (Capacity(100, 100) - self._usage_rate_limit_capacity)
-                return self._current_usage_capactity * coeff_cap
+            def __eq__(self, other):
+                return self._scaled_up_usage == other._scaled_up_usage
 
-            def add_task(self, task_id):
-                self._task.append(task_id)
+            def __lt__(self, other):
+                return self._scaled_up_usage < other._scaled_up_usage
+
+            def __le__(self, other):
+                return self._scaled_up_usage <= other._scaled_up_usage
 
             @staticmethod
             def initialize_entities_usage(redis, service_name):
-                entity_rate_lim = config.get_entities_limit_rate(redis, service_name)
-                entities_usage = {e: EntityUsage(None, e, Capacity(r, r)) for e, r in six.iteritems(entity_rate_lim)}
+                entity_usage_weights = config.get_entities_limit_rate(redis, service_name)
+                weight_sum = float(sum([w for w in entity_usage_weights.itervalues() if w > 0]))
+                entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0 )
+                                  for e, r in six.iteritems(entity_usage_weights)}
                 return entities_usage
 
         class CandidateTask():
-            def __init__(self, task_id, task_entity, redis, task_capacity, entity_usage):
+            def __init__(self, task_id, task_entity, redis, task_capacity, entity_usage, logger):
                 assert task_id
                 self._task_id = task_id
                 self._entity = task_entity
@@ -480,7 +486,7 @@ class Worker(object):
                 self._runnable_machines = set()
                 self._capacity = task_capacity
                 self._entity_usage = entity_usage
-                self._redis = redis
+                self._logger = logger
 
             def __str__(self):
                 return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity, self._entity_usage,  self._priority)
@@ -495,12 +501,14 @@ class Worker(object):
                             self._priority == other._priority and self._launched_time < other._launched_time)
                     return is_more_prio
                 else:
-                    my_usage = resource_mgr.entities_usage[self._entity].get_current_rate()
-                    other_usage = resource_mgr.entities_usage[other._entity].get_current_rate()
-                    if my_usage == other_usage:
+                    my_entity_usage = resource_mgr.entities_usage[self._entity]
+                    other_entity_usage = resource_mgr.entities_usage[other._entity]
+                    if my_entity_usage == other_entity_usage:
                         return self._launched_time < other._launched_time
                     else:
-                        return my_usage < other_usage
+                        result = my_entity_usage < other_entity_usage
+                        self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
+                        return result
 
             def is_higher_priority(self, other_task):
                 # Decision tree for the most priority task
@@ -517,37 +525,37 @@ class Worker(object):
                 else:
                     return self._is_more_respectful_usage(other_task)
 
-            def find_machine_without_blocking(self, higher_prio_task, logger):
+            def find_machine_without_blocking(self, higher_prio_task):
                 for machine in self._runnable_machines:
-                    if not machine._is_authorized(higher_prio_task, logger):
-                        logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
+                    if not machine._is_authorized(higher_prio_task):
+                        self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
                         return machine
 
                     estimated_free_cap = next(capacity for capacity in machine._tasks.values() if higher_prio_task._capacity.inf_or_eq(capacity))
                     if not estimated_free_cap:
-                        logger.info('[AZ-KO_TAKE_PLACE] task %s VS %s', self, highest_priority_blocked_task)
+                        self._logger.info('[AZ-KO_TAKE_PLACE] task %s VS %s', self, highest_priority_blocked_task)
                         return None
 
                     estimated_available_cap = machine._available_cap + estimated_free_cap - self._capacity
                     if higher_prio_task._capacity.inf_or_eq( estimated_available_cap):
-                        logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
+                        self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
                         return machine
 
-                logger.info('[AZ-KO_TAKE_PLACE] task %s VS %s', self, highest_priority_blocked_task)
+                self._logger.info('[AZ-KO_TAKE_PLACE] task %s VS %s', self, highest_priority_blocked_task)
                 return None
 
-            def find_machine_to_run(self, logger):
+            def find_machines_to_run(self, logger):
                 if self._task_id in resource_mgr.preallocated_task_resource:
                     machine_name = resource_mgr.preallocated_task_resource[self._task_id]
                     found_machines = [resource_mgr._machines[machine_name]]
                 else:  # can the task be launched on any node ?
                     found_machines = [machine for name, machine in six.iteritems(resource_mgr._machines) if
-                                      machine._is_authorized(self, logger)
-                                      and candidate_task._capacity.inf_or_eq(machine._available_cap )]
+                                      machine._is_authorized(self)
+                                      and candidate_task._capacity.inf_or_eq(machine._available_cap)]
 
                 self._runnable_machines = found_machines
                 if not self._runnable_machines:
-                    logger.debug("[AZ-NOT_ENOUGH_RESS] task '%s' ", self)
+                    self._logger.debug("[AZ-NOT_ENOUGH_RESS] task '%s' ", self)
 
                 return self._runnable_machines
 
@@ -580,12 +588,13 @@ class Worker(object):
                                 return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
-                candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity, resource_mgr.entities_usage[task_entity] )
+                candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity, resource_mgr.entities_usage[task_entity], self._logger)
                 # check now the task has a chance to be processed by any machine
                 can_be_processed = False
                 for srv, machine in six.iteritems(resource_mgr._machines):
-                    can_be_processed = machine._is_authorized(candidate_task, self._logger) and candidate_task._capacity.inf_or_eq(machine._init_capacity)
-                    if can_be_processed: break
+                    can_be_processed = machine._is_authorized(candidate_task) and candidate_task._capacity.inf_or_eq(machine._init_capacity)
+                    if can_be_processed:
+                        break
 
                 if can_be_processed:
                     return candidate_task
@@ -593,11 +602,12 @@ class Worker(object):
                     return None
 
         class Machine():
-            def __init__(self, name, initial_capacity):
+            def __init__(self, name, initial_capacity, logger):
                 self._init_capacity = initial_capacity
                 self._name = name
                 self._available_cap=Capacity()
                 self._tasks = {}
+                self._logger = logger
 
             def add_task(self, task_id, redis):
                 if task not in self._tasks:
@@ -608,17 +618,16 @@ class Worker(object):
             def set_available(self, capacity):
                 self._available_cap = capacity
 
-            def _is_authorized(self, candidate_task, logger=None):
+            def _is_authorized(self, candidate_task):
                 only_entities = service.get_server_detail(self._name, "entities")
                 task_entity = candidate_task._entity
                 if only_entities and (task_entity not in only_entities or not only_entities[task_entity]):
-                    if logger: logger.debug('[AZ-EXCLUDED-ENTITY] %s , %s' , self._name, candidate_task)
-
+                    self._logger.debug('[AZ-EXCLUDED-ENTITY] %s , %s' , self._name, candidate_task)
                     return False
 
                 is_only_gpu_task = service.get_server_detail(self._name, "only_gpu_task")
                 if is_only_gpu_task is True and candidate_task._capacity.ngpus <= 0:
-                    if logger: logger.debug('[AZ-EXCLUDED-GPU] task %s excluded on Gpu machine %s.', candidate_task, self._name)
+                    self._logger.debug('[AZ-EXCLUDED-GPU] task %s excluded on Gpu machine %s.', candidate_task, self._name)
                     return False
                 return True
 
@@ -626,7 +635,7 @@ class Worker(object):
             def __init__(self, worker):
                 self.preallocated_task_resource = {}
                 resources = service.list_resources()
-                self._machines = {res: Machine(res, resources[res]) for res in resources}
+                self._machines = {res: Machine(res, resources[res], worker._logger) for res in resources}
                 self.entities_usage = {}
                 self.worker = worker
 
@@ -689,12 +698,13 @@ class Worker(object):
             # Go through the tasks, find if there are tasks that can be launched and queue the best one
             best_runnable_task = None
             highest_priority_blocked_task = None
+            for e in resource_mgr.entities_usage.itervalues(): print("[AZ-USE] %s" % e)
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)
                 candidate_task = CandidateTask.try_create(next_task_id)
                 if candidate_task:
-                    if candidate_task.find_machine_to_run(self._logger):
+                    if candidate_task.find_machines_to_run(self._logger):
                         if candidate_task.is_higher_priority(best_runnable_task):
                             best_runnable_task = candidate_task
                             self._logger.debug("--->[AZ-PERMUTE PRIORITY] %s  < %s", " " if best_runnable_task else best_runnable_task, candidate_task)
@@ -703,13 +713,14 @@ class Worker(object):
 
             if best_runnable_task:
                 if not best_runnable_task.is_higher_priority(highest_priority_blocked_task):
-                    machine = best_runnable_task.find_machine_without_blocking(highest_priority_blocked_task, self._logger)
-                    if not machine: return
+                    machine = best_runnable_task.find_machine_without_blocking(highest_priority_blocked_task)
+                    if not machine:
+                        return
                     self._redis.hset(best_runnable_task._redis_key, "resource", machine._name)
 
                 task.work_queue(self._redis, best_runnable_task._task_id, service.name)
                 self._redis.lrem(queue, 0, best_runnable_task._task_id)
-                self._logger.info('AZ-selected %s to be launched on %s', best_runnable_task._task_id, service.name)
+                self._logger.info('[AZ-SELECTED] %s to be launched on %s', best_runnable_task._task_id, service.name)
 
     def _get_current_config(self, task_id):
         task_entity = task.get_owner_entity(self._redis, task_id)

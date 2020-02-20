@@ -98,11 +98,15 @@ def get_entities_by_permission(the_permission, g):
 
 
 def check_permission(service, permission):
-    service_config = config._get_config_from_redis(redis, service)
-    entities = config.get_entities(service_config)
-    if any(not has_ability(flask.g, permission, pool_entity) for pool_entity in entities):
-        abort(make_response(jsonify(message="insufficient credentials for this action on the service %s" % service), 403))
-
+    is_polyentity = config.is_polyentity_service(redis, service)
+    if is_polyentity and not has_ability(flask.g, permission, ""):  # super admin
+        abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
+                            403))
+    elif not is_polyentity:
+        pool_entity = service[0:2].upper()
+        if not has_ability(flask.g, "edit_config", pool_entity):
+            abort(make_response(jsonify(message="insufficient credentials for edit_config (entity %s)" % pool_entity),
+                                403))
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -404,10 +408,7 @@ def post_adminrequest(app, service, action, configname="base", value="1"):
 @app.route("/service/selectconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/selectconfig", "edit_config")
 def server_selectconfig(service, configname):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     configresult = post_adminrequest(app, service, "select", configname)
     return flask.jsonify(configresult)
 
@@ -415,22 +416,16 @@ def server_selectconfig(service, configname):
 @app.route("/service/setconfig/<string:service>/<string:configname>", methods=["POST"])
 @filter_request("GET/service/setconfig", "edit_config")
 def server_setconfig(service, configname):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
-    config = flask.request.form.get('config')
-    configresult = post_adminrequest(app, service, "set", configname, config)
+    check_permission(service, "edit_config")
+    the_config = flask.request.form.get('config')
+    configresult = post_adminrequest(app, service, "set", configname, the_config)
     return flask.jsonify(configresult)
 
 
 @app.route("/service/delconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/delconfig", "edit_config")
 def server_delconfig(service, configname):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     configresult = post_adminrequest(app, service, "del", configname)
     return flask.jsonify(configresult)
 
@@ -439,10 +434,6 @@ def server_delconfig(service, configname):
 @filter_request("GET/service/restart", "edit_config")
 def server_restart(service):
     check_permission(service, "edit_config")
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
     configresult = post_adminrequest(app, service, "restart")
     return flask.jsonify(configresult)
 

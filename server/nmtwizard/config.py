@@ -43,6 +43,11 @@ def get_entities_from_service(redis, service_name):
     return entities
 
 
+def is_polyentity_service(redis, service_name):
+    service_config = _get_config_from_redis(redis, service_name)
+    is_polyentity = is_polyentity_config(service_config)
+    return is_polyentity
+
 def is_polyentity_config(config):
     return "entities" in config
 
@@ -62,8 +67,8 @@ def get_entities_limit_rate(redis, service):
     entities = service_config.get("entities")
     entities_rate = {}
     if entities:
-        weight_sum = float(sum([w["occup_weight"] for w in entities.itervalues()]))
-        entities_rate = {e.upper(): entities[e]["occup_weight"] * 100 / weight_sum for e in entities if "occup_weight" in entities[e]}
+        entities_rate = {e.upper(): entities[e]["occup_weight"] for e in entities if "occup_weight" in entities[e] and
+                         entities[e]["occup_weight"] > 0}
     else: #mono entity so
         entity_name = service_config["name"][0:2].upper()
         entities_rate[entity_name] = 1
@@ -83,7 +88,7 @@ def get_registries(redis, service):
             if service_config["entities"][ent].get("docker") and service_config["entities"][ent]["docker"].get("registries"):
                 registries.update(service_config["entities"][ent]["docker"]["registries"])
     elif service_config.get("docker") and service_config["docker"].get("registries"):
-        registries.update (service_config["docker"]["registries"])
+        registries.update(service_config["docker"]["registries"])
 
     return registries
 
@@ -94,6 +99,14 @@ def _get_config_from_redis(redis, service):
     current_configuration = json.loads(configurations[current_configuration_name][1])
     return current_configuration
 
+def set_entity_config(redis, service, pool_entity, the_config): # for now, we try to update only the entity
+    if pool_entity not in the_config["entities"]:
+        raise ValueError("Cannot modify the entity '%s'. Config is not valid" % pool_entity)
+
+    keys = 'admin:service:%s' % service
+    service_config = _get_config_from_redis(redis, service)
+    service_config["entities"][pool_entity] = the_config["entities"][pool_entity]
+    redis.hset(keys, "configurations", json.dumps(service_config))
 
 def get_default_storage(redis):
     default_config = redis.hget('default', 'configuration')
