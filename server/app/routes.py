@@ -62,7 +62,7 @@ def cust_jsonify(obj):
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    def_string = redis_db.hget("admin:service:" + service, "def").decode("utf-8")
+    def_string = redis_db.hget("admin:service:" + service, "def")
     if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
         abort(flask.make_response(response, 404))

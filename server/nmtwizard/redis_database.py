@@ -37,8 +37,6 @@ class RedisDatabase(redis.Redis):
         root_key = RedisDatabase.get_cache_key(name)
         key = "||".join(map(str, args))
         compressed_value = self.hget(root_key, key)
-        if compressed_value:
-            compressed_value = compressed_value.decode("utf-8")
         if compressed_value is None:
             LOGGER.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
             value = function(*args, **kwargs)
@@ -60,7 +58,7 @@ class RedisDatabase(redis.Redis):
     def get_cache(self, name, parameter, f):
         key = 'cache:%s' % name
         ser_parameter = json.dumps(parameter)
-        v = self.hget(key, ser_parameter).decode("utf-8")
+        v = self.hget(key, ser_parameter)
         if v is None:
             v = f(parameter)
             ser_v = cust_jsondump(v)
