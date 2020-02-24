@@ -142,7 +142,9 @@ def info(redis, taskfile_dir, task_id, fields):
         if f != "ttl":
             try:
                 r[f] = redis.hget(keyt, f).decode("utf-8")
-            except:
+            except Exception as e:
+                print("Error '{0}' occurred. Arguments {1}.".format(e, e.args))
+            finally:
                 r[f] = None
         else:
             r[f] = redis.ttl("beat:" + task_id)
