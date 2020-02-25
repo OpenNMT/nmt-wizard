@@ -23,7 +23,7 @@ if cfg.has_option('redis', 'password'):
 redis = RedisDatabase(cfg.get('redis', 'host'),
                       cfg.getint('redis', 'port'),
                       cfg.get('redis', 'db'),
-                      redis_password)
+                      redis_password, decode_response=True)
 retry = 0
 while retry < 10:
     try:

@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 import flask
 from flask import abort, make_response, jsonify, Response
 
-from app import app, redis_db, get_version, taskfile_dir
+from app import app, redis_db, redis_db_without_decode, get_version, taskfile_dir
 from nmtwizard import task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, \
     get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
@@ -62,7 +62,7 @@ def cust_jsonify(obj):
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    def_string = redis_db.hget("admin:service:" + service, "def")
+    def_string = redis_db_without_decode.hget("admin:service:" + service, "def")
     if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
         abort(flask.make_response(response, 404))
@@ -265,7 +265,8 @@ def list_services():
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
     for keys in redis_db.scan_iter("admin:service:*"):
-        service = keys[14:].decode("utf-8")
+        keys = keys
+        service = keys[14:]
         pool_entity = service[0:2].upper()
         if not showall and pool_entity != flask.g.user.entity.entity_code:
             continue
@@ -279,7 +280,7 @@ def list_services():
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
                 pids = []
                 for keyw in redis_db.scan_iter("admin:worker:%s:*" % service):
-                    pids.append(keyw[len("admin:worker:%s:" % service):].decode("utf-8"))
+                    pids.append(keyw[len("admin:worker:%s:" % service):])
                 pid = ",".join(pids)
                 if len(pids) == 0:
                     busy = "yes"
@@ -305,8 +306,10 @@ def server_listconfig(service):
     if not has_ability(flask.g, "edit_config", pool_entity):
         abort(make_response(jsonify(message="insufficient credentials for edit_config "
                                             "(entity %s)" % pool_entity), 403))
-    current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
-    configurations = redis_db.hget("admin:service:%s" % service, "configurations")
+    current_configuration = redis_db.hget("admin:service:%s" % service,
+                                          "current_configuration")
+    configurations = redis_db.hget("admin:service:%s" % service,
+                                   "configurations")
     return flask.jsonify({
         'current': current_configuration,
         'configurations': json.loads(configurations)
@@ -472,9 +475,9 @@ def launch(service):
                                             "(entity %s)" % pool_entity), 403))
 
     current_configuration_name = redis_db.hget("admin:service:%s" % service,
-                                               "current_configuration").decode("utf-8")
+                                               "current_configuration")
     configurations = json.loads(redis_db.hget("admin:service:%s" % service,
-                                              "configurations").decode("utf-8"))
+                                              "configurations"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
 
     content = flask.request.form.get('content')
@@ -924,9 +927,9 @@ def status(task_id):
 
     response = task.info(redis_db, taskfile_dir, task_id, fields)
     if response.get("alloc_lgpu"):
-        response["alloc_lgpu"] = response["alloc_lgpu"].decode("utf-8").split(",")
+        response["alloc_lgpu"] = response["alloc_lgpu"].split(",")
     if response.get("alloc_lcpu"):
-        response["alloc_lcpu"] = response["alloc_lcpu"].decode("utf-8").split(",")
+        response["alloc_lcpu"] = response["alloc_lcpu"].split(",")
     return flask.jsonify(response)
 
 
@@ -1002,7 +1005,8 @@ def list_tasks(pattern):
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis_db, clause + suffix):
-            task_id = task.id(task_key).decode("utf-8")
+            task_key = task_key
+            task_id = task.id(task_key)
             info = task.info(
                 redis_db, taskfile_dir, task_id,
                 ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource",

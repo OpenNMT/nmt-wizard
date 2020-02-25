@@ -50,7 +50,7 @@ if cfg.has_option('redis', 'password'):
 redis = RedisDatabase(cfg.get('redis', 'host'),
                       cfg.getint('redis', 'port'),
                       cfg.get('redis', 'db'),
-                      redis_password)
+                      redis_password, decode_response=True)
 
 retry = 0
 while retry < 10:
@@ -89,12 +89,12 @@ if os.path.isdir("configurations"):
     configurations = {}
     config_service_md5 = {}
     for filename in os.listdir("configurations"):
-        if filename.startswith(service+"_") and filename.endswith(".json"):
+        if filename.startswith(service + "_") and filename.endswith(".json"):
             file_path = os.path.join("configurations", filename)
             with open(file_path) as f:
-                configurations[filename[len(service)+1:-5]] = (os.path.getmtime(file_path),
-                                                               f.read())
-            config_service_md5[md5file(file_path)] = filename[len(service)+1:-5]
+                configurations[filename[len(service) + 1:-5]] = (os.path.getmtime(file_path),
+                                                                 f.read())
+            config_service_md5[md5file(file_path)] = filename[len(service) + 1:-5]
     current_configuration_md5 = md5file(args.config)
     if current_configuration_md5 in config_service_md5:
         current_configuration = config_service_md5[current_configuration_md5]
@@ -122,21 +122,20 @@ for key in redis.keys('queued:%s' % service):
 
 # On startup, add all active tasks in the work queue or service queue
 for task_id in task.list_active(redis, service):
+    task_id = task_id
     with redis.acquire_lock(task_id):
-        task_id = task_id.decode("utf-8")
-        status = redis.hget('task:'+task_id, 'status').decode("utf-8")
+        status = redis.hget('task:' + task_id, 'status')
         if status == 'queued' or status == 'allocating' or status == 'allocated':
             task.service_queue(redis, task_id,
-                               redis.hget('task:'+task_id, 'service').decode("utf-8"))
-            task.set_status(redis, 'task:'+task_id, 'queued')
+                               redis.hget('task:' + task_id, 'service'))
+            task.set_status(redis, 'task:' + task_id, 'queued')
         else:
             task.work_queue(redis, task_id, service)
     # check integrity of tasks
-    if redis.hget('task:'+task_id, 'priority') is None:
-        redis.hset('task:'+task_id, 'priority', 0)
-    if redis.hget('task:'+task_id, 'queued_time') is None:
-        redis.hset('task:'+task_id, 'queued_time', time.time())
-
+    if redis.hget('task:' + task_id, 'priority') is None:
+        redis.hset('task:' + task_id, 'priority', 0)
+    if redis.hget('task:' + task_id, 'queued_time') is None:
+        redis.hset('task:' + task_id, 'queued_time', time.time())
 
 if services[service].valid:
     # Desallocate all resources that are not anymore associated to a running task
@@ -146,25 +145,25 @@ if services[service].valid:
     # if multiple workers are for same service with different configurations
     # or storage definition change - restart all workers`
 
-    redis.delete('admin:resources:'+service)
+    redis.delete('admin:resources:' + service)
     for resource in resources:
-        redis.lpush('admin:resources:'+service, resource)
+        redis.lpush('admin:resources:' + service, resource)
         keygr = 'gpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keygr)
         for g, task_id in six.iteritems(running_tasks):
-            task_id = task_id.decode("utf-8")
+            task_id = task_id
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:'+task_id, 'status').decode("utf-8")
-                if not(status == 'running' or status == 'terminating'):
+                status = redis.hget('task:' + task_id, 'status')
+                if not (status == 'running' or status == 'terminating'):
                     redis.hdel(keygr, g)
         keycr = 'cpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keycr)
         for c, task_id in six.iteritems(running_tasks):
-            c = c.decode("utf-8")
-            task_id = task_id.decode("utf-8")
+            c = c
+            task_id = task_id
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:'+task_id, 'status').decode("utf-8")
-                if not(status == 'running' or status == 'terminating'):
+                status = redis.hget('task:' + task_id, 'status')
+                if not (status == 'running' or status == 'terminating'):
                     redis.hdel(keycr, c)
 
 
