@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 import flask
 from flask import abort, make_response, jsonify, Response
 
-from app import app, redis_db, get_version, taskfile_dir
+from app import app, redis_db, redis_db_without_decode, get_version, taskfile_dir
 from nmtwizard import task
 from nmtwizard.helper import build_task_id, shallow_command_analysis, \
     get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
@@ -62,7 +62,7 @@ def cust_jsonify(obj):
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    def_string = redis_db.hget("admin:service:" + service, "def")
+    def_string = redis_db_without_decode.hget("admin:service:" + service, "def")
     if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
         abort(flask.make_response(response, 404))
@@ -111,14 +111,14 @@ def _usagecapacity(service):
         r_usage_gpu = redis_db.hgetall("gpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_gpu:
             if t not in task_type:
-                task_type[t] = redis_db.hget("task:%s" % t, "type").decode("utf-8")
+                task_type[t] = redis_db.hget("task:%s" % t, "type")
             count_map_gpu[t] += 1
             count_used_xpus.incr_ngpus(1)
 
         r_usage_cpu = redis_db.hgetall("cpu_resource:%s:%s" % (service.name, resource)).values()
         for t in r_usage_cpu:
             if t not in task_type:
-                task_type[t] = redis_db.hget("task:%s" % t, "type").decode("utf-8")
+                task_type[t] = redis_db.hget("task:%s" % t, "type")
             count_map_cpu[t] += 1
             count_used_xpus.incr_ncpus(1)
 
@@ -265,7 +265,7 @@ def list_services():
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
     for keys in redis_db.scan_iter("admin:service:*"):
-        keys = keys.decode("utf-8")
+        keys = keys
         service = keys[14:]
         pool_entity = service[0:2].upper()
         if not showall and pool_entity != flask.g.user.entity.entity_code:
@@ -280,7 +280,6 @@ def list_services():
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
                 pids = []
                 for keyw in redis_db.scan_iter("admin:worker:%s:*" % service):
-                    keyw = keyw.decode('utf-8')
                     pids.append(keyw[len("admin:worker:%s:" % service):])
                 pid = ",".join(pids)
                 if len(pids) == 0:
@@ -308,9 +307,9 @@ def server_listconfig(service):
         abort(make_response(jsonify(message="insufficient credentials for edit_config "
                                             "(entity %s)" % pool_entity), 403))
     current_configuration = redis_db.hget("admin:service:%s" % service,
-                                          "current_configuration").decode("utf-8")
+                                          "current_configuration")
     configurations = redis_db.hget("admin:service:%s" % service,
-                                   "configurations").decode("utf-8")
+                                   "configurations")
     return flask.jsonify({
         'current': current_configuration,
         'configurations': json.loads(configurations)
@@ -476,9 +475,9 @@ def launch(service):
                                             "(entity %s)" % pool_entity), 403))
 
     current_configuration_name = redis_db.hget("admin:service:%s" % service,
-                                               "current_configuration").decode("utf-8")
+                                               "current_configuration")
     configurations = json.loads(redis_db.hget("admin:service:%s" % service,
-                                              "configurations").decode("utf-8"))
+                                              "configurations"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
 
     content = flask.request.form.get('content')
@@ -1006,7 +1005,7 @@ def list_tasks(pattern):
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis_db, clause + suffix):
-            task_key = task_key.decode("utf-8")
+            task_key = task_key
             task_id = task.id(task_key)
             info = task.info(
                 redis_db, taskfile_dir, task_id,

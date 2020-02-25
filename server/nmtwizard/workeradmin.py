@@ -17,7 +17,6 @@ def result(redis, cmd, message):
 
 def process(logger, redis, service):
     for cmd_key in redis.scan_iter('admin:config:%s:*' % service):
-        cmd_key = cmd_key.decode("utf-8")
         v = redis.get(cmd_key)
         redis.delete(cmd_key)
         cmd = cmd_key.split(':')
@@ -26,8 +25,8 @@ def process(logger, redis, service):
             return
 
         keys = 'admin:service:%s' % service
-        current_configuration = redis.hget(keys, "current_configuration").decode("utf-8")
-        configurations = json.loads(redis.hget(keys, "configurations").decode("utf-8"))
+        current_configuration = redis.hget(keys, "current_configuration")
+        configurations = json.loads(redis.hget(keys, "configurations"))
 
         if cmd[3] == 'set':
             if cmd[4] == 'base' or re_badchar.search(cmd[4]):

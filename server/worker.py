@@ -50,7 +50,7 @@ if cfg.has_option('redis', 'password'):
 redis = RedisDatabase(cfg.get('redis', 'host'),
                       cfg.getint('redis', 'port'),
                       cfg.get('redis', 'db'),
-                      redis_password)
+                      redis_password, decode_response=True)
 
 retry = 0
 while retry < 10:
@@ -68,8 +68,8 @@ assert retry < 10, "Cannot connect to redis DB - aborting"
 # load default configuration from database
 retry = 0
 while retry < 10:
-    default_config = redis.hget('default', 'configuration').decode("utf-8")
-    default_config_timestamp = redis.hget('default', 'timestamp').decode("utf-8")
+    default_config = redis.hget('default', 'configuration')
+    default_config_timestamp = redis.hget('default', 'timestamp')
     if default_config:
         break
     time.sleep(5)
@@ -124,7 +124,7 @@ for key in redis.keys('queued:%s' % service):
 for task_id in task.list_active(redis, service):
     task_id = task_id
     with redis.acquire_lock(task_id):
-        status = redis.hget('task:' + task_id, 'status').decode("utf-8")
+        status = redis.hget('task:' + task_id, 'status')
         if status == 'queued' or status == 'allocating' or status == 'allocated':
             task.service_queue(redis, task_id,
                                redis.hget('task:' + task_id, 'service'))
@@ -153,7 +153,7 @@ if services[service].valid:
         for g, task_id in six.iteritems(running_tasks):
             task_id = task_id
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:' + task_id, 'status').decode("utf-8")
+                status = redis.hget('task:' + task_id, 'status')
                 if not (status == 'running' or status == 'terminating'):
                     redis.hdel(keygr, g)
         keycr = 'cpu_resource:%s:%s' % (service, resource)
@@ -162,7 +162,7 @@ if services[service].valid:
             c = c
             task_id = task_id
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:' + task_id, 'status').decode("utf-8")
+                status = redis.hget('task:' + task_id, 'status')
                 if not (status == 'running' or status == 'terminating'):
                     redis.hdel(keycr, c)
 
