@@ -2,10 +2,9 @@
 Docker-based tasks.
 """
 
-import logging
 import abc
 import six
-from nmtwizard import config
+from nmtwizard import configuration as config
 from nmtwizard.capacity import Capacity
 
 

@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+
 import paramiko
 
 from nmtwizard import common

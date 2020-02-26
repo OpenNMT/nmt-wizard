@@ -6,15 +6,14 @@ import json
 import pickle
 import os
 import sys
-import six
 import argparse
 import signal
 
-from redis.exceptions import ConnectionError
-
+# from redis.exceptions import ConnectionError
+import six
 from six.moves import configparser
 
-from nmtwizard import config, task
+from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard.worker import Worker
 
@@ -52,6 +51,11 @@ redis = RedisDatabase(cfg.get('redis', 'host'),
                       cfg.getint('redis', 'port'),
                       cfg.get('redis', 'db'),
                       redis_password)
+
+redis2 = RedisDatabase(cfg.get('redis', 'host'),
+                      cfg.getint('redis', 'port'),
+                      cfg.get('redis', 'db'),
+                      redis_password, False)
 
 retry = 0
 while retry < 10:
@@ -112,7 +116,7 @@ redis.expire(keyw, 600)
 keys = 'admin:service:%s' % service
 redis.hset(keys, "current_configuration", current_configuration)
 redis.hset(keys, "configurations", json.dumps(configurations))
-redis.hset(keys, "def", pickle.dumps(services[service]))
+redis2.hset(keys, "def", pickle.dumps(services[service]))
 
 # remove reserved state from resources
 for key in redis.keys('reserved:%s:*' % service):
@@ -143,7 +147,7 @@ if services[service].valid:
 
     # TODO:
     # if multiple workers are for same service with different configurations
-    # or storage definition change - restart all workers
+    # or storage definition change - restart all workers`
 
     redis.delete('admin:resources:'+service)
     for resource in resources:

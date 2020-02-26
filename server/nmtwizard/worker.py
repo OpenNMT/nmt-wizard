@@ -7,7 +7,7 @@ import traceback
 from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
-from nmtwizard import config
+from nmtwizard import configuration as config
 
 
 def _compatible_resource(resource, request_resource):
@@ -154,34 +154,34 @@ class Worker(object):
                 else:
                     self._logger.warning('%s / %s: no resources available, waiting', task_id, nxpus)
                     task.service_queue(self._redis, task_id, service.name)
-            # elif status == 'allocating':
-            #     resource = self._redis.hget(keyt, 'alloc_resource')
-            #     nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-            #     already_allocated_xpus = Capacity()
-            #     keygr = 'gpu_resource:%s:%s' % (service.name, resource)
-            #     for k, v in six.iteritems(self._redis.hgetall(keygr)):
-            #         if v == task_id:
-            #             already_allocated_xpus.incr_ngpus(1)
-            #     keycr = 'cpu_resource:%s:%s' % (service.name, resource)
-            #     for k, v in six.iteritems(self._redis.hgetall(keycr)):
-            #         if v == task_id:
-            #             already_allocated_xpus.incr_ncpus(1)
-            #     capacity = service.list_resources()[resource]
-            #     available_xpus, remaining_xpus = self._reserve_resource(
-            #                                         service, resource, capacity, task_id,
-            #                                         nxpus - already_allocated_xpus,
-            #                                         Capacity(), Capacity(-1, -1))
-            #     self._logger.info(
-            #         'task: %s - resource: %s (capacity %s)- already %s - available %s',
-            #         task_id, resource, capacity, already_allocated_xpus, available_xpus)
-            #     if available_xpus and available_xpus == nxpus - already_allocated_xpus:
-            #         task.set_status(self._redis, keyt, 'allocated')
-            #         key_reserved = 'reserved:%s:%s' % (service.name, resource)
-            #         self._redis.delete(key_reserved)
-            #         task.work_queue(self._redis, task_id, service.name)
-            #     else:
-            #         task.work_queue(self._redis, task_id, service.name,
-            #                         delay=20)
+            elif status == 'allocating':
+                resource = self._redis.hget(keyt, 'alloc_resource')
+                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+                already_allocated_xpus = Capacity()
+                keygr = 'gpu_resource:%s:%s' % (service.name, resource)
+                for k, v in six.iteritems(self._redis.hgetall(keygr)):
+                    if v == task_id:
+                        already_allocated_xpus.incr_ngpus(1)
+                keycr = 'cpu_resource:%s:%s' % (service.name, resource)
+                for k, v in six.iteritems(self._redis.hgetall(keycr)):
+                    if v == task_id:
+                        already_allocated_xpus.incr_ncpus(1)
+                capacity = service.list_resources()[resource]
+                available_xpus, remaining_xpus = self._reserve_resource(
+                                                    service, resource, capacity, task_id,
+                                                    nxpus - already_allocated_xpus,
+                                                    Capacity(), Capacity(-1, -1), True)
+                self._logger.info(
+                    'task: %s - resource: %s (capacity %s)- already %s - available %s',
+                    task_id, resource, capacity, already_allocated_xpus, available_xpus)
+                if available_xpus and available_xpus == nxpus - already_allocated_xpus:
+                    task.set_status(self._redis, keyt, 'allocated')
+                    key_reserved = 'reserved:%s:%s' % (service.name, resource)
+                    self._redis.delete(key_reserved)
+                    task.work_queue(self._redis, task_id, service.name)
+                else:
+                    task.work_queue(self._redis, task_id, service.name,
+                                    delay=20)
             elif status == 'allocated':
                 content = json.loads(self._redis.hget(keyt, 'content'))
                 resource = self._redis.hget(keyt, 'alloc_resource')
@@ -253,7 +253,6 @@ class Worker(object):
                 except Exception as e:
                     self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
                     self._redis.hincrby(keyt, 'status_fail', 1)
-                    self._logger.info(traceback.format_exc())
                     if self._redis.hget(keyt, 'status_fail') > 4:
                         task.terminate(self._redis, task_id, phase='lost_connection')
                         return
@@ -404,7 +403,7 @@ class Worker(object):
                 return None
 
             idx = 1
-            for i in xrange(task_asked_capacity.ngpus):
+            for i in range(task_asked_capacity.ngpus):
                 while self._redis.hget(keygr, str(idx)) is not None:
                     idx += 1
                     assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
@@ -412,7 +411,7 @@ class Worker(object):
                 self._redis.hset(keygr, str(idx), task_id)
 
             cpu_idx = 0
-            for i in xrange(task_asked_capacity.ncpus):
+            for i in range(task_asked_capacity.ncpus):
                 while self._redis.hget(keycr, str(cpu_idx)) is not None:
                     cpu_idx += 1
                     assert cpu_idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
@@ -471,7 +470,7 @@ class Worker(object):
             @staticmethod
             def initialize_entities_usage(redis, service_name):
                 entity_usage_weights = config.get_entities_limit_rate(redis, service_name)
-                weight_sum = float(sum([w for w in entity_usage_weights.itervalues() if w > 0]))
+                weight_sum = float(sum([w for w in entity_usage_weights.values() if w > 0]))
                 entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0 )
                                   for e, r in six.iteritems(entity_usage_weights)}
                 return entities_usage
@@ -709,7 +708,7 @@ class Worker(object):
             best_runnable_task = None
             runnable_tasks = []
             highest_priority_blocked_task = None
-            for e in resource_mgr.entities_usage.itervalues(): print("[AZ-USE] %s" % e)
+            for e in resource_mgr.entities_usage.values(): print("[AZ-USE] %s" % e)
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)

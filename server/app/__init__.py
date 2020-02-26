@@ -5,9 +5,10 @@ import json
 
 from flask import Flask
 from flask_ini import FlaskIni
+# from redis.exceptions import ConnectionError
+
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
-from redis.exceptions import ConnectionError
 
 VERSION = "1.10.1"
 
@@ -31,7 +32,8 @@ assert os.path.isfile(default_file), "Cannot find default.json: %s" % default_fi
 with open(default_file) as default_fh:
     default_config = default_fh.read()
     base_config = json.loads(default_config)
-    assert 'storages' in base_config, "incomplete configuration - missing `storages` in %s" % default_file
+    assert 'storages' in base_config, "incomplete configuration - missing " \
+                                      "`storages` in %s" % default_file
 
 app.iniconfig = FlaskIni()
 with app.app_context():
@@ -40,10 +42,15 @@ with app.app_context():
 app.logger.setLevel(logging.getLevelName(
                     app.iniconfig.get('default', 'log_level', fallback='ERROR')))
 
-redis = RedisDatabase(app.iniconfig.get('redis', 'host'),
+redis_db = RedisDatabase(app.iniconfig.get('redis', 'host'),
                       app.iniconfig.get('redis', 'port', fallback=6379),
                       app.iniconfig.get('redis', 'db', fallback=0),
                       app.iniconfig.get('redis', 'password', fallback=None))
+
+redis_db2 = RedisDatabase(app.iniconfig.get('redis', 'host'),
+                      app.iniconfig.get('redis', 'port', fallback=6379),
+                      app.iniconfig.get('redis', 'db', fallback=0),
+                      app.iniconfig.get('redis', 'password', fallback=None), False)
 
 assert app.iniconfig.get('default', 'taskfile_dir'), "missing taskfile_dir from settings.ini"
 taskfile_dir = app.iniconfig.get('default', 'taskfile_dir')
@@ -52,7 +59,8 @@ assert os.path.isdir(taskfile_dir), "taskfile_dir (%s) must be a directory" % ta
 retry = 0
 while retry < 10:
     try:
-        current_default_config = redis.exists("default") and redis.hget("default", "configuration")
+        current_default_config = redis_db.exists("default") \
+                                 and redis_db.hget("default", "configuration")
         break
     except (ConnectionError, AssertionError) as e:
         retry += 1
@@ -61,8 +69,8 @@ while retry < 10:
 assert retry < 10, "Cannot connect to redis DB - aborting"
 
 if current_default_config != default_config:
-    redis.hset("default", "configuration", default_config)
-    redis.hset("default", "timestamp", time.time())
+    redis_db.hset("default", "configuration", default_config)
+    redis_db.hset("default", "timestamp", time.time())
 
 
 def append_version(v):

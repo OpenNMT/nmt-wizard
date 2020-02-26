@@ -147,7 +147,10 @@ def info(redis, taskfile_dir, task_id, fields):
     r = {}
     for f in fields:
         if f != "ttl":
-            r[f] = redis.hget(keyt, f)
+            try:
+                r[f] = redis.hget(keyt, f)
+            except:
+                r[f] = None
         else:
             r[f] = redis.ttl("beat:" + task_id)
     if field:
@@ -164,7 +167,7 @@ def change(redis, task_id, service, priority, ngpus):
         prev_service = redis.hget(keyt, "service")
         status = redis.hget(keyt, "status")
         if status != "queued":
-            return (False, "cannot move task `%s` - not in queued status" % task_id)
+            return False, "cannot move task `%s` - not in queued status" % task_id
         if service:
             if prev_service != service:
                 disable(redis, task_id, prev_service)
@@ -176,7 +179,7 @@ def change(redis, task_id, service, priority, ngpus):
             redis.hset(keyt, "priority", priority)
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
-    return (True, "")
+    return True, ""
 
 
 def get_owner_entity(redis, task_id):
@@ -200,9 +203,9 @@ def delete(redis, taskfile_dir, task_id):
     keyt = "task:" + task_id
     status = redis.hget(keyt, "status")
     if status is None:
-        return (False, "task does not exist")
+        return False, "task does not exist"
     if status != "stopped":
-        return (False, "status is not stopped")
+        return False, "status is not stopped"
     with redis.acquire_lock(keyt):
         redis.delete(keyt)
         redis.delete("queue:" + task_id)
@@ -263,7 +266,7 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
-    with open(os.path.join(taskdir, filename), "wb") as fh:
+    with open(os.path.join(taskdir, filename), "w") as fh:
         if limit and len(content) >= limit:
             content = content[:limit-len(disclaimer)] + disclaimer
         fh.write(content)
@@ -278,7 +281,7 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     current_size = 0
     if os.path.isfile(filepath):
         current_size = os.stat(filepath).st_size
-    if current_size >= limit:
+    if limit and current_size >= limit:
         return
     if limit and len(content)+current_size >= limit:
         content = content[:limit-len(disclaimer)] + disclaimer
