@@ -147,10 +147,7 @@ def info(redis, taskfile_dir, task_id, fields):
     r = {}
     for f in fields:
         if f != "ttl":
-            try:
-                r[f] = redis.hget(keyt, f)
-            except:
-                r[f] = None
+            r[f] = redis.hget(keyt, f)
         else:
             r[f] = redis.ttl("beat:" + task_id)
     if field:

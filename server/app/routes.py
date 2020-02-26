@@ -13,19 +13,17 @@ import traceback
 
 import semver
 import six
+from werkzeug.exceptions import HTTPException
 import flask
 from flask import abort, make_response, jsonify, Response
-from pyparsing import basestring
-from werkzeug.exceptions import HTTPException
-from app import app, redis_db, redis_db2, get_version, taskfile_dir
+
+from app import app, redis_db, redis_db_without_decode, get_version, taskfile_dir
 from nmtwizard import task, configuration as config
 from nmtwizard.helper import build_task_id, shallow_command_analysis, \
     get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity, TaskInfo
-
-
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -94,7 +92,7 @@ def get_entity_owner(service_entities, service_name):
 
 
 def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if isinstance(ent_code, basestring) and has_ability(g, the_permission, ent_code)]
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, str) and has_ability(g, the_permission, ent_code)]
 
 
 def check_permission(service, permission):
@@ -130,11 +128,11 @@ def cust_jsonify(obj):
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    def_string = redis_db2.hget("admin:service:" + service, "def")
+    def_string = redis_db_without_decode.hget("admin:service:" + service, "def")
     if def_string is None:
         response = flask.jsonify(message="invalid service name: %s" % service)
         abort(flask.make_response(response, 404))
-    return pickle.loads(def_string,encoding='utf-8' )
+    return pickle.loads(def_string)
 
 
 def _duplicate_adapt(service, content):
@@ -215,14 +213,14 @@ def _find_compatible_resource(service, ngpus, ncpus, request_resource):
     return False
 
 
-def _get_registry(service, image):
+def _get_registry(service_module, image):
     p = image.find("/")
     if p == -1:
         abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
                                   400))
     repository = image[:p]
     registry = None
-    docker_registries = config.get_registries(redis_db, service.name)
+    docker_registries = config.get_registries(redis_db, service_module.name)
     for r in docker_registries:
         v = docker_registries[r]
         if "default_for" in v and repository in v['default_for']:
