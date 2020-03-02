@@ -20,14 +20,14 @@ class RedisDatabase(redis.Redis):
     def get_cache_key(cache_key):
         return RedisDatabase.ROOT_CACHE_KEY + ":" + cache_key
 
-    def __init__(self, host, port, db, password, decode_response):
+    def __init__(self, host, port, db, password, decode_responses=True):
         """Creates a new database instance."""
         super(RedisDatabase, self).__init__(
             host=host,
             port=port,
             db=db,
             password=password,
-            decode_responses=decode_response)
+            decode_responses=decode_responses)
 
     def acquire_lock(self, name, acquire_timeout=20, expire_time=60):
         return RedisLock(self, name, acquire_timeout=acquire_timeout, expire_time=expire_time)

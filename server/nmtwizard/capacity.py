@@ -43,3 +43,15 @@ class Capacity(list):
 
     def __eq__(self, other):
         return self.ngpus == other.ngpus and self.ncpus == other.ncpus
+
+    def __mul__(self, other):
+        return (self.ngpus * other.ngpus, self.ncpus * other.ncpus)
+
+    def mult_scalar(self, num):
+        return Capacity(self.ngpus * num, self.ncpus * num)
+
+    def __str__(self):
+        return "Capacity(cpu:%d, gpu:%d)" % (self.ncpus, self.ngpus)
+
+    def inf_or_eq(self, other):
+        return self == other or (self.ngpus <= other.ngpus and self.ncpus <= other.ncpus)

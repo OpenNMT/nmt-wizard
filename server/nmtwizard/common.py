@@ -37,21 +37,23 @@ def rmprivate(lst):
         for t in lst:
             r.append(rmprivate(t))
         return r
-    if isinstance(lst, dict):
+    elif isinstance(lst, dict):
         for k, v in six.iteritems(lst):
             lst[k] = rmprivate(v)
         return lst
-    t = lst
-    if isinstance(t, six.string_types):
-        p = t.find("[[private:")
-        while p != -1:
-            t = t[0:p] + t[p + 10:]
-            q = t.find("]]")
-            if q != -1:
-                t = t[0:q] + t[q + 2:]
-                p = t.find("[[private:", q)
-            p = -1
-    return t
+    else:
+        t = lst
+        if isinstance(t, six.string_types):
+            p = t.find("[[private:")
+            while p != -1:
+                t = t[0:p] + t[p+10:]
+                q = t.find("]]")
+                if q != -1:
+                    t = t[0:q] + t[q+2:]
+                    p = t.find("[[private:", q)
+                else:
+                    p = -1
+        return t
 
 
 # read the launch_script that will be used to launched and monitor tasks
@@ -210,39 +212,39 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
         if registry['type'] == 'aws' and not program_exists(client, 'aws'):
             raise EnvironmentError("missing aws client")
 
-    # check log_dir
-    if not run_and_check_command(client, "test -d '%s'" % log_dir):
-        raise EnvironmentError("missing log directory: %s" % log_dir)
+        # check log_dir
+        if not run_and_check_command(client, "test -d '%s'" % log_dir):
+            raise EnvironmentError("missing log directory: %s" % log_dir)
 
-    if not program_exists(client, "docker"):
-        raise EnvironmentError("docker not available")
-    if len(lgpu) != 0:
-        if not program_exists(client, "nvidia-docker"):
-            raise EnvironmentError("nvidia-docker not available")
+        if not program_exists(client, "docker"):
+            raise EnvironmentError("docker not available")
+        if len(lgpu) != 0:
+            if not program_exists(client, "nvidia-docker"):
+                raise EnvironmentError("nvidia-docker not available")
 
-    usage = {'gpus': [], 'disk': []}
-    for gpu_id in lgpu:
-        gpu_id = int(gpu_id)
-        exit_status, stdout, stderr = run_command(
-            client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
-        if exit_status != 0:
-            raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
-                exit_status, stderr.read()))
+        usage = {'gpus': [], 'disk': []}
+        for gpu_id in lgpu:
+            gpu_id = int(gpu_id)
+            exit_status, stdout, stderr = run_command(
+                client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
+            if exit_status != 0:
+                raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
+                    exit_status, stderr.read()))
 
-        out = stdout.read()
-        gpu = '?'
-        mem = '?'
-        m = re.search(b'Gpu *: (.*) *\n', out)
-        if m:
-            gpu = m.group(1).decode('utf-8')
-        m = re.search(b'Free *: (.*) MiB *\n', out)
-        if m:
-            mem = int(m.group(1).decode('utf-8'))
-        usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem': mem})
-        if check and requirements:
-            if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
-                raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
-                                       % (gpu_id, mem, requirements["free_gpu_memory"]))
+            out = stdout.read()
+            gpu = '?'
+            mem = '?'
+            m = re.search(b'Gpu *: (.*) *\n', out)
+            if m:
+                gpu = m.group(1).decode('utf-8')
+            m = re.search(b'Free *: (.*) MiB *\n', out)
+            if m:
+                mem = int(m.group(1).decode('utf-8'))
+            usage['gpus'].append({'gpuid': gpu_id, 'usage': gpu, 'mem': mem})
+            if check and requirements:
+                if "free_gpu_memory" in requirements and mem < requirements["free_gpu_memory"]:
+                    raise EnvironmentError("not enough gpu memory available on gpu %d: %d/%d"
+                                           % (gpu_id, mem, requirements["free_gpu_memory"]))
 
     if requirements and "free_disk_space" in requirements:
         for path, space_G in six.iteritems(requirements["free_disk_space"]):
@@ -489,9 +491,10 @@ def launch_task(task_id,
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
                               storages, docker_command, log_dir, support_statistics)
+    env_txt = json.dumps(json.dumps(json.loads(env if env else "{}")))
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
-                                               callback_url or '', env, callback_interval) + \
+                                               callback_url or '', env_txt, callback_interval) + \
           "' > %s/%s_launch.log" % (log_dir, task_id)
 
     # get the process group id

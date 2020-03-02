@@ -94,6 +94,8 @@ class TorqueService(Service):
                options,
                gpulist,
                resource,
+               storages,
+               docker_config,
                docker_registry,
                docker_image,
                docker_tag,
@@ -128,7 +130,7 @@ class TorqueService(Service):
 
         cmd += "DEVICE=$(guessdevice)\n"
         cmd += "echo \"RUN ON GPU ${DEVICE}\"\n"
-        registry = self._config['docker']['registries'][docker_registry]
+        registry = docker_config['registries'][docker_registry]
         registry_uri = registry['uri']
         registry_urip = '' if registry_uri == '' else registry_uri + '/'
         image_ref = '%s%s:%s' % (registry_urip, docker_image, docker_tag)
@@ -143,10 +145,10 @@ class TorqueService(Service):
         cmd += cmd_docker_pull + '\n'
         docker_cmd = "echo | " + common.cmd_docker_run(
             "$DEVICE",
-            self._config['docker'],
+            docker_config,
             task_id,
             image_ref,
-            self._config['storage'],
+            storages,
             self._config['callback_url'],
             self._config['callback_interval'],
             docker_command)
@@ -216,6 +218,8 @@ class TorqueService(Service):
             '%s %s' % (os.path.join(params['torque_install_path'], "qdel"), params['qsub_id']))
         client.close()
 
+    def get_server_detail(self, server, field_name):
+        raise NotImplementedError()
 
 def init(config):
     return TorqueService(config)

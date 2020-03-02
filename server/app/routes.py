@@ -18,12 +18,12 @@ import flask
 from flask import abort, make_response, jsonify, Response
 
 from app import app, redis_db, redis_db_without_decode, get_version, taskfile_dir
-from nmtwizard import task
+from nmtwizard import task, configuration as config
 from nmtwizard.helper import build_task_id, shallow_command_analysis, \
     get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
-from nmtwizard.task import get_task_entity
+from nmtwizard.task import get_task_entity, TaskInfo
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -35,10 +35,76 @@ if max_log_size is not None:
 TASK_RELEASE_TYPE = "relea"
 
 
-def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if isinstance(ent_code, str) and
-            has_ability(g, the_permission, ent_code)]
+class StorageId():
+    @staticmethod
+    def encode_storage_name(name, entity):
+        return name + "@" + entity
 
+    @staticmethod
+    def decode_storage_name(name):
+        decoded_name = name.split("@", 1)
+        if len(decoded_name) == 2:
+            entity = decoded_name[0]
+            storage_id = decoded_name[1]
+        else:  # case user not giving the entity, consider it as storage name
+            entity = None
+            storage_id = decoded_name[0]
+
+        return entity, storage_id
+
+    @staticmethod
+    def get_entites(names):
+        entities = set({})
+        for storage in names:
+            entity, storage_id = StorageId.decode_storage_name(storage)
+            if entity and entity != config.CONFIG_DEFAULT:
+                entities.add(entity)
+        return entities
+
+
+def get_entity_owner(service_entities, service_name):
+
+    trainer_of_entities = get_entities_by_permission("train", flask.g)
+
+    if not trainer_of_entities:
+        abort(flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
+
+    entity_owner = flask.request.form.get('entity_owner')
+    if not entity_owner:
+        if len(trainer_of_entities) == 1:
+            entity_owner = trainer_of_entities[0]
+        elif len(service_entities) == 1:
+            entity_owner = service_entities[0]
+
+    if not entity_owner:
+        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" %
+                                                            str(",".join(trainer_of_entities))), 400))
+    entity_owner= entity_owner.upper()
+
+    if not has_ability(flask.g, 'train', entity_owner):
+        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
+    elif entity_owner not in service_entities:
+        abort(flask.make_response(flask.jsonify(
+            message="This service '%s' is not reserved to launch the task of the entity %s" % (
+                service_name, entity_owner)), 400))
+
+    return entity_owner
+
+
+def get_entities_by_permission(the_permission, g):
+    return [ent_code for ent_code in g.entities if isinstance(ent_code, str) and has_ability(g, the_permission, ent_code)]
+
+
+def check_permission(service, permission):
+    is_polyentity = config.is_polyentity_service(redis_db, service)
+    if is_polyentity and not has_ability(flask.g, permission, ""):  # super admin
+        abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
+                            403))
+    elif not is_polyentity:
+        pool_entity = service[0:2].upper()
+        if not has_ability(flask.g, "edit_config", pool_entity):
+            abort(make_response(jsonify(message="insufficient credentials for edit_config (entity %s)" % pool_entity),
+                                403))
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -154,8 +220,9 @@ def _get_registry(service_module, image):
                                   400))
     repository = image[:p]
     registry = None
-    for r in service_module._config['docker']['registries']:
-        v = service_module._config['docker']['registries'][r]
+    docker_registries = config.get_registries(redis_db, service_module.name)
+    for r in docker_registries:
+        v = docker_registries[r]
         if "default_for" in v and repository in v['default_for']:
             registry = r
             break
@@ -265,13 +332,18 @@ def list_services():
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
     for keys in redis_db.scan_iter("admin:service:*"):
-        keys = keys
         service = keys[14:]
-        pool_entity = service[0:2].upper()
-        if not showall and pool_entity != flask.g.user.entity.entity_code:
+        configurations = redis_db.hget("admin:service:%s" % service, "configurations")
+        current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
+        if current_configuration is None or configurations is None:
+            abort(make_response(jsonify(message="service configuration %s unknown" % service), 404))
+
+        pool_entities = config.get_entities(json.loads(json.loads(configurations)[current_configuration][1]))
+
+        if not showall and flask.g.user.entity.entity_code not in pool_entities:
             continue
 
-        if has_ability(flask.g, "train", pool_entity):
+        if any(has_ability(flask.g, "train", pool_entity) for pool_entity in pool_entities):
             service_def = get_service(service)
             name = service_def.display_name
             if minimal:
@@ -302,14 +374,9 @@ def describe(service):
 @app.route("/service/listconfig/<string:service>", methods=["GET"])
 @filter_request("GET/service/listconfig", "edit_config")
 def server_listconfig(service):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
-    current_configuration = redis_db.hget("admin:service:%s" % service,
-                                          "current_configuration")
-    configurations = redis_db.hget("admin:service:%s" % service,
-                                   "configurations")
+    check_permission(service, "edit_config")
+    current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
+    configurations = redis_db.hget("admin:service:%s" % service, "configurations")
     return flask.jsonify({
         'current': current_configuration,
         'configurations': json.loads(configurations)
@@ -340,10 +407,7 @@ def post_adminrequest(app, service, action, configname="base", value="1"):
 @app.route("/service/selectconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/selectconfig", "edit_config")
 def server_selectconfig(service, configname):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     configresult = post_adminrequest(app, service, "select", configname)
     return flask.jsonify(configresult)
 
@@ -351,22 +415,16 @@ def server_selectconfig(service, configname):
 @app.route("/service/setconfig/<string:service>/<string:configname>", methods=["POST"])
 @filter_request("GET/service/setconfig", "edit_config")
 def server_setconfig(service, configname):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
-    config = flask.request.form.get('config')
-    configresult = post_adminrequest(app, service, "set", configname, config)
+    check_permission(service, "edit_config")
+    the_config = flask.request.form.get('config')
+    configresult = post_adminrequest(app, service, "set", configname, the_config)
     return flask.jsonify(configresult)
 
 
 @app.route("/service/delconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/delconfig", "edit_config")
 def server_delconfig(service, configname):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     configresult = post_adminrequest(app, service, "del", configname)
     return flask.jsonify(configresult)
 
@@ -374,10 +432,7 @@ def server_delconfig(service, configname):
 @app.route("/service/restart/<string:service>", methods=["GET"])
 @filter_request("GET/service/restart", "edit_config")
 def server_restart(service):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     configresult = post_adminrequest(app, service, "restart")
     return flask.jsonify(configresult)
 
@@ -385,10 +440,7 @@ def server_restart(service):
 @app.route("/service/stop/<string:service>", methods=["GET"])
 @filter_request("GET/service/stop", "stop_config")
 def server_stop(service):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "stop_config")
     configresult = post_adminrequest(app, service, "stop")
     return flask.jsonify(configresult)
 
@@ -396,10 +448,7 @@ def server_stop(service):
 @app.route("/service/enable/<string:service>/<string:resource>", methods=["GET"])
 @filter_request("GET/service/enable", "edit_config")
 def server_enable(service, resource):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     service_module = get_service(service)
     if resource not in service_module.list_resources():
         abort(make_response(jsonify(message="unknown resource '%s' in '%s'" % (resource, service)),
@@ -414,10 +463,7 @@ def server_enable(service, resource):
 @app.route("/service/disable/<string:service>/<string:resource>", methods=["GET"])
 @filter_request("GET/service/disable", "edit_config")
 def server_disable(service, resource):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "edit_config", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for edit_config "
-                                            "(entity %s)" % pool_entity), 403))
+    check_permission(service, "edit_config")
     message = flask.request.args.get('message')
     if message is None:
         message = "DISABLED"
@@ -435,9 +481,11 @@ def check(service):
     service_options = flask.request.get_json() if flask.request.is_json else None
     if service_options is None:
         service_options = {}
+
     service_module = get_service(service)
+    registries = config.get_registries(redis_db, service)
     try:
-        details = service_module.check(service_options)
+        details = service_module.check(service_options, registries)
     except ValueError as e:
         abort(flask.make_response(flask.jsonify(message=str(e)), 400))
     except Exception as e:
@@ -469,28 +517,19 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
-    pool_entity = service[0:2].upper()
-    if not has_ability(flask.g, "train", pool_entity):
-        abort(make_response(jsonify(message="insufficient credentials for train "
-                                            "(entity %s)" % pool_entity), 403))
-
-    current_configuration_name = redis_db.hget("admin:service:%s" % service,
-                                               "current_configuration")
-    configurations = json.loads(redis_db.hget("admin:service:%s" % service,
-                                              "configurations"))
+    current_configuration_name = redis_db.hget("admin:service:%s" % service, "current_configuration")
+    configurations = json.loads(redis_db.hget("admin:service:%s" % service, "configurations"))
     current_configuration = json.loads(configurations[current_configuration_name][1])
+
+    pool_entities = config.get_entities(current_configuration)
+    if all(not has_ability(flask.g, "train", entity) for entity in pool_entities):
+        abort(make_response(jsonify(message="insufficient credentials for train (entity %s)" % service), 403))
 
     content = flask.request.form.get('content')
     if content is not None:
         content = json.loads(content)
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
-
-    trainer_of_entities = get_entities_by_permission("train", flask.g)
-
-    if not trainer_of_entities:
-        abort(
-            flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
 
     files = {}
     for k in flask.request.files:
@@ -526,6 +565,12 @@ def launch(service):
         if task_suffix is None:
             task_suffix = task_type
 
+    service_entities = config.get_entities(current_configuration)
+    entity_owner = get_entity_owner(service_entities, service)
+    trainer_entities = get_entities_by_permission("train", flask.g)
+    assert trainer_entities  # Here: almost sure you are trainer
+    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner, TaskInfo.STORAGE_ENTITIES.value:json.dumps(trainer_entities)}
+
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
         abort(flask.make_response(flask.jsonify(message="invalid options field"), 400))
@@ -536,7 +581,7 @@ def launch(service):
         abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
         content['docker']['registry'] = _get_registry(service_module, content['docker']['image'])
-    elif content['docker']['registry'] not in service_module._config['docker']['registries']:
+    elif content['docker']['registry'] not in service_module.get_docker_config(entity_owner)['registries']:
         abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
 
     resource = service_module.get_resource_from_options(content["options"])
@@ -613,11 +658,9 @@ def launch(service):
     # check that parent model type matches current command
     if parent_task_type:
         if (parent_task_type == "trans" or parent_task_type == "relea" or
-                (
-                        task_type == "prepr" and parent_task_type != "train"
-                        and parent_task_type != "vocab")):
+                (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
             abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" %
-                                                            parent_task_type), 400))
+                                                            (parent_task_type)), 400))
 
     task_ids = []
     task_create = []
@@ -655,7 +698,7 @@ def launch(service):
                 (redis_db, taskfile_dir,
                  prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
                  _duplicate_adapt(service_module, content),
-                 files, priority, 0, content["ncpus"], {}))
+                 files, priority, 0, content["ncpus"], other_task_info))
             task_ids.append(
                 "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
@@ -664,24 +707,6 @@ def launch(service):
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
-            other_task_info = {}
-            if task_type == "train":
-                entity_owner = flask.request.form.get('entity_owner')
-                if entity_owner:
-                    if entity_owner not in trainer_of_entities:
-                        abort(flask.make_response(
-                            flask.jsonify(message="you are not a trainer of %s" % entity_owner),
-                            403))
-                else:
-                    if len(trainer_of_entities) > 1:
-                        abort(flask.make_response(flask.jsonify(
-                            message="model owner is ambigious between these entities: (%s)" % str(
-                                ",".join(trainer_of_entities))), 400))
-                    entity_owner = trainer_of_entities[0]
-
-                if not entity_owner:
-                    abort(flask.make_response(flask.jsonify(message="invalid entity owner"), 500))
-                other_task_info["owner"] = entity_owner
 
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
@@ -692,8 +717,7 @@ def launch(service):
             if task_type == "trans":
                 try:
                     idx = content["docker"]["command"].index("trans")
-                    output_files = get_params(("-o", "--output"),
-                                              content["docker"]["command"][idx + 1:])
+                    output_files = get_params(("-o", "--output"), content["docker"]["command"][idx + 1:])
                     for ofile in output_files:
                         file_to_transtaskid[ofile] = task_id
                 except Exception:
@@ -772,7 +796,7 @@ def launch(service):
                          _duplicate_adapt(service_module, content_translate),
                          (), content_translate["priority"],
                          content_translate["ngpus"], content_translate["ncpus"],
-                         {}))
+                         other_task_info))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "trans", trans_task_id,
                         content_translate["ngpus"], content_translate["ncpus"]))
@@ -811,8 +835,7 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref[
-                            "ref"] + option_lang + ['-f', "launcher:scores"]
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
@@ -880,7 +903,7 @@ def launch(service):
                          content_tuminer,
                          (), priority + 2,
                          ngpus_recommend, ncpus_recommend,
-                         {}))
+                         other_task_info))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "tuminer", tuminer_task_id,
                         ngpus_recommend, ncpus_recommend))
@@ -1005,13 +1028,12 @@ def list_tasks(pattern):
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis_db, clause + suffix):
-            task_key = task_key
             task_id = task.id(task_key)
             info = task.info(
                 redis_db, taskfile_dir, task_id,
                 ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource",
                  "content",
-                 "status", "message", "type", "iterations", "priority", "service", "parent"])
+                 "status", "message", "type", "iterations", "priority", "service", "parent", 'owner'])
 
             if (service_filter and info["service"] != service_filter) \
                     or (status_filter and info["status"] != status_filter):

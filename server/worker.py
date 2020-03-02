@@ -13,7 +13,7 @@ import signal
 import six
 from six.moves import configparser
 
-from nmtwizard import configuration, task
+from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard.worker import Worker
 
@@ -50,7 +50,12 @@ if cfg.has_option('redis', 'password'):
 redis = RedisDatabase(cfg.get('redis', 'host'),
                       cfg.getint('redis', 'port'),
                       cfg.get('redis', 'db'),
-                      redis_password, decode_response=True)
+                      redis_password)
+
+redis2 = RedisDatabase(cfg.get('redis', 'host'),
+                      cfg.getint('redis', 'port'),
+                      cfg.get('redis', 'db'),
+                      redis_password, False)
 
 retry = 0
 while retry < 10:
@@ -78,7 +83,7 @@ assert retry < 10, "Cannot retrieve default config from redis DB - aborting"
 
 base_config = json.loads(default_config)
 
-services = configuration.load_service_config(args.config, base_config)
+services, merged_config = config.load_service_config(args.config, base_config)
 assert len(services) == 1, "workers are now dedicated to one single service"
 service = next(iter(services))
 
@@ -111,7 +116,7 @@ redis.expire(keyw, 600)
 keys = 'admin:service:%s' % service
 redis.hset(keys, "current_configuration", current_configuration)
 redis.hset(keys, "configurations", json.dumps(configurations))
-redis.hset(keys, "def", pickle.dumps(services[service]))
+redis2.hset(keys, "def", pickle.dumps(services[service]))
 
 # remove reserved state from resources
 for key in redis.keys('reserved:%s:*' % service):
@@ -122,7 +127,6 @@ for key in redis.keys('queued:%s' % service):
 
 # On startup, add all active tasks in the work queue or service queue
 for task_id in task.list_active(redis, service):
-    task_id = task_id
     with redis.acquire_lock(task_id):
         status = redis.hget('task:' + task_id, 'status')
         if status == 'queued' or status == 'allocating' or status == 'allocated':
@@ -151,7 +155,6 @@ if services[service].valid:
         keygr = 'gpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keygr)
         for g, task_id in six.iteritems(running_tasks):
-            task_id = task_id
             with redis.acquire_lock(task_id):
                 status = redis.hget('task:' + task_id, 'status')
                 if not (status == 'running' or status == 'terminating'):
@@ -159,11 +162,9 @@ if services[service].valid:
         keycr = 'cpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keycr)
         for c, task_id in six.iteritems(running_tasks):
-            c = c
-            task_id = task_id
             with redis.acquire_lock(task_id):
-                status = redis.hget('task:' + task_id, 'status')
-                if not (status == 'running' or status == 'terminating'):
+                status = redis.hget('task:'+task_id, 'status')
+                if not(status == 'running' or status == 'terminating'):
                     redis.hdel(keycr, c)
 
 

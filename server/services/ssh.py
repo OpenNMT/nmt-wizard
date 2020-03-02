@@ -61,10 +61,12 @@ class SSHService(Service):
             if 'ncpus' in server:
                 if 'cpus' in server and len(server['cpus']) != server['ncpus']:
                     raise ValueError("inconsistent ncpus and cpus option for server `%s`" % server)
-                server['cpus'] = range(server['ncpus'])
+                server['cpus'] = list(range(server['ncpus']))
             if 'cpus' not in server or len(server['cpus']) == 0:
                     raise ValueError("cpus cannot be empty for server `%s`" % server)
         super(SSHService, self).__init__(config)
+        server_pool = self._config['variables']['server_pool']
+        self._machines = {_hostname(server): server for server in server_pool}
         self._resources = self._list_all_gpus()
 
     def resource_multitask(self):
@@ -77,9 +79,12 @@ class SSHService(Service):
                 gpus.append('%s[%d]' % (_hostname(server), gpu))
         return gpus
 
+    def get_server_detail(self, server, field_name):
+        return self._machines[server].get(field_name) #here, server must exist
+
     def list_resources(self):
-        return {_hostname(server): Capacity(len(server['gpus']), len(server['cpus']))
-                for server in self._config['variables']['server_pool']}
+        resources={server: Capacity(len(self._machines[server]['gpus']), len(self._machines[server]['cpus'])) for server in self._machines}
+        return resources
 
     def get_resource_from_options(self, options):
         if "server" not in options:
@@ -110,7 +115,7 @@ class SSHService(Service):
             }
         return desc
 
-    def check(self, options):
+    def check(self, options, docker_registries):
         params = _get_params(self._config, options)
         client = common.ssh_connect_with_retry(
             params['host'],
@@ -124,7 +129,7 @@ class SSHService(Service):
                 client,
                 params['gpus'],
                 params['log_dir'],
-                self._config['docker']['registries'],
+                docker_registries,
                 self._config.get('requirements'),
                 False)
         finally:
@@ -136,6 +141,8 @@ class SSHService(Service):
                options,
                xpulist,
                resource,
+               storages,
+               docker_config,
                docker_registry,
                docker_image,
                docker_tag,
@@ -162,14 +169,14 @@ class SSHService(Service):
                 client,
                 xpulist,
                 params['log_dir'],
-                self._config['docker'],
+                docker_config,
                 docker_registry,
                 docker_image,
                 docker_tag,
                 docker_command,
                 docker_files,
                 wait_after_launch,
-                self._config.get('storages'),
+                storages,
                 callback_url,
                 self._config.get('callback_interval'),
                 requirements=self._config.get("requirements"),

@@ -1,12 +1,10 @@
-"""
-Base class for services: objects that can start, monitor, and terminate
+"""Base class for services: objects that can start, monitor, and terminate
 Docker-based tasks.
 """
 
 import abc
-
 import six
-
+from nmtwizard import configuration as config
 from nmtwizard.capacity import Capacity
 
 
@@ -33,14 +31,14 @@ class Service(object):
         # check exclusivity of default_msr/default_msw and default_ms
         if self._default_ms and (self._default_msr or self._default_msw):
             raise ValueError('default_ms and default_ms[rw] are exclusive')
-
+        self._machines = None
     def __getstate__(self):
         """Return state values to be pickled."""
-        return self._config, self._resources
+        return (self._config, self._machines, self._resources)
 
     def __setstate__(self, state):
         """Restore state from the unpickled state values."""
-        self._config, self._resources = state
+        self._config, self._machines, self._resources = state
 
     @property
     def valid(self):
@@ -103,6 +101,9 @@ class Service(object):
         """
         raise NotImplementedError()
 
+    def get_docker_config(self, entity_name):
+        return config.get_docker(self._config, entity_name)
+
     def select_resource_from_capacity(self, request_resource, capacity):
         """Given expected capacity, restrict or not resource list to the capacity
 
@@ -125,11 +126,12 @@ class Service(object):
         return {}
 
     @abc.abstractmethod
-    def check(self, options):
+    def check(self, options, docker_registries_list):
         """Checks if a task can be launched on the service.
 
         Args:
           options: The user options to use for the launch.
+          docker_registries_list: a registry list to check.
 
         Returns:
           A (possibly empty) string with details on the target service and
@@ -143,6 +145,8 @@ class Service(object):
                options,
                gpulist,
                resource,
+               storages,
+               docker_config,
                docker_registry,
                docker_image,
                docker_tag,
@@ -162,4 +166,8 @@ class Service(object):
     @abc.abstractmethod
     def terminate(self, params):
         """Terminates a (possibly) running task."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_server_detail(self, server, field_name):
         raise NotImplementedError()

@@ -1,4 +1,11 @@
 ## Unreleased
+* (client/launcher) global pool (#53416)
+* (client/launcher) add entity in resource list command (#53576)
+* (client) add snw client commands to share and open models (#53629)
+* (client/launcher) python 3 (#53329)
+* (client/launcher) coding style (#53529)
+
+## [v1.10.2](https://github.com/OpenNMT/nmt-wizard/releases/tag/v1.10.1) (2019-12-18)
 ### Fixes and improvements
 * (client/launcher) add `-e/--entity-owner` option when training a model(#52926)
 * (worker) fix deadlock CPU allocation(#53071)

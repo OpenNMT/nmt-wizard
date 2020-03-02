@@ -2,6 +2,14 @@ import time
 import json
 import os
 import shutil
+import six
+from enum import Enum
+
+
+class TaskInfo(Enum):
+    ENTITY_OWNER = "owner"
+    STORAGE_ENTITIES = "storage_entities"
+
 
 ttl_policy_func = None
 
@@ -140,12 +148,7 @@ def info(redis, taskfile_dir, task_id, fields):
     r = {}
     for f in fields:
         if f != "ttl":
-            try:
-                r[f] = redis.hget(keyt, f)
-            except Exception as e:
-                print("Error '{0}' occurred. Arguments {1}.".format(e, e.args))
-            finally:
-                r[f] = None
+            r[f] = redis.hget(keyt, f)
         else:
             r[f] = redis.ttl("beat:" + task_id)
     if field:
@@ -175,6 +178,22 @@ def change(redis, task_id, service, priority, ngpus):
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
     return True, ""
+
+
+def get_owner_entity(redis, task_id):
+    key_task_id = "task:" + task_id
+    owner_entity = redis.hget(key_task_id, TaskInfo.ENTITY_OWNER.value)
+    if not owner_entity:  # TODO: usefull only for the first deployment
+        service = redis.hget(key_task_id, "service")
+        owner_entity = service[:2]
+    return owner_entity.upper()
+
+
+def get_storages_entity(redis, task_id):
+    key_task_id = "task:" + task_id
+    task_storage_entities = redis.hget(key_task_id, TaskInfo.STORAGE_ENTITIES.value)
+    return json.loads(task_storage_entities) if task_storage_entities else None
+
 
 
 def delete(redis, taskfile_dir, task_id):
@@ -245,9 +264,10 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
-    with open(os.path.join(taskdir, filename), "wb") as fh:
+    with open(os.path.join(taskdir, filename), "w") as fh:
         if limit and len(content) >= limit:
             content = content[:limit-len(disclaimer)] + disclaimer
+        content = six.ensure_text(content, encoding="utf-8")
         fh.write(content)
     return content
 
@@ -260,11 +280,12 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     current_size = 0
     if os.path.isfile(filepath):
         current_size = os.stat(filepath).st_size
-    if current_size >= limit:
+    if limit and current_size >= limit:
         return
     if limit and len(content)+current_size >= limit:
         content = content[:limit-len(disclaimer)] + disclaimer
     with open(filepath, "ab") as fh:
+        content = six.ensure_binary(content, encoding="utf-8")
         fh.write(content)
 
 

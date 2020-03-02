@@ -380,8 +380,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             for k in result:
                 res.append(k["task_id"])
         elif not is_json:
-            headers = ["Task ID", "Service", "Resource", "Priority", "Launch Date",
-                       "Image", "Status", "Message"]
+            headers= ["Task ID", "Service", "Resource", "Priority", "Launch Date", "Image", "Status", "Message", "owner"]
             if args.parent:
                 headers.append("parent")
 
@@ -400,10 +399,10 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                 task_id = k["task_id"]
                 if args.parent:
                     res.add_row([task_id, k["service"], resource, int(k["priority"] or 0),
-                                 date, k["image"], k["status"], k.get("message"), k.get("parent")])
+                                 date, k["image"], k["status"], k.get("message"), k.get("owner"), k.get("parent")])
                 else:
                     res.add_row([task_id, k["service"], resource, int(k["priority"] or 0),
-                                 date, k["image"], k["status"], k.get("message")])
+                                 date, k["image"], k["status"], k.get("message"), k.get("owner")])
         else:
             res = r.json()
     elif cmd == "service" and subcmd == "describe":

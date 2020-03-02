@@ -43,16 +43,14 @@ app.logger.setLevel(logging.getLevelName(
     app.iniconfig.get('default', 'log_level', fallback='ERROR')))
 
 redis_db = RedisDatabase(app.iniconfig.get('redis', 'host'),
-                         app.iniconfig.get('redis', 'port', fallback=6379),
-                         app.iniconfig.get('redis', 'db', fallback=0),
-                         app.iniconfig.get('redis', 'password', fallback=None),
-                         decode_response=True)
+                      app.iniconfig.get('redis', 'port', fallback=6379),
+                      app.iniconfig.get('redis', 'db', fallback=0),
+                      app.iniconfig.get('redis', 'password', fallback=None))
 
 redis_db_without_decode = RedisDatabase(app.iniconfig.get('redis', 'host'),
-                                        app.iniconfig.get('redis', 'port', fallback=6379),
-                                        app.iniconfig.get('redis', 'db', fallback=0),
-                                        app.iniconfig.get('redis', 'password', fallback=None),
-                                        decode_response=False)
+                      app.iniconfig.get('redis', 'port', fallback=6379),
+                      app.iniconfig.get('redis', 'db', fallback=0),
+                      app.iniconfig.get('redis', 'password', fallback=None), False)
 
 assert app.iniconfig.get('default', 'taskfile_dir'), "missing taskfile_dir from settings.ini"
 taskfile_dir = app.iniconfig.get('default', 'taskfile_dir')
