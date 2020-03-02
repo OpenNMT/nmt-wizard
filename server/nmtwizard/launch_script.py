@@ -4,16 +4,16 @@ import re
 import os
 import subprocess
 from subprocess import Popen as pop
+import six
+import json
 
-pop('/bin/gcc --version', shell=False)
 task_id = "%s"
 cmd = """
 %s
 """.strip().split("\n")
 log_file = "%s"
 callback_url = "%s"
-myenv = "%s"
-
+myenv = json.loads(%s)
 
 def displaycmd(lst):
     s = ""
@@ -52,7 +52,7 @@ def rmprivate(lst):
 
 
 f = open(log_file, "w")
-f.write("COMMAND: " + displaycmd(cmd) + "\n")
+f.write(six.ensure_str("COMMAND: " + displaycmd(cmd) + "\n"))
 
 p1 = pop(rmprivate(cmd),
          stdout=subprocess.PIPE,
@@ -91,15 +91,18 @@ class UpdateLog:
                 except ZeroDivisionError:
                     pass
 
+    def run(self):
+        log_thread = Thread(target=self.update_log_loop)
+        log_thread.daemon = True
+        log_thread.start()
 
 if callback_url:
-    log_thread = Thread(target=UpdateLog.update_log_loop)
-    log_thread.daemon = True
-    log_thread.start()
+    thead = UpdateLog(current_log)
+    thead.run()
 
 while p1.poll() is None:
     line = p1.stdout.readline()
-    f.write(line)
+    f.write(six.ensure_str(line))
     f.flush()
     mutex.acquire()
     current_log += line
@@ -108,7 +111,7 @@ while p1.poll() is None:
 completed = True
 
 line = p1.stdout.read()
-f.write(line)
+f.write(six.ensure_str(line))
 f.flush()
 
 if p1.returncode == 0:
@@ -122,9 +125,5 @@ if callback_url:
     mutex.acquire()
     current_log = ""
     mutex.release()
-    subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url +
-                     os.path.join("task", "log")
-                     + task_id, "--data-binary", "@" + log_file])
-    subprocess.call(["curl", "-X", "GET",
-                     callback_url + os.path.join("task", "terminate")
-                     + task_id + "?phase=" + phase])
+    subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url + "/task/log/" + task_id, "--data-binary", "@" + log_file])
+    subprocess.call(["curl", "-X", "GET", callback_url + "/task/terminate/" + task_id + "?phase=" + phase])

@@ -2,6 +2,7 @@ import time
 import json
 import os
 import shutil
+import six
 from enum import Enum
 
 
@@ -266,6 +267,7 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     with open(os.path.join(taskdir, filename), "w") as fh:
         if limit and len(content) >= limit:
             content = content[:limit-len(disclaimer)] + disclaimer
+        content = six.ensure_text(content, encoding="utf-8")
         fh.write(content)
     return content
 
@@ -283,6 +285,7 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     if limit and len(content)+current_size >= limit:
         content = content[:limit-len(disclaimer)] + disclaimer
     with open(filepath, "ab") as fh:
+        content = six.ensure_binary(content, encoding="utf-8")
         fh.write(content)
 
 

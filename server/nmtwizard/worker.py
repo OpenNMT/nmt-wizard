@@ -512,10 +512,10 @@ class Worker(object):
                     other_entity_usage = resource_mgr.entities_usage[other._entity]
                     if my_entity_usage == other_entity_usage:
                         return self._launched_time < other._launched_time
-                    else:
-                        result = my_entity_usage < other_entity_usage
-                        self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
-                        return result
+
+                    result = my_entity_usage < other_entity_usage
+                    self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
+                    return result
 
             def is_higher_priority(self, other_task):
                 # Decision tree for the most priority task
@@ -525,8 +525,8 @@ class Worker(object):
                 if self._already_on_node(): # go for already allocated resource task
                     if not other_task._already_on_node():
                         return True
-                    else:
-                        return self._is_more_respectful_usage(other_task)
+
+                    return self._is_more_respectful_usage(other_task)
                 elif other_task._already_on_node():
                     return False
                 else:
@@ -584,11 +584,10 @@ class Worker(object):
                                 # as possible to terminate time of parent task
                                 self._redis.hset(next_keyt, "queued_time", time.time())
                             return None
-                        else:
-                            if self._redis.hget(keyp, 'message') != 'completed':
-                                task.terminate(self._redis, next_task_id,
-                                               phase='dependency_error')
-                                return None
+
+                        if self._redis.hget(keyp, 'message') != 'completed':
+                            task.terminate(self._redis, next_task_id,  phase='dependency_error')
+                            return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
                 candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity, resource_mgr.entities_usage[task_entity], self._logger)
@@ -601,8 +600,8 @@ class Worker(object):
 
                 if can_be_processed:
                     return candidate_task
-                else:
-                    return None
+
+                return None
 
         class Machine():
             def __init__(self, name, initial_capacity, logger):

@@ -37,21 +37,23 @@ def rmprivate(lst):
         for t in lst:
             r.append(rmprivate(t))
         return r
-    if isinstance(lst, dict):
+    elif isinstance(lst, dict):
         for k, v in six.iteritems(lst):
             lst[k] = rmprivate(v)
         return lst
-    t = lst
-    if isinstance(t, six.string_types):
-        p = t.find("[[private:")
-        while p != -1:
-            t = t[0:p] + t[p + 10:]
-            q = t.find("]]")
-            if q != -1:
-                t = t[0:q] + t[q + 2:]
-                p = t.find("[[private:", q)
-            p = -1
-    return t
+    else:
+        t = lst
+        if isinstance(t, six.string_types):
+            p = t.find("[[private:")
+            while p != -1:
+                t = t[0:p] + t[p+10:]
+                q = t.find("]]")
+                if q != -1:
+                    t = t[0:q] + t[q+2:]
+                    p = t.find("[[private:", q)
+                else:
+                    p = -1
+        return t
 
 
 # read the launch_script that will be used to launched and monitor tasks
@@ -489,9 +491,10 @@ def launch_task(task_id,
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
                               storages, docker_command, log_dir, support_statistics)
+    env_txt = json.dumps(json.dumps(json.loads(env if env else "{}")))
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
-                                               callback_url or '', env, callback_interval) + \
+                                               callback_url or '', env_txt, callback_interval) + \
           "' > %s/%s_launch.log" % (log_dir, task_id)
 
     # get the process group id

@@ -61,7 +61,7 @@ class SSHService(Service):
             if 'ncpus' in server:
                 if 'cpus' in server and len(server['cpus']) != server['ncpus']:
                     raise ValueError("inconsistent ncpus and cpus option for server `%s`" % server)
-                server['cpus'] = range(server['ncpus'])
+                server['cpus'] = list(range(server['ncpus']))
             if 'cpus' not in server or len(server['cpus']) == 0:
                     raise ValueError("cpus cannot be empty for server `%s`" % server)
         super(SSHService, self).__init__(config)
