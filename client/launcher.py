@@ -647,7 +647,7 @@ if __name__ == "__main__":
             LOGGER.error('missing launcher_url')
             sys.exit(1)
 
-    r = requests.get(os.path.join(ARGS.url, "service/list", params={"minimal": True}))
+    r = requests.get(os.path.join(ARGS.url, "service/list"), params={"minimal": True})
     if r.status_code != 200:
         LOGGER.error('incorrect result from \'service/list\' service: %s', r.text)
         sys.exit(1)
