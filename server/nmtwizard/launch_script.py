@@ -4,7 +4,6 @@ import re
 import os
 import subprocess
 from subprocess import Popen as pop
-import six
 import json
 
 task_id = "%s"
@@ -14,6 +13,13 @@ cmd = """
 log_file = "%s"
 callback_url = "%s"
 myenv = json.loads(%s)
+
+def ensure_str(s, encoding="utf-8", errors="strict"):
+    if not isinstance(s, (str, bytes)):
+        raise TypeError( "not expecting type \"{}\"".format(type(s)))
+    if isinstance(s, bytes):
+        s = s.decode(encoding, errors)
+    return s
 
 def displaycmd(lst):
     s = ""
@@ -52,7 +58,7 @@ def rmprivate(lst):
 
 
 f = open(log_file, "w")
-f.write(six.ensure_str("COMMAND: " + displaycmd(cmd) + "\n"))
+f.write(ensure_str("COMMAND: " + displaycmd(cmd) + "\n"))
 
 p1 = pop(rmprivate(cmd),
          stdout=subprocess.PIPE,
@@ -102,7 +108,7 @@ if callback_url:
 
 while p1.poll() is None:
     line = p1.stdout.readline()
-    f.write(six.ensure_str(line))
+    f.write(ensure_str(line))
     f.flush()
     mutex.acquire()
     current_log += line
@@ -111,7 +117,7 @@ while p1.poll() is None:
 completed = True
 
 line = p1.stdout.read()
-f.write(six.ensure_str(line))
+f.write(ensure_str(line))
 f.flush()
 
 if p1.returncode == 0:

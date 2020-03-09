@@ -17,6 +17,38 @@ def _compatible_resource(resource, request_resource):
 
 
 class Worker(object):
+    class Machine():
+        def __init__(self, service, name, initial_capacity, logger):
+            self._init_capacity = initial_capacity
+            self._name = name
+            self._available_cap = Capacity()
+            self._tasks = {}
+            self._logger = logger
+            self._service = service
+
+        def __str__(self):
+            return "(%s:available:%s, inital: %s)" % (self._name, self._available_cap, self._init_capacity)
+
+        def add_task(self, task_id, redis):
+            if task not in self._tasks:
+                redis_key = 'task:%s' % task_id
+                task_capacity = Capacity(redis.hget(redis_key, 'ngpus'), redis.hget(redis_key, 'ncpus'))
+                self._tasks[task_id] = task_capacity
+
+        def set_available(self, capacity):
+            self._available_cap = capacity
+
+        def _is_authorized(self, task_entity, task_capacity):
+            only_entities = self._service.get_server_detail(self._name, "entities")
+            if only_entities and (task_entity not in only_entities or not only_entities[task_entity]):
+                self._logger.debug('[AZ-EXCLUDED-ENTITY] %s , %s', self._name, task_entity)
+                return False
+
+            is_only_gpu_task = self._service.get_server_detail(self._name, "only_gpu_task")
+            if is_only_gpu_task is True and task_capacity.ngpus <= 0:
+                self._logger.debug('[AZ-EXCLUDED-GPU] task %s excluded on Gpu machine %s.', task_capacity, self._name)
+                return False
+            return True
 
     def __init__(self, redis, services, ttl_policy, refresh_counter,
                  quarantine_time, worker_id, taskfile_dir,
@@ -302,12 +334,13 @@ class Worker(object):
         """
         best_resource = None
         br_remaining_xpus = Capacity(-1, -1)
+        task_entity = task.get_owner_entity(self._redis, task_id)
         resources = service.list_resources()
-
-        for name, capacity in six.iteritems(resources):
-            if _compatible_resource(name, request_resource):
+        machines = {res: Worker.Machine(service, res, resources[res], self._logger) for res in resources}
+        for name, machine in six.iteritems(machines):
+            if _compatible_resource(name, request_resource) and machine._is_authorized(task_entity, task_expected_capacity):
                 better_remaining_xpus = self._reserve_resource(
-                    service, name, capacity, task_id,
+                    service, name, machine._init_capacity, task_id,
                     task_expected_capacity, br_remaining_xpus)
                 if better_remaining_xpus is not None:
                     if best_resource is not None:
@@ -534,7 +567,7 @@ class Worker(object):
 
             def find_machine_without_blocking(self, higher_prio_task):
                 for machine in self._runnable_machines:
-                    if not machine._is_authorized(higher_prio_task):
+                    if not machine._is_authorized(higher_prio_task._entity, higher_prio_task._capacity):
                         self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
                         return machine
 
@@ -553,7 +586,7 @@ class Worker(object):
                     found_machines = [resource_mgr._machines[machine_name]]
                 else:  # can the task be launched on any node ?
                     found_machines = [machine for name, machine in six.iteritems(resource_mgr._machines) if
-                                      machine._is_authorized(self) and candidate_task._capacity.inf_or_eq(machine._available_cap)]
+                                      machine._is_authorized(self._entity, self._capacity) and candidate_task._capacity.inf_or_eq(machine._available_cap)]
 
                 self._runnable_machines = found_machines
                 if not self._runnable_machines:
@@ -594,7 +627,8 @@ class Worker(object):
                 # check now the task has a chance to be processed by any machine
                 can_be_processed = False
                 for srv, machine in six.iteritems(resource_mgr._machines):
-                    can_be_processed = machine._is_authorized(candidate_task) and candidate_task._capacity.inf_or_eq(machine._init_capacity)
+                    can_be_processed = machine._is_authorized(candidate_task._entity, candidate_task._capacity) \
+                                       and candidate_task._capacity.inf_or_eq(machine._init_capacity)
                     if can_be_processed:
                         break
 
@@ -603,44 +637,11 @@ class Worker(object):
 
                 return None
 
-        class Machine():
-            def __init__(self, name, initial_capacity, logger):
-                self._init_capacity = initial_capacity
-                self._name = name
-                self._available_cap=Capacity()
-                self._tasks = {}
-                self._logger = logger
-
-            def __str__(self):
-                return "(%s:available:%s, inital: %s)" % (self._name, self._available_cap, self._init_capacity)
-
-            def add_task(self, task_id, redis):
-                if task not in self._tasks:
-                    redis_key = 'task:%s' % task_id
-                    task_capacity = Capacity(redis.hget(redis_key, 'ngpus'), redis.hget(redis_key, 'ncpus'))
-                    self._tasks[task_id]= task_capacity
-
-            def set_available(self, capacity):
-                self._available_cap = capacity
-
-            def _is_authorized(self, candidate_task):
-                only_entities = service.get_server_detail(self._name, "entities")
-                task_entity = candidate_task._entity
-                if only_entities and (task_entity not in only_entities or not only_entities[task_entity]):
-                    self._logger.debug('[AZ-EXCLUDED-ENTITY] %s , %s' , self._name, candidate_task)
-                    return False
-
-                is_only_gpu_task = service.get_server_detail(self._name, "only_gpu_task")
-                if is_only_gpu_task is True and candidate_task._capacity.ngpus <= 0:
-                    self._logger.debug('[AZ-EXCLUDED-GPU] task %s excluded on Gpu machine %s.', candidate_task, self._name)
-                    return False
-                return True
-
         class ResourceManager():
             def __init__(self, worker):
                 self.preallocated_task_resource = {}
                 resources = service.list_resources()
-                self._machines = {res: Machine(res, resources[res], worker._logger) for res in resources}
+                self._machines = {res: Worker.Machine(service, res, resources[res], worker._logger) for res in resources}
                 self.entities_usage = {}
                 self.worker = worker
 
