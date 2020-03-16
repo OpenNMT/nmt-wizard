@@ -199,10 +199,11 @@ class Worker(object):
                     if v == task_id:
                         already_allocated_xpus.incr_ncpus(1)
                 capacity = service.list_resources()[resource]
-                available_xpus, remaining_xpus = self._reserve_resource(
-                                                    service, resource, capacity, task_id,
-                                                    nxpus - already_allocated_xpus,
-                                                    Capacity(), Capacity(-1, -1), True)
+                available_xpus, remaining_xpus = self._reserve_resource(service, resource, capacity,
+                                                                        task_id,
+                                                                        nxpus - already_allocated_xpus,
+                                                                        Capacity(),
+                                                                        Capacity(-1, -1), True)
                 self._logger.info(
                     'task: %s - resource: %s (capacity %s)- already %s - available %s',
                     task_id, resource, capacity, already_allocated_xpus, available_xpus)
