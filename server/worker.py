@@ -65,7 +65,7 @@ while retry < 10:
         break
     except ConnectionError as e:
         retry += 1
-        logger.warning("cannot connect to redis DB - retrying (%d)" % retry)
+        logger.warning("cannot connect to redis DB - retrying (%d)", retry)
         time.sleep(1)
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
@@ -106,7 +106,7 @@ if os.path.isdir("configurations"):
 
 pid = os.getpid()
 
-logger.info('Running worker for %s - PID = %d' % (service, pid))
+logger.info('Running worker for %s - PID = %d', (service, pid))
 
 keyw = 'admin:worker:%s:%d' % (service, pid)
 redis.hset(keyw, "launch_time", time.time())
