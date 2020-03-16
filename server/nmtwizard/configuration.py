@@ -213,7 +213,3 @@ def load_service_config(filename, base_config):
     logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
 
     return services, merged_config
-
-
-
-
