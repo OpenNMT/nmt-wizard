@@ -129,7 +129,7 @@ for key in redis.keys('queued:%s' % service):
 for task_id in task.list_active(redis, service):
     with redis.acquire_lock(task_id):
         status = redis.hget('task:' + task_id, 'status')
-        if status == 'queued' or status == 'allocating' or status == 'allocated':
+        if status in ('queued', 'allocating', 'allocated'):
             task.service_queue(redis, task_id,
                                redis.hget('task:' + task_id, 'service'))
             task.set_status(redis, 'task:' + task_id, 'queued')
@@ -157,14 +157,14 @@ if services[service].valid:
         for g, task_id in six.iteritems(running_tasks):
             with redis.acquire_lock(task_id):
                 status = redis.hget('task:' + task_id, 'status')
-                if not (status == 'running' or status == 'terminating'):
+                if status not in ('running', 'terminating'):
                     redis.hdel(keygr, g)
         keycr = 'cpu_resource:%s:%s' % (service, resource)
         running_tasks = redis.hgetall(keycr)
         for c, task_id in six.iteritems(running_tasks):
             with redis.acquire_lock(task_id):
                 status = redis.hget('task:'+task_id, 'status')
-                if not(status == 'running' or status == 'terminating'):
+                if status not in ('running', 'terminating'):
                     redis.hdel(keycr, c)
 
 
