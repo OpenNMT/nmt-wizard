@@ -91,8 +91,7 @@ class SSHService(Service):
     def get_resource_from_options(self, options):
         if "server" not in options:
             return "auto"
-        else:
-            return options["server"]
+        return options["server"]
 
     def describe(self):
         has_login = False

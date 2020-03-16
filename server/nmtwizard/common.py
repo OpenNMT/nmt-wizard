@@ -37,23 +37,22 @@ def rmprivate(lst):
         for t in lst:
             r.append(rmprivate(t))
         return r
-    elif isinstance(lst, dict):
+    if isinstance(lst, dict):
         for k, v in six.iteritems(lst):
             lst[k] = rmprivate(v)
         return lst
-    else:
-        t = lst
-        if isinstance(t, six.string_types):
-            p = t.find("[[private:")
-            while p != -1:
-                t = t[0:p] + t[p+10:]
-                q = t.find("]]")
-                if q != -1:
-                    t = t[0:q] + t[q+2:]
-                    p = t.find("[[private:", q)
-                else:
-                    p = -1
-        return t
+    t = lst
+    if isinstance(t, six.string_types):
+        p = t.find("[[private:")
+        while p != -1:
+            t = t[0:p] + t[p+10:]
+            q = t.find("]]")
+            if q != -1:
+                t = t[0:q] + t[q+2:]
+                p = t.find("[[private:", q)
+            else:
+                p = -1
+    return t
 
 
 # read the launch_script that will be used to launched and monitor tasks
