@@ -2,8 +2,9 @@ import time
 import json
 import os
 import shutil
-import six
 from enum import Enum
+
+import six
 
 
 class TaskInfo(Enum):
