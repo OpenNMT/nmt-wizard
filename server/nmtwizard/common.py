@@ -450,7 +450,7 @@ def launch_task(task_id,
         if exit_status != 0:
             raise RuntimeError("error pulling the image %s: %s" % (image_ref, stderr.read()))
 
-    if len(docker_files):
+    if docker_files:
         # we have files to synchronize locally
         assert 'mount' in docker_options, "mount point should be defined for passing files"
         assert callback_url is not None, "callback_url needed for passing files"

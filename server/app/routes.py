@@ -303,7 +303,7 @@ def filter_request(route, ability=None):
 
         @wraps(func)
         def func_wrapper(*args, **kwargs):
-            if len(filter_routes):
+            if filter_routes:
                 return filter_routes[0](route, ability, func, *args, **kwargs)
             # if no filter defined, just pass through
             return func(*args, **kwargs)
