@@ -104,6 +104,7 @@ class Service(object):
     def get_docker_config(self, entity_name):
         return config.get_docker(self._config, entity_name)
 
+    @abc.abstractmethod
     def select_resource_from_capacity(self, request_resource, capacity):
         """Given expected capacity, restrict or not resource list to the capacity
 
@@ -117,6 +118,7 @@ class Service(object):
 
         return request_resource
 
+    @abc.abstractmethod
     def describe(self):
         """Describe the service options.
 
