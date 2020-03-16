@@ -505,7 +505,7 @@ class Worker(object):
             def initialize_entities_usage(redis, service_name):
                 entity_usage_weights = config.get_entities_limit_rate(redis, service_name)
                 weight_sum = float(sum([w for w in entity_usage_weights.values() if w > 0]))
-                entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0 )
+                entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0)
                                   for e, r in six.iteritems(entity_usage_weights)}
                 return entities_usage
 
@@ -523,7 +523,8 @@ class Worker(object):
                 self._logger = logger
 
             def __str__(self):
-                return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity, self._entity_usage,  self._priority)
+                return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity,
+                                                               self._entity_usage, self._priority)
 
             def __gt__(self, other):
                 return self.is_higher_priority(other)
@@ -537,8 +538,9 @@ class Worker(object):
 
             def _is_more_respectful_usage(self, other):
                 if self._entity == other._entity:  # same entity, go for highest priority
-                    is_more_prio = self._priority > other._priority or (
-                            self._priority == other._priority and self._launched_time < other._launched_time)
+                    is_more_prio = self._priority > other._priority \
+                                   or (self._priority == other._priority
+                                       and self._launched_time < other._launched_time)
                     return is_more_prio
                 else:
                     my_entity_usage = resource_mgr.entities_usage[self._entity]
@@ -619,7 +621,7 @@ class Worker(object):
                             return None
 
                         if self._redis.hget(keyp, 'message') != 'completed':
-                            task.terminate(self._redis, next_task_id,  phase='dependency_error')
+                            task.terminate(self._redis, next_task_id, phase='dependency_error')
                             return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
@@ -646,7 +648,7 @@ class Worker(object):
                 self.worker = worker
 
             def __str__(self):
-                msg = " - ".join( str(m) for m in self._machines.values())
+                msg = " - ".join(str(m) for m in self._machines.values())
                 return "ResourceManager ( %s )." % msg
 
             def load_machines(self, service_name):

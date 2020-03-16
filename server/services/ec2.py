@@ -87,7 +87,7 @@ class EC2Service(Service):
             for idx in range(maxInstances):
                 self._resources["%s:%d" % (template["name"], idx)] = \
                     Capacity(len(template["gpus"]), len(template["cpus"]))
-                self._machines["%s:%d" % (template["name"], idx)]= template
+                self._machines["%s:%d" % (template["name"], idx)] = template
         logger.info("Initialized EC2 - found %d templates.",
                     len(config['variables']['template_pool']))
 
