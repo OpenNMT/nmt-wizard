@@ -198,10 +198,10 @@ class SSHService(Service):
             login_cmd=params['login_cmd'])
 
         if 'container_id' in params:
-            exit_status, stdout, stderr = common.run_docker_command(
+            exit_status, _, _ = common.run_docker_command(
                 client, 'inspect -f {{.State.Status}} %s' % params['container_id'])
         else:
-            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+            exit_status, _, _ = common.run_command(client, 'kill -0 -%d' % params['pgid'])
 
         if get_log:
             common.update_log(task_id, client, params['log_dir'], self._config.get('callback_url'))
@@ -223,12 +223,12 @@ class SSHService(Service):
         if 'container_id' in params:
             common.run_docker_command(client, 'rm --force %s' % params['container_id'])
             time.sleep(5)
-        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+        exit_status, _, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
         if exit_status != 0:
             logger.info("exist_status %d: %s", exit_status, stderr.read())
             client.close()
             return
-        exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+        exit_status, _, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
         if exit_status != 0:
             logger.info("exist_status %d: %s", exit_status, stderr.read())
             client.close()

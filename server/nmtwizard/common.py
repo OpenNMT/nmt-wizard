@@ -288,7 +288,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
     (lgpu, lcpu) = lxpu
     env = {}
     nbgpu = len(lgpu)
-    nv_gpu = ''
+    # nv_gpu = ''
     if nbgpu == 0 or (nbgpu == 1 and lgpu[0] == 0):
         gpu_id = '0'
     else:
@@ -375,7 +375,7 @@ def update_log(task_id,
     log_file = "%s/%s.log" % (log_dir, task_id)
     cmd = 'curl -X POST "%s/task/log/%s" --data-binary "@%s"' % (
         callback_url, task_id, log_file)
-    _, stdout, stderr = run_command(client, cmd)
+    _, _, _ = run_command(client, cmd)
 
 
 def launch_task(task_id,
@@ -471,7 +471,7 @@ def launch_task(task_id,
                 cmd_mkdir = "mkdir -p %s/%s/%s" % (mount_tmpdir, task_id, fdir)
                 exit_status, stdout, stderr = run_command(client, cmd_mkdir)
                 if exit_status != 0:
-                    s = stderr.read()
+                    # s = stderr.read()
                     raise RuntimeError("error build task tmp sub-dir: %s, %s" %
                                        (cmd_mkdir, stderr.read()))
             logger.info("retrieve file %s -> %s/%s", f, mount_tmpdir, task_id)

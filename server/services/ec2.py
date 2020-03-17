@@ -38,7 +38,7 @@ def _get_params(templates, options):
     p = templateName.rfind(":")
     if p != -1:
         templateName = templateName[:p]
-    params = {}
+    # params = {}
     for t in templates:
         if t["name"] == templateName:
             return t

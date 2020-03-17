@@ -162,7 +162,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
     # * TYPE - trans|prepr|vocab|relea or other 5 letter action
 
     # first find nature of the task - train or not
-    is_train = task_type == "train"
+    # is_train = task_type == "train"
     is_buildvocab = task_type == "vocab"
     trid = 'XXXX'
     if 'trainer_id' in content and content['trainer_id']:

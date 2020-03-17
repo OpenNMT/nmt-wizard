@@ -201,11 +201,9 @@ class Worker(object):
                     if v == task_id:
                         already_allocated_xpus.incr_ncpus(1)
                 capacity = service.list_resources()[resource]
-                available_xpus, remaining_xpus = self._reserve_resource(service, resource, capacity,
-                                                                        task_id,
-                                                                        nxpus - already_allocated_xpus,
-                                                                        Capacity(),
-                                                                        Capacity(-1, -1), True)
+                available_xpus, _ = self._reserve_resource(service, resource, capacity, task_id,
+                                                           nxpus - already_allocated_xpus,
+                                                           Capacity(), Capacity(-1, -1), True)
                 self._logger.info(
                     'task: %s - resource: %s (capacity %s)- already %s - available %s',
                     task_id, resource, capacity, already_allocated_xpus, available_xpus)
@@ -440,7 +438,7 @@ class Worker(object):
                 return None
 
             idx = 1
-            for i in range(task_asked_capacity.ngpus):
+            for _ in range(task_asked_capacity.ngpus):
                 while self._redis.hget(keygr, str(idx)) is not None:
                     idx += 1
                     assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
@@ -448,7 +446,7 @@ class Worker(object):
                 self._redis.hset(keygr, str(idx), task_id)
 
             cpu_idx = 0
-            for i in range(task_asked_capacity.ncpus):
+            for _ in range(task_asked_capacity.ncpus):
                 while self._redis.hget(keycr, str(cpu_idx)) is not None:
                     cpu_idx += 1
                     assert cpu_idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
@@ -629,7 +627,7 @@ class Worker(object):
                 candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity, resource_mgr.entities_usage[task_entity], self._logger)
                 # check now the task has a chance to be processed by any machine
                 can_be_processed = False
-                for srv, machine in six.iteritems(resource_mgr._machines):
+                for _, machine in six.iteritems(resource_mgr._machines):
                     can_be_processed = machine._is_authorized(candidate_task._entity, candidate_task._capacity) \
                                        and candidate_task._capacity.inf_or_eq(machine._init_capacity)
                     if can_be_processed:
@@ -666,7 +664,7 @@ class Worker(object):
                     if not service.resource_multitask and (gpu_tasks or cpu_tasks):
                         continue
                     tmp_tasks = {}
-                    for k, v in six.iteritems(gpu_tasks):
+                    for _, v in six.iteritems(gpu_tasks):
                         if v not in tmp_tasks:
                             task_entity = task.get_owner_entity(self.worker._redis, v)
                             tmp_tasks[v] = task_entity
@@ -679,7 +677,7 @@ class Worker(object):
                         current_xpu_usage.incr_ngpus(1)
                         self.entities_usage[task_entity].add_current_usage(Capacity(ngpus=1))
 
-                    for k, v in six.iteritems(cpu_tasks):
+                    for _, v in six.iteritems(cpu_tasks):
                         if v not in tmp_tasks:
                             task_entity = task.get_owner_entity(self.worker._redis, v)
                             tmp_tasks[v] = task_entity
