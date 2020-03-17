@@ -341,10 +341,10 @@ def cmd_docker_run(lxpu, docker_options, task_id,
                 if storages[s].get('default_ms'):
                     docker_command = ['-ms', s + ':'] + docker_command
                     break
-                elif storages[s].get('default_msr') and '-msr' not in docker_command:
+                if storages[s].get('default_msr') and '-msr' not in docker_command:
                     docker_command = ['-msr', s + ':'] + docker_command
                     break
-                elif storages[s].get('default_msw') and '-msw' not in docker_command:
+                if storages[s].get('default_msw') and '-msw' not in docker_command:
                     docker_command = ['-msw', s + ':'] + docker_command
                     break
 
