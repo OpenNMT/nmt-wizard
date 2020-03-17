@@ -1,14 +1,6 @@
-import os
 import logging
-import boto3
-import paramiko
-import six
 
-from botocore.exceptions import ClientError
-from nmtwizard import common
 from nmtwizard.service import Service
-from nmtwizard.ec2_instance_types import ec2_capacity_map
-from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
 

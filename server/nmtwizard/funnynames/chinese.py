@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*
 
 import random
-import re
 
 adjectives = [
     ["Zhongyao", "重要", "important", 260608],
