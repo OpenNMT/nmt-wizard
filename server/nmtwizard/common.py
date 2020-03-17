@@ -409,7 +409,7 @@ def launch_task(task_id,
         * `callback_interval`: time between 2 beats
     """
     (lgpu, lcpu) = lxpu
-    gpu_id = ",".join([gpu_id for gpu_id in lgpu])
+    gpu_id = ",".join(lgpu)
     logger.info("launching task - %s / %s", task_id, gpu_id)
     logger.debug("check environment for task %s", task_id)
     check_environment(
