@@ -8,7 +8,7 @@ from flask_ini import FlaskIni
 
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
-from app import routes
+
 
 VERSION = "1.10.1"
 
@@ -81,3 +81,6 @@ def append_version(v):
 
 def get_version():
     return VERSION
+
+
+from app import routes
