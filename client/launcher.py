@@ -622,8 +622,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
         res = r.text.encode("utf-8")
     if res is not None:
         return res
-    else:
-        return result
+    return result
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ def is_polyentity_service(redis, service_name):
     is_polyentity = is_polyentity_config(service_config)
     return is_polyentity
 
+
 def is_polyentity_config(config):
     return "entities" in config
 
@@ -56,10 +57,8 @@ def get_docker(config, entity):
     if is_polyentity_config(config):
         if entity in config["entities"].keys():
             return config["entities"][entity]["docker"]
-        else:
-            raise ValueError("cannot find the config for the entity %s" % entity)
-    else:
-        return config["docker"]
+        raise ValueError("cannot find the config for the entity %s" % entity)
+    return config["docker"]
 
 
 def get_entities_limit_rate(redis, service):

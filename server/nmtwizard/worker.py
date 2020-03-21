@@ -539,15 +539,14 @@ class Worker(object):
                 if self._entity == other._entity:  # same entity, go for highest priority
                     is_more_prio = self._priority > other._priority or (self._priority == other._priority and self._launched_time < other._launched_time)
                     return is_more_prio
-                else:
-                    my_entity_usage = resource_mgr.entities_usage[self._entity]
-                    other_entity_usage = resource_mgr.entities_usage[other._entity]
-                    if my_entity_usage == other_entity_usage:
-                        return self._launched_time < other._launched_time
+                my_entity_usage = resource_mgr.entities_usage[self._entity]
+                other_entity_usage = resource_mgr.entities_usage[other._entity]
+                if my_entity_usage == other_entity_usage:
+                    return self._launched_time < other._launched_time
 
-                    result = my_entity_usage < other_entity_usage
-                    self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
-                    return result
+                result = my_entity_usage < other_entity_usage
+                self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
+                return result
 
             def is_higher_priority(self, other_task):
                 # Decision tree for the most priority task
@@ -559,10 +558,9 @@ class Worker(object):
                         return True
 
                     return self._is_more_respectful_usage(other_task)
-                elif other_task._already_on_node():
+                if other_task._already_on_node():
                     return False
-                else:
-                    return self._is_more_respectful_usage(other_task)
+                return self._is_more_respectful_usage(other_task)
 
             def find_machine_without_blocking(self, higher_prio_task):
                 for machine in self._runnable_machines:
