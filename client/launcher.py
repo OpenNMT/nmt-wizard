@@ -49,7 +49,7 @@ LOGGER = None
 
 
 def getjson(config):
-    if config is None or type(config) == dict:
+    if config is None or isinstance(config, dict):
         return None
     if not config.startswith('@'):
         return json.loads(config)
