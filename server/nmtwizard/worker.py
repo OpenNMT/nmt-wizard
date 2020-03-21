@@ -1,9 +1,11 @@
 import time
 import json
 import logging
-import six
 import sys
 import traceback
+
+import six
+
 from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
