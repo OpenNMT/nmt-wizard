@@ -708,7 +708,8 @@ class Worker(object):
             best_runnable_task = None
             runnable_tasks = []
             highest_priority_blocked_task = None
-            for e in resource_mgr.entities_usage.values(): print("[AZ-USE] %s" % e)
+            for e in resource_mgr.entities_usage.values():
+                print("[AZ-USE] %s" % e)
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)
