@@ -103,9 +103,9 @@ def confirm(prompt=None, resp=False):
         if ans not in ['y', 'Y', 'n', 'N']:
             print('please enter y or n.')
             continue
-        if ans == 'y' or ans == 'Y':
+        if ans in ['y', 'Y']:
             return True
-        if ans == 'n' or ans == 'N':
+        if ans in ['n', 'N']:
             return False
 
 

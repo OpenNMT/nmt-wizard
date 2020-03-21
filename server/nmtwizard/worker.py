@@ -11,7 +11,7 @@ from nmtwizard import configuration as config
 
 
 def _compatible_resource(resource, request_resource):
-    if request_resource == 'auto' or resource == request_resource:
+    if request_resource in ['auto', request_resource]:
         return True
     return (","+request_resource+",").find(","+resource+",") != -1
 
