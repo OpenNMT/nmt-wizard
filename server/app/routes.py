@@ -78,7 +78,7 @@ def get_entity_owner(service_entities, service_name):
 
     if not entity_owner:
         abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
-    entity_owner= entity_owner.upper()
+    entity_owner = entity_owner.upper()
 
     if not has_ability(flask.g, 'train', entity_owner):
         abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))

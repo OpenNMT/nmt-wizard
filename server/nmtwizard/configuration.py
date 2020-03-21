@@ -79,7 +79,7 @@ def get_entities_limit_rate(redis, service):
 def get_registries(redis, service):
     base_config = get_default_storage(redis)
     service_config = _get_config_from_redis(redis, service)
-    registries=[]
+    registries = []
     if "docker" in base_config and "registries" in base_config["docker"]:
         registries = base_config["docker"]["registries"]
 

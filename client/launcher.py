@@ -380,7 +380,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             for k in result:
                 res.append(k["task_id"])
         elif not is_json:
-            headers= ["Task ID", "Service", "Resource", "Priority", "Launch Date", "Image", "Status", "Message", "owner"]
+            headers = ["Task ID", "Service", "Resource", "Priority", "Launch Date", "Image", "Status", "Message", "owner"]
             if args.parent:
                 headers.append("parent")
 
