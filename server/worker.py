@@ -53,9 +53,9 @@ redis = RedisDatabase(cfg.get('redis', 'host'),
                       redis_password)
 
 redis2 = RedisDatabase(cfg.get('redis', 'host'),
-                      cfg.getint('redis', 'port'),
-                      cfg.get('redis', 'db'),
-                      redis_password, False)
+                       cfg.getint('redis', 'port'),
+                       cfg.get('redis', 'db'),
+                       redis_password, False)
 
 retry = 0
 while retry < 10:

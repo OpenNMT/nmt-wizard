@@ -199,10 +199,10 @@ class Worker(object):
                     if v == task_id:
                         already_allocated_xpus.incr_ncpus(1)
                 capacity = service.list_resources()[resource]
-                available_xpus, remaining_xpus = self._reserve_resource(
-                                                    service, resource, capacity, task_id,
-                                                    nxpus - already_allocated_xpus,
-                                                    Capacity(), Capacity(-1, -1), True)
+                available_xpus, remaining_xpus = self._reserve_resource(service, resource,
+                                                                        capacity, task_id,
+                                                                        nxpus - already_allocated_xpus,
+                                                                        Capacity(), Capacity(-1, -1), True)
                 self._logger.info(
                     'task: %s - resource: %s (capacity %s)- already %s - available %s',
                     task_id, resource, capacity, already_allocated_xpus, available_xpus)
@@ -537,8 +537,7 @@ class Worker(object):
 
             def _is_more_respectful_usage(self, other):
                 if self._entity == other._entity:  # same entity, go for highest priority
-                    is_more_prio = self._priority > other._priority or (
-                            self._priority == other._priority and self._launched_time < other._launched_time)
+                    is_more_prio = self._priority > other._priority or (self._priority == other._priority and self._launched_time < other._launched_time)
                     return is_more_prio
                 else:
                     my_entity_usage = resource_mgr.entities_usage[self._entity]

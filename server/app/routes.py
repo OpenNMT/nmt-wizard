@@ -77,8 +77,7 @@ def get_entity_owner(service_entities, service_name):
             entity_owner = service_entities[0]
 
     if not entity_owner:
-        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" %
-                                                            str(",".join(trainer_of_entities))), 400))
+        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
     entity_owner= entity_owner.upper()
 
     if not has_ability(flask.g, 'train', entity_owner):
@@ -603,8 +602,7 @@ def launch(service):
     # check that we have a resource able to run such a request
     if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
         abort(flask.make_response(
-            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
-                                  (service, ngpus, ncpus and str(ncpus) or "-")), 400))
+            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
         if exec_mode:
@@ -659,8 +657,7 @@ def launch(service):
     if parent_task_type:
         if (parent_task_type == "trans" or parent_task_type == "relea" or
                 (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
-            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" %
-                                                            (parent_task_type)), 400))
+            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % (parent_task_type)), 400))
 
     task_ids = []
     task_create = []
@@ -890,13 +887,10 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out[
-                            "infile"] + ["--tgtfile"] + in_out["outfile"] + ["--output"] + in_out[
-                                       "scorefile"]
+                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] + in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
-                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer",
-                                                                  parent_task_id)
+                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
                     task_create.append(
                         (redis_db, taskfile_dir,
                          tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
