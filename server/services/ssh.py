@@ -63,7 +63,7 @@ class SSHService(Service):
                     raise ValueError("inconsistent ncpus and cpus option for server `%s`" % server)
                 server['cpus'] = list(range(server['ncpus']))
             if 'cpus' not in server or len(server['cpus']) == 0:
-                    raise ValueError("cpus cannot be empty for server `%s`" % server)
+                raise ValueError("cpus cannot be empty for server `%s`" % server)
         super(SSHService, self).__init__(config)
         server_pool = self._config['variables']['server_pool']
         self._machines = {_hostname(server): server for server in server_pool}
