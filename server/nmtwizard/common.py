@@ -173,7 +173,7 @@ def ssh_connect_with_retry(hostname,
         except Exception as e:
             retry -= 1
             if retry < 0:
-                raise EnvironmentError('cannot connect to node: %s', str(e))
+                raise EnvironmentError('cannot connect to node: %s' % str(e))
             logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
                            hostname, str(e), retry_delay)
             time.sleep(retry_delay)
