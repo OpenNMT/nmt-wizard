@@ -293,13 +293,13 @@ def _parse_local_filename(arg, files):
     elif arg.find('/') != -1 and arg.find(':') == -1:
         if not os.path.exists(arg):
             LOGGER.warning("parameter %s could be a filename but does not exists, "
-                           "considering it is not" % arg)
+                           "considering it is not", arg)
             return arg
-        LOGGER.warning("parameter %s could be a filename and exists, considering it is" % arg)
+        LOGGER.warning("parameter %s could be a filename and exists, considering it is", arg)
     else:
         return arg
 
-    LOGGER.debug("considering %s is a file" % arg)
+    LOGGER.debug("considering %s is a file", arg)
 
     basename = os.path.basename(arg)
     if basename not in files:
