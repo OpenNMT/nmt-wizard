@@ -69,7 +69,8 @@ def get_entities_limit_rate(redis, service):
     if entities:
         entities_rate = {e.upper(): entities[e]["occup_weight"] for e in entities if "occup_weight" in entities[e] and
                          entities[e]["occup_weight"] > 0}
-    else: #mono entity so
+    # mono entity so
+    else:
         entity_name = service_config["name"][0:2].upper()
         entities_rate[entity_name] = 1
 
@@ -100,7 +101,8 @@ def _get_config_from_redis(redis, service):
     return current_configuration
 
 
-def set_entity_config(redis, service, pool_entity, the_config): # for now, we try to update only the entity
+# for now, we try to update only the entity
+def set_entity_config(redis, service, pool_entity, the_config):
     if pool_entity not in the_config["entities"]:
         raise ValueError("Cannot modify the entity '%s'. Config is not valid" % pool_entity)
 

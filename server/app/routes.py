@@ -569,7 +569,8 @@ def launch(service):
     entity_owner = get_entity_owner(service_entities, service)
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
-    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner, TaskInfo.STORAGE_ENTITIES.value:json.dumps(trainer_entities)}
+    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
+                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):

@@ -92,7 +92,8 @@ class EC2Service(Service):
                     len(config['variables']['template_pool']))
 
     def get_server_detail(self, server, field_name):
-        return self._machines[server].get(field_name) #here, server must exist
+        # here, server must exist
+        return self._machines[server].get(field_name)
 
     def resource_multitask(self):
         return False

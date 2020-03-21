@@ -555,7 +555,8 @@ class Worker(object):
                 if not other_task:
                     return True
 
-                if self._already_on_node(): # go for already allocated resource task
+                # go for already allocated resource task
+                if self._already_on_node():
                     if not other_task._already_on_node():
                         return True
 

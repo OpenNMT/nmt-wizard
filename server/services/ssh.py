@@ -80,7 +80,8 @@ class SSHService(Service):
         return gpus
 
     def get_server_detail(self, server, field_name):
-        return self._machines[server].get(field_name) #here, server must exist
+        # here, server must exist
+        return self._machines[server].get(field_name)
 
     def list_resources(self):
         resources = {server: Capacity(len(self._machines[server]['gpus']), len(self._machines[server]['cpus'])) for server in self._machines}
