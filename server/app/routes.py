@@ -105,6 +105,7 @@ def check_permission(service, permission):
             abort(make_response(jsonify(message="insufficient credentials for edit_config (entity %s)" % pool_entity),
                                 403))
 
+
 @app.errorhandler(Exception)
 def handle_error(e):
     # return a nice message when any exception occured, keeping the orignal Http error

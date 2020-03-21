@@ -14,12 +14,14 @@ log_file = "%s"
 callback_url = "%s"
 myenv = json.loads(%s)
 
+
 def ensure_str(s, encoding="utf-8", errors="strict"):
     if not isinstance(s, (str, bytes)):
         raise TypeError( "not expecting type \"{}\"".format(type(s)))
     if isinstance(s, bytes):
         s = s.decode(encoding, errors)
     return s
+
 
 def displaycmd(lst):
     s = ""

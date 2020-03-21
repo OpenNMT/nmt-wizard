@@ -7,6 +7,7 @@ import six
 logger = logging.getLogger(__name__)
 CONFIG_DEFAULT = "CONF_DEFAULT"
 
+
 def add_log_handler(fh):
     logger.addHandler(fh)
 
@@ -98,6 +99,7 @@ def _get_config_from_redis(redis, service):
     current_configuration = json.loads(configurations[current_configuration_name][1])
     return current_configuration
 
+
 def set_entity_config(redis, service, pool_entity, the_config): # for now, we try to update only the entity
     if pool_entity not in the_config["entities"]:
         raise ValueError("Cannot modify the entity '%s'. Config is not valid" % pool_entity)
@@ -106,6 +108,7 @@ def set_entity_config(redis, service, pool_entity, the_config): # for now, we tr
     service_config = _get_config_from_redis(redis, service)
     service_config["entities"][pool_entity] = the_config["entities"][pool_entity]
     redis.hset(keys, "configurations", json.dumps(service_config))
+
 
 def get_default_storage(redis):
     default_config = redis.hget('default', 'configuration')
