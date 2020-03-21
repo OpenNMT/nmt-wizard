@@ -88,7 +88,7 @@ def terminate(redis, task_id, phase):
 def work_queue(redis, task_id, service=None, delay=0):
     if service is None:
         service = redis.hget('task:'+task_id, 'service')
-    """Queues the task in the work queue with a delay."""
+    # Queues the task in the work queue with a delay.
     if delay == 0:
         redis.lpush('work:'+service, task_id)
         redis.delete('queue:'+task_id)
@@ -113,14 +113,14 @@ def service_queue(redis, task_id, service):
 def enable(redis, task_id, service=None):
     if service is None:
         service = redis.hget('task:'+task_id, 'service')
-    """Marks a task as enabled."""
+    # Marks a task as enabled.
     redis.sadd("active:"+service, task_id)
 
 
 def disable(redis, task_id, service=None):
     if service is None:
         service = redis.hget('task:'+task_id, 'service')
-    """Marks a task as disabled."""
+    # Marks a task as disabled.
     redis.srem("active:"+service, task_id)
     redis.delete("beat:"+task_id)
 
