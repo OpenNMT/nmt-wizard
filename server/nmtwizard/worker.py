@@ -592,7 +592,6 @@ class Worker(object):
                 if not self._runnable_machines:
                     self._logger.debug("[AZ-NOT_ENOUGH_RESS] task '%s'. %s", self, resource_mgr)
 
-
                 return self._runnable_machines
 
             @staticmethod

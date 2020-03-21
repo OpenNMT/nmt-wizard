@@ -196,7 +196,6 @@ def get_storages_entity(redis, task_id):
     return json.loads(task_storage_entities) if task_storage_entities else None
 
 
-
 def delete(redis, taskfile_dir, task_id):
     """Delete a given task."""
     keyt = "task:" + task_id

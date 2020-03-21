@@ -104,6 +104,7 @@ class UpdateLog:
         log_thread.daemon = True
         log_thread.start()
 
+
 if callback_url:
     thead = UpdateLog(current_log)
     thead.run()

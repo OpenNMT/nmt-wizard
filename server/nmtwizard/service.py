@@ -32,6 +32,7 @@ class Service(object):
         if self._default_ms and (self._default_msr or self._default_msw):
             raise ValueError('default_ms and default_ms[rw] are exclusive')
         self._machines = None
+
     def __getstate__(self):
         """Return state values to be pickled."""
         return (self._config, self._machines, self._resources)
