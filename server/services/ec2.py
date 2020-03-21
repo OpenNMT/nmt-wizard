@@ -241,9 +241,6 @@ class EC2Service(Service):
         instance.terminate()
         logger.info("Terminated instance (on terminate): %s.", instance_id)
 
-    def get_server_detail(self, server, field_name):
-        return self._machines[server].get(field_name)  # here, server must exist
-
 
 def init(config):
     return EC2Service(config)
