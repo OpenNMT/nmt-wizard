@@ -1121,7 +1121,8 @@ def get_file(task_id, filename):
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
     #https://www.pythonanywhere.com/forums/topic/13570/
     w = FileWrapper(io.BytesIO(content))
-    return Response(w, mimetype="application/octet-stream", direct_passthrough=True)
+    return Response(w, mimetype="application/octet-stream", direct_passthrough=True,
+                    headers={'Content-Disposition': 'attachment; filename="{}"'.format(filename)})
 
 
 @app.route("/file/<string:task_id>/<path:filename>", methods=["POST"])
