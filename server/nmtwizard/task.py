@@ -265,9 +265,9 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
     with open(os.path.join(taskdir, filename), "w", encoding="utf-8") as fh:
+        content = six.ensure_text(content, encoding="utf-8")
         if limit and len(content) >= limit:
             content = content[:limit-len(disclaimer)] + disclaimer
-        content = six.ensure_text(content, encoding="utf-8")
         fh.write(content)
     return content
 
