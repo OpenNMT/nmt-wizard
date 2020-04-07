@@ -338,6 +338,7 @@ def list_services():
         if current_configuration is None or configurations is None:
             abort(make_response(jsonify(message="service configuration %s unknown" % service), 404))
 
+        json_config = json.loads(json.loads(configurations)[current_configuration][1])
         pool_entities = config.get_entities(json.loads(json.loads(configurations)[current_configuration][1]))
 
         if not showall and flask.g.user.entity.entity_code not in pool_entities:
@@ -357,10 +358,18 @@ def list_services():
                 if len(pids) == 0:
                     busy = "yes"
                     pid = "**NO WORKER**"
+
+                default_cfg = config.get_default_storage(redis_db)
+                env_vars = default_cfg["docker"].get("envvar")
+                if not env_vars:
+                    env_vars = {}
+
+                env_vars.update(config.get_envvar(json_config))
+                env_vars.pop('specific', None)
                 res[service] = {'name': name, 'pid': pid,
                                 'usage': usage, 'queued': queued,
                                 'capacity': capacity, 'busy': busy,
-                                'detail': detail}
+                                'detail': detail, "envvar":env_vars}
     return flask.jsonify(res)
 
 

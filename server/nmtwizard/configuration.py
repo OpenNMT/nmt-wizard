@@ -3,6 +3,7 @@ import json
 import logging
 import importlib
 import six
+from jsonpath_ng import parse
 
 logger = logging.getLogger(__name__)
 CONFIG_DEFAULT = "CONF_DEFAULT"
@@ -60,6 +61,17 @@ def get_docker(config, entity):
             raise ValueError("cannot find the config for the entity %s" % entity)
     else:
         return config["docker"]
+
+
+def get_envvar(json_cfg):
+    if is_polyentity_config(json_cfg):
+        var = parse('entities.*.docker.envvar').find(json_cfg)
+    else:
+        var = parse('docker.envvar').find(json_cfg)
+    if var:
+        var[0].value
+
+    return var[0].value if var else {}
 
 
 def get_entities_limit_rate(redis, service):

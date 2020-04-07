@@ -2,6 +2,7 @@ boto3
 enum34
 flask
 ovh
+jsonpath-ng
 paramiko
 redis>=3.0.0
 flask_ini
