@@ -68,8 +68,6 @@ def get_envvar(json_cfg):
         var = parse('entities.*.docker.envvar').find(json_cfg)
     else:
         var = parse('docker.envvar').find(json_cfg)
-    if var:
-        var[0].value
 
     return var[0].value if var else {}
 
