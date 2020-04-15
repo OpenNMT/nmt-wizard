@@ -365,7 +365,9 @@ def list_services():
                     env_vars = {}
 
                 env_vars.update(config.get_envvar(json_config))
+                # remove tech var
                 env_vars.pop('specific', None)
+                env_vars.pop('CORPUS_DIR', None)
                 res[service] = {'name': name, 'pid': pid,
                                 'usage': usage, 'queued': queued,
                                 'capacity': capacity, 'busy': busy,
