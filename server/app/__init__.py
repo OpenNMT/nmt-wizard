@@ -10,7 +10,7 @@ from flask_ini import FlaskIni
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
 
-VERSION = "1.11.1"
+VERSION = "1.11.0"
 
 app = Flask(__name__)
 app._requestid = 1
