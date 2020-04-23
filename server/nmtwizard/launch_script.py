@@ -14,14 +14,19 @@ log_file = "%s"
 callback_url = "%s"
 myenv = json.loads(%s)
 
-def ensure_str(s, encoding="utf-8", errors="strict"):
-    if s is None:
+def ensure_str(s, encoding="utf-8", errors="ignore"):
+    try:
+        if s is None:
+            return ""
+        if not isinstance(s, (str, bytes)):
+            raise TypeError( "not expecting type \"{}\"".format(type(s)))
+        if isinstance(s, bytes):
+            s = s.decode(encoding, errors)
+        return s
+    except Exception as e:
+        print ("Exception LOG truncated when encoding")
+        print (str(e))
         return ""
-    if not isinstance(s, (str, bytes)):
-        raise TypeError( "not expecting type \"{}\"".format(type(s)))
-    if isinstance(s, bytes):
-        s = s.decode(encoding, errors)
-    return s
 
 def displaycmd(lst):
     s = ""
@@ -95,32 +100,42 @@ def _update_log_loop():
             except Exception:
                 pass
 
-
 if callback_url:
     log_thread = Thread(target=_update_log_loop)
     log_thread.daemon = True
     log_thread.start()
 
 while p1.poll() is None:
-    line = ensure_str(p1.stdout.readline())
-    f.write(line)
-    f.flush()
-    mutex.acquire()
-    current_log += line
-    mutex.release()
+    try:
+        line = ensure_str(p1.stdout.readline())
+        f.write(line)
+        f.flush()
+        mutex.acquire()
+        current_log += line
+        mutex.release()
+    except Exception as e:
+        print ("Exception LOG truncated when polling")
+        print (str(e))
+
+print ("AFTER while ")
+print(p1.returncode)
 
 completed = True
 
-line = p1.stdout.read()
-f.write(ensure_str(line))
-f.flush()
+try:
+    line = p1.stdout.read()
+    f.write(ensure_str(line))
+    f.flush()
+except Exception as e:
+    print("Exception LOG truncated when getting last log")
+    print(str(e))
+finally:
+    f.close()
 
 if p1.returncode == 0:
     phase = "completed"
 else:
     phase = "error"
-
-f.close()
 
 if callback_url:
     mutex.acquire()
