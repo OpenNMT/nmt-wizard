@@ -257,15 +257,15 @@ def file_list(redis, taskfile_dir, task_id):
     return os.listdir(task_dir)
 
 
-disclaimer = '\n\n[FILE TRUNCATED]\n'
+disclaimer = b'\n\n[FILE TRUNCATED]\n'
 
 
 def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
-    with open(os.path.join(taskdir, filename), "w", encoding="utf-8") as fh:
-        content = six.ensure_text(content, encoding="utf-8")
+    with open(os.path.join(taskdir, filename), "wb") as fh:
+        content = six.ensure_binary(content)
         if limit and len(content) >= limit:
             content = content[:limit-len(disclaimer)] + disclaimer
         fh.write(content)
@@ -282,10 +282,10 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
         current_size = os.stat(filepath).st_size
     if limit and current_size >= limit:
         return
+    content = six.ensure_binary(content, encoding="utf-8")
     if limit and len(content)+current_size >= limit:
         content = content[:limit-len(disclaimer)] + disclaimer
     with open(filepath, "ab") as fh:
-        content = six.ensure_binary(content, encoding="utf-8")
         fh.write(content)
 
 
