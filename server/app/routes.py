@@ -1200,7 +1200,15 @@ def post_stat(task_id):
 
 @app.route("/status", methods=["GET"])
 def get_status():
-    return flask.jsonify(200)
+    version = get_version()
+    launcher_version = version.split(":")[1]
+    result = {
+        "hostname": "https://api-snw.systran.net",
+        "status": "running",
+        "name": "Launcher",
+        "version": launcher_version
+    }
+    return flask.jsonify(result)
 
 
 @app.route("/version", methods=["GET"])
