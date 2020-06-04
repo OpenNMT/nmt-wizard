@@ -10,7 +10,7 @@ from functools import wraps
 import builtins
 import re
 import traceback
-
+from werkzeug.wsgi import FileWrapper
 import semver
 import six
 from werkzeug.exceptions import HTTPException
@@ -1115,8 +1115,10 @@ def get_file(task_id, filename):
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
-    return flask.send_file(io.BytesIO(content), attachment_filename=filename,
-                           mimetype="application/octet-stream")
+    #https://www.pythonanywhere.com/forums/topic/13570/
+    w = FileWrapper(io.BytesIO(content))
+    return Response(w, mimetype="application/octet-stream", direct_passthrough=True,
+                    headers={'Content-Disposition': 'attachment; filename="{}"'.format(filename)})
 
 
 @app.route("/file/<string:task_id>/<path:filename>", methods=["POST"])

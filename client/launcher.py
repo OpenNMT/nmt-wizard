@@ -12,7 +12,7 @@ import six
 import requests
 from prettytable import PrettyTable, PLAIN_COLUMNS
 
-VERSION = "1.10.1"
+VERSION = "1.11.0"
 
 try:
     # for Python 3

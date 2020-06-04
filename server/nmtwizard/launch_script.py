@@ -15,12 +15,19 @@ callback_url = "%s"
 myenv = json.loads(%s)
 
 
-def ensure_str(s, encoding="utf-8", errors="strict"):
-    if not isinstance(s, (str, bytes)):
-        raise TypeError("not expecting type \"{}\"".format(type(s)))
-    if isinstance(s, bytes):
-        s = s.decode(encoding, errors)
-    return s
+def ensure_str(s, encoding="utf-8", errors="ignore"):
+    try:
+        if s is None:
+            return ""
+        if not isinstance(s, (str, bytes)):
+            raise TypeError( "not expecting type \"{}\"".format(type(s)))
+        if isinstance(s, bytes):
+            s = s.decode(encoding, errors)
+        return s
+    except Exception as e:
+        print ("Exception LOG truncated when encoding")
+        print (str(e))
+        return ""
 
 
 def displaycmd(lst):
@@ -74,61 +81,64 @@ mutex = Lock()
 completed = False
 
 
-class UpdateLog:
-    def __init__(self, current_log):
-        self.current_log = current_log
-
-    def update_log_loop(self):
-        while True:
-            for i in range(60):
-                time.sleep(1)
-                if completed:
-                    return
-            mutex.acquire()
-            copy_log = self.current_log
-            self.current_log = ""
-            mutex.release()
-            if copy_log:
-                try:
-                    p = pop(["curl", "--retry", "3", "-X", "PATCH",
-                             callback_url + os.path.join("task",
-                                                         "log") + task_id +
-                             "?duration=%d", "--data-binary", "@-"],
-                            stdin=subprocess.PIPE)
-                    p.communicate(copy_log)
-                except ZeroDivisionError:
-                    pass
-
-    def run(self):
-        log_thread = Thread(target=self.update_log_loop)
-        log_thread.daemon = True
-        log_thread.start()
+def _update_log_loop():
+    global current_log
+    while True:
+        for i in range(60):
+            time.sleep(1)
+            if completed:
+                return
+        mutex.acquire()
+        copy_log = current_log
+        current_log = ""
+        mutex.release()
+        if copy_log:
+            try:
+                p = subprocess.Popen(["curl", "--retry", "3", "-X", "PATCH",
+                                      callback_url+"/task/log/"+task_id+"?duration=%d",
+                                      "--data-binary", "@-"],
+                                     stdin=subprocess.PIPE)
+                p.communicate(copy_log.encode())
+            except Exception:
+                pass
 
 
 if callback_url:
-    thead = UpdateLog(current_log)
-    thead.run()
+    log_thread = Thread(target=_update_log_loop)
+    log_thread.daemon = True
+    log_thread.start()
 
 while p1.poll() is None:
-    line = p1.stdout.readline()
-    f.write(ensure_str(line))
-    f.flush()
-    mutex.acquire()
-    current_log += line
-    mutex.release()
+    try:
+        line = ensure_str(p1.stdout.readline())
+        f.write(line)
+        f.flush()
+        mutex.acquire()
+        current_log += line
+        mutex.release()
+    except Exception as e:
+        print ("Exception LOG truncated when polling")
+        print (str(e))
+
+print ("AFTER while ")
+print(p1.returncode)
 
 completed = True
 
-line = p1.stdout.read()
-f.write(ensure_str(line))
-f.flush()
+try:
+    line = p1.stdout.read()
+    f.write(ensure_str(line))
+    f.flush()
+except Exception as e:
+    print("Exception LOG truncated when getting last log")
+    print(str(e))
+finally:
+    f.close()
 
 if p1.returncode == 0:
     phase = "completed"
 else:
     phase = "error"
-
-f.close()
 
 if callback_url:
     mutex.acquire()
