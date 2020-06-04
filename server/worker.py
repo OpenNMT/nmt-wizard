@@ -106,7 +106,7 @@ if os.path.isdir("configurations"):
 
 pid = os.getpid()
 
-logger.info('Running worker for %s - PID = %d', (service, pid))
+logger.info('Running worker for %s - PID = %d' % (service, pid))
 
 keyw = 'admin:worker:%s:%d' % (service, pid)
 redis.hset(keyw, "launch_time", time.time())
