@@ -120,7 +120,7 @@ class TorqueService(Service):
         cmd += "    if [ -e \"${PBS_GPUFILE}\" ]\n"
         cmd += "    then\n"
         cmd += "        GPUS=`cat ${PBS_GPUFILE} | perl -pe 's/[^-]+-gpu//g' |"
-        cmd += " perl -pe 's/\\s+/ /g' | perl -pe 's/,$//g'`\n"
+        cmd += " perl -pe 's/\s+/ /g' | perl -pe 's/,$//g'`\n"
         cmd += "        GPUS=`echo \"${GPUS}+1\" | bc `\n"
         cmd += "        echo $GPUS;\n"
         cmd += "    else\n"

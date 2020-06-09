@@ -102,7 +102,10 @@ disable=invalid-name,
         redefined-builtin,
         no-self-use,
         attribute-defined-outside-init,
-        syntax-error
+        syntax-error,
+        logging-not-lazy,
+        ungrouped-imports,
+        anomalous-backslash-in-string
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
