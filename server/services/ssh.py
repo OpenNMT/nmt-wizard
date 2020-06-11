@@ -63,7 +63,7 @@ class SSHService(Service):
                     raise ValueError("inconsistent ncpus and cpus option for server `%s`" % server)
                 server['cpus'] = list(range(server['ncpus']))
             if 'cpus' not in server or len(server['cpus']) == 0:
-                    raise ValueError("cpus cannot be empty for server `%s`" % server)
+                raise ValueError("cpus cannot be empty for server `%s`" % server)
         super(SSHService, self).__init__(config)
         server_pool = self._config['variables']['server_pool']
         self._machines = {_hostname(server): server for server in server_pool}
@@ -80,17 +80,17 @@ class SSHService(Service):
         return gpus
 
     def get_server_detail(self, server, field_name):
-        return self._machines[server].get(field_name) #here, server must exist
+        # here, server must exist
+        return self._machines[server].get(field_name)
 
     def list_resources(self):
-        resources={server: Capacity(len(self._machines[server]['gpus']), len(self._machines[server]['cpus'])) for server in self._machines}
+        resources = {server: Capacity(len(self._machines[server]['gpus']), len(self._machines[server]['cpus'])) for server in self._machines}
         return resources
 
     def get_resource_from_options(self, options):
         if "server" not in options:
             return "auto"
-        else:
-            return options["server"]
+        return options["server"]
 
     def describe(self):
         has_login = False

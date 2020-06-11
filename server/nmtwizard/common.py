@@ -37,23 +37,22 @@ def rmprivate(lst):
         for t in lst:
             r.append(rmprivate(t))
         return r
-    elif isinstance(lst, dict):
+    if isinstance(lst, dict):
         for k, v in six.iteritems(lst):
             lst[k] = rmprivate(v)
         return lst
-    else:
-        t = lst
-        if isinstance(t, six.string_types):
-            p = t.find("[[private:")
-            while p != -1:
-                t = t[0:p] + t[p+10:]
-                q = t.find("]]")
-                if q != -1:
-                    t = t[0:q] + t[q+2:]
-                    p = t.find("[[private:", q)
-                else:
-                    p = -1
-        return t
+    t = lst
+    if isinstance(t, six.string_types):
+        p = t.find("[[private:")
+        while p != -1:
+            t = t[0:p] + t[p+10:]
+            q = t.find("]]")
+            if q != -1:
+                t = t[0:q] + t[q+2:]
+                p = t.find("[[private:", q)
+            else:
+                p = -1
+    return t
 
 
 # read the launch_script that will be used to launched and monitor tasks
@@ -174,7 +173,7 @@ def ssh_connect_with_retry(hostname,
         except Exception as e:
             retry -= 1
             if retry < 0:
-                raise EnvironmentError('cannot connect to node: %s', str(e))
+                raise EnvironmentError('cannot connect to node: %s' % str(e))
             logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
                            hostname, str(e), retry_delay)
             time.sleep(retry_delay)
@@ -342,10 +341,10 @@ def cmd_docker_run(lxpu, docker_options, task_id,
                 if storages[s].get('default_ms'):
                     docker_command = ['-ms', s + ':'] + docker_command
                     break
-                elif storages[s].get('default_msr') and '-msr' not in docker_command:
+                if storages[s].get('default_msr') and '-msr' not in docker_command:
                     docker_command = ['-msr', s + ':'] + docker_command
                     break
-                elif storages[s].get('default_msw') and '-msw' not in docker_command:
+                if storages[s].get('default_msw') and '-msw' not in docker_command:
                     docker_command = ['-msw', s + ':'] + docker_command
                     break
 
@@ -410,7 +409,7 @@ def launch_task(task_id,
         * `callback_interval`: time between 2 beats
     """
     (lgpu, lcpu) = lxpu
-    gpu_id = ",".join([gpu_id for gpu_id in lgpu])
+    gpu_id = ",".join(lgpu)
     logger.info("launching task - %s / %s", task_id, gpu_id)
     logger.debug("check environment for task %s", task_id)
     check_environment(
@@ -464,7 +463,7 @@ def launch_task(task_id,
         exit_status, stdout, stderr = run_command(client, cmd_mkdir)
         if exit_status != 0:
             raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, stderr.read()))
-        logger.info("transfer task files in dockers [%s]" % ", ".join(docker_files))
+        logger.info("transfer task files in dockers [%s]", ", ".join(docker_files))
         for f in docker_files:
             p = f.rfind("/")
             if p != -1:

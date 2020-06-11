@@ -14,6 +14,7 @@ log_file = "%s"
 callback_url = "%s"
 myenv = json.loads(%s)
 
+
 def ensure_str(s, encoding="utf-8", errors="ignore"):
     try:
         if s is None:
@@ -27,6 +28,7 @@ def ensure_str(s, encoding="utf-8", errors="ignore"):
         print ("Exception LOG truncated when encoding")
         print (str(e))
         return ""
+
 
 def displaycmd(lst):
     s = ""
@@ -99,6 +101,7 @@ def _update_log_loop():
                 p.communicate(copy_log.encode())
             except Exception:
                 pass
+
 
 if callback_url:
     log_thread = Thread(target=_update_log_loop)

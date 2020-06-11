@@ -7,6 +7,7 @@ import six
 logger = logging.getLogger(__name__)
 CONFIG_DEFAULT = "CONF_DEFAULT"
 
+
 def add_log_handler(fh):
     logger.addHandler(fh)
 
@@ -48,6 +49,7 @@ def is_polyentity_service(redis, service_name):
     is_polyentity = is_polyentity_config(service_config)
     return is_polyentity
 
+
 def is_polyentity_config(config):
     return "entities" in config
 
@@ -56,10 +58,8 @@ def get_docker(config, entity):
     if is_polyentity_config(config):
         if entity in config["entities"].keys():
             return config["entities"][entity]["docker"]
-        else:
-            raise ValueError("cannot find the config for the entity %s" % entity)
-    else:
-        return config["docker"]
+        raise ValueError("cannot find the config for the entity %s" % entity)
+    return config["docker"]
 
 
 def get_entities_limit_rate(redis, service):
@@ -69,7 +69,8 @@ def get_entities_limit_rate(redis, service):
     if entities:
         entities_rate = {e.upper(): entities[e]["occup_weight"] for e in entities if "occup_weight" in entities[e] and
                          entities[e]["occup_weight"] > 0}
-    else: #mono entity so
+    # mono entity so
+    else:
         entity_name = service_config["name"][0:2].upper()
         entities_rate[entity_name] = 1
 
@@ -79,7 +80,7 @@ def get_entities_limit_rate(redis, service):
 def get_registries(redis, service):
     base_config = get_default_storage(redis)
     service_config = _get_config_from_redis(redis, service)
-    registries=[]
+    registries = []
     if "docker" in base_config and "registries" in base_config["docker"]:
         registries = base_config["docker"]["registries"]
 
@@ -99,7 +100,9 @@ def _get_config_from_redis(redis, service):
     current_configuration = json.loads(configurations[current_configuration_name][1])
     return current_configuration
 
-def set_entity_config(redis, service, pool_entity, the_config): # for now, we try to update only the entity
+
+# for now, we try to update only the entity
+def set_entity_config(redis, service, pool_entity, the_config):
     if pool_entity not in the_config["entities"]:
         raise ValueError("Cannot modify the entity '%s'. Config is not valid" % pool_entity)
 
@@ -107,6 +110,7 @@ def set_entity_config(redis, service, pool_entity, the_config): # for now, we tr
     service_config = _get_config_from_redis(redis, service)
     service_config["entities"][pool_entity] = the_config["entities"][pool_entity]
     redis.hset(keys, "configurations", json.dumps(service_config))
+
 
 def get_default_storage(redis):
     default_config = redis.hget('default', 'configuration')
@@ -213,7 +217,3 @@ def load_service_config(filename, base_config):
     logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
 
     return services, merged_config
-
-
-
-

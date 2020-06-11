@@ -46,7 +46,6 @@ def process(logger, redis, service):
             configurations[cmd[4]] = (time.time(), v)
             redis.hset(keys, "configurations", json.dumps(configurations))
             result(redis, cmd, 'ok')
-            pass
         elif cmd[3] == 'del':
             if cmd[4] == 'base':
                 result(redis, cmd, 'ERROR: cannot delete `base` configuration')
@@ -61,7 +60,6 @@ def process(logger, redis, service):
             del configurations[cmd[4]]
             redis.hset(keys, "configurations", json.dumps(configurations))
             result(redis, cmd, 'ok')
-            pass
         elif cmd[3] == 'select':
             if cmd[4] == current_configuration:
                 result(redis, cmd, 'ERROR: `%s` configuration already set' % cmd[4])

@@ -49,7 +49,7 @@ LOGGER = None
 
 
 def getjson(config):
-    if config is None or type(config) == dict:
+    if config is None or isinstance(config, dict):
         return None
     if not config.startswith('@'):
         return json.loads(config)
@@ -103,9 +103,9 @@ def confirm(prompt=None, resp=False):
         if ans not in ['y', 'Y', 'n', 'N']:
             print('please enter y or n.')
             continue
-        if ans == 'y' or ans == 'Y':
+        if ans in ['y', 'Y']:
             return True
-        if ans == 'n' or ans == 'N':
+        if ans in ['n', 'N']:
             return False
 
 
@@ -293,13 +293,13 @@ def _parse_local_filename(arg, files):
     elif arg.find('/') != -1 and arg.find(':') == -1:
         if not os.path.exists(arg):
             LOGGER.warning("parameter %s could be a filename but does not exists, "
-                           "considering it is not" % arg)
+                           "considering it is not", arg)
             return arg
-        LOGGER.warning("parameter %s could be a filename and exists, considering it is" % arg)
+        LOGGER.warning("parameter %s could be a filename and exists, considering it is", arg)
     else:
         return arg
 
-    LOGGER.debug("considering %s is a file" % arg)
+    LOGGER.debug("considering %s is a file", arg)
 
     basename = os.path.basename(arg)
     if basename not in files:
@@ -380,7 +380,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             for k in result:
                 res.append(k["task_id"])
         elif not is_json:
-            headers= ["Task ID", "Service", "Resource", "Priority", "Launch Date", "Image", "Status", "Message", "owner"]
+            headers = ["Task ID", "Service", "Resource", "Priority", "Launch Date", "Image", "Status", "Message", "owner"]
             if args.parent:
                 headers.append("parent")
 
@@ -622,8 +622,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
         res = r.text.encode("utf-8")
     if res is not None:
         return res
-    else:
-        return result
+    return result
 
 
 if __name__ == "__main__":

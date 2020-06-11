@@ -1,9 +1,11 @@
 import time
 import json
 import logging
-import six
 import sys
 import traceback
+
+import six
+
 from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
@@ -11,7 +13,7 @@ from nmtwizard import configuration as config
 
 
 def _compatible_resource(resource, request_resource):
-    if request_resource == 'auto' or resource == request_resource:
+    if request_resource in ['auto', request_resource]:
         return True
     return (","+request_resource+",").find(","+resource+",") != -1
 
@@ -199,10 +201,10 @@ class Worker(object):
                     if v == task_id:
                         already_allocated_xpus.incr_ncpus(1)
                 capacity = service.list_resources()[resource]
-                available_xpus, remaining_xpus = self._reserve_resource(
-                                                    service, resource, capacity, task_id,
-                                                    nxpus - already_allocated_xpus,
-                                                    Capacity(), Capacity(-1, -1), True)
+                available_xpus, remaining_xpus = self._reserve_resource(service, resource,
+                                                                        capacity, task_id,
+                                                                        nxpus - already_allocated_xpus,
+                                                                        Capacity(), Capacity(-1, -1), True)
                 self._logger.info(
                     'task: %s - resource: %s (capacity %s)- already %s - available %s',
                     task_id, resource, capacity, already_allocated_xpus, available_xpus)
@@ -505,7 +507,7 @@ class Worker(object):
             def initialize_entities_usage(redis, service_name):
                 entity_usage_weights = config.get_entities_limit_rate(redis, service_name)
                 weight_sum = float(sum([w for w in entity_usage_weights.values() if w > 0]))
-                entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0 )
+                entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0)
                                   for e, r in six.iteritems(entity_usage_weights)}
                 return entities_usage
 
@@ -523,7 +525,7 @@ class Worker(object):
                 self._logger = logger
 
             def __str__(self):
-                return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity, self._entity_usage,  self._priority)
+                return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity, self._entity_usage, self._priority)
 
             def __gt__(self, other):
                 return self.is_higher_priority(other)
@@ -537,33 +539,31 @@ class Worker(object):
 
             def _is_more_respectful_usage(self, other):
                 if self._entity == other._entity:  # same entity, go for highest priority
-                    is_more_prio = self._priority > other._priority or (
-                            self._priority == other._priority and self._launched_time < other._launched_time)
+                    is_more_prio = self._priority > other._priority or (self._priority == other._priority and self._launched_time < other._launched_time)
                     return is_more_prio
-                else:
-                    my_entity_usage = resource_mgr.entities_usage[self._entity]
-                    other_entity_usage = resource_mgr.entities_usage[other._entity]
-                    if my_entity_usage == other_entity_usage:
-                        return self._launched_time < other._launched_time
+                my_entity_usage = resource_mgr.entities_usage[self._entity]
+                other_entity_usage = resource_mgr.entities_usage[other._entity]
+                if my_entity_usage == other_entity_usage:
+                    return self._launched_time < other._launched_time
 
-                    result = my_entity_usage < other_entity_usage
-                    self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
-                    return result
+                result = my_entity_usage < other_entity_usage
+                self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
+                return result
 
             def is_higher_priority(self, other_task):
                 # Decision tree for the most priority task
                 if not other_task:
                     return True
 
-                if self._already_on_node(): # go for already allocated resource task
+                # go for already allocated resource task
+                if self._already_on_node():
                     if not other_task._already_on_node():
                         return True
 
                     return self._is_more_respectful_usage(other_task)
-                elif other_task._already_on_node():
+                if other_task._already_on_node():
                     return False
-                else:
-                    return self._is_more_respectful_usage(other_task)
+                return self._is_more_respectful_usage(other_task)
 
             def find_machine_without_blocking(self, higher_prio_task):
                 for machine in self._runnable_machines:
@@ -592,7 +592,6 @@ class Worker(object):
                 if not self._runnable_machines:
                     self._logger.debug("[AZ-NOT_ENOUGH_RESS] task '%s'. %s", self, resource_mgr)
 
-
                 return self._runnable_machines
 
             @staticmethod
@@ -619,7 +618,7 @@ class Worker(object):
                             return None
 
                         if self._redis.hget(keyp, 'message') != 'completed':
-                            task.terminate(self._redis, next_task_id,  phase='dependency_error')
+                            task.terminate(self._redis, next_task_id, phase='dependency_error')
                             return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
@@ -646,7 +645,7 @@ class Worker(object):
                 self.worker = worker
 
             def __str__(self):
-                msg = " - ".join( str(m) for m in self._machines.values())
+                msg = " - ".join(str(m) for m in self._machines.values())
                 return "ResourceManager ( %s )." % msg
 
             def load_machines(self, service_name):
@@ -709,7 +708,8 @@ class Worker(object):
             best_runnable_task = None
             runnable_tasks = []
             highest_priority_blocked_task = None
-            for e in resource_mgr.entities_usage.values(): print("[AZ-USE] %s" % e)
+            for e in resource_mgr.entities_usage.values():
+                print("[AZ-USE] %s" % e)
             while count > 0:
                 count -= 1
                 next_task_id = self._redis.lindex(queue, count)

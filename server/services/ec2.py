@@ -87,12 +87,13 @@ class EC2Service(Service):
             for idx in range(maxInstances):
                 self._resources["%s:%d" % (template["name"], idx)] = \
                     Capacity(len(template["gpus"]), len(template["cpus"]))
-                self._machines["%s:%d" % (template["name"], idx)]= template
+                self._machines["%s:%d" % (template["name"], idx)] = template
         logger.info("Initialized EC2 - found %d templates.",
                     len(config['variables']['template_pool']))
 
     def get_server_detail(self, server, field_name):
-        return self._machines[server].get(field_name) #here, server must exist
+        # here, server must exist
+        return self._machines[server].get(field_name)
 
     def resource_multitask(self):
         return False
@@ -240,9 +241,6 @@ class EC2Service(Service):
         instance = ec2.Instance(instance_id)
         instance.terminate()
         logger.info("Terminated instance (on terminate): %s.", instance_id)
-
-    def get_server_detail(self, server, field_name):
-        return self._machines[server].get(field_name)  # here, server must exist
 
 
 def init(config):

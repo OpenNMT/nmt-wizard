@@ -77,9 +77,8 @@ def get_entity_owner(service_entities, service_name):
             entity_owner = service_entities[0]
 
     if not entity_owner:
-        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" %
-                                                            str(",".join(trainer_of_entities))), 400))
-    entity_owner= entity_owner.upper()
+        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
+    entity_owner = entity_owner.upper()
 
     if not has_ability(flask.g, 'train', entity_owner):
         abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
@@ -105,6 +104,7 @@ def check_permission(service, permission):
         if not has_ability(flask.g, "edit_config", pool_entity):
             abort(make_response(jsonify(message="insufficient credentials for edit_config (entity %s)" % pool_entity),
                                 403))
+
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -569,7 +569,8 @@ def launch(service):
     entity_owner = get_entity_owner(service_entities, service)
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
-    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner, TaskInfo.STORAGE_ENTITIES.value:json.dumps(trainer_entities)}
+    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
+                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
@@ -603,8 +604,7 @@ def launch(service):
     # check that we have a resource able to run such a request
     if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
         abort(flask.make_response(
-            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" %
-                                  (service, ngpus, ncpus and str(ncpus) or "-")), 400))
+            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
         if exec_mode:
@@ -659,8 +659,7 @@ def launch(service):
     if parent_task_type:
         if (parent_task_type == "trans" or parent_task_type == "relea" or
                 (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
-            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" %
-                                                            (parent_task_type)), 400))
+            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % (parent_task_type)), 400))
 
     task_ids = []
     task_create = []
@@ -890,13 +889,10 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out[
-                            "infile"] + ["--tgtfile"] + in_out["outfile"] + ["--output"] + in_out[
-                                       "scorefile"]
+                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] + in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
-                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer",
-                                                                  parent_task_id)
+                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
                     task_create.append(
                         (redis_db, taskfile_dir,
                          tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
@@ -1200,7 +1196,14 @@ def post_stat(task_id):
 
 @app.route("/status", methods=["GET"])
 def get_status():
-    return flask.jsonify(200)
+    version = get_version()
+    launcher_version = version.split(":")[1]
+    result = {
+        "status": "running",
+        "name": "Launcher",
+        "version": launcher_version
+    }
+    return flask.jsonify(result)
 
 
 @app.route("/version", methods=["GET"])
