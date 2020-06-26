@@ -12,6 +12,7 @@ import signal
 # from redis.exceptions import ConnectionError
 import six
 from six.moves import configparser
+from multiprocessing import Process
 
 from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
@@ -192,12 +193,36 @@ def graceful_exit(signum, frame):
 signal.signal(signal.SIGTERM, graceful_exit)
 signal.signal(signal.SIGINT, graceful_exit)
 
+
 # TODO: start multiple workers here?
-worker = Worker(redis, services,
-                ttl_policy,
-                cfg.getint('default', 'refresh_counter'),
-                cfg.getint('default', 'quarantine_time'),
-                keyw,
-                cfg.get('default', 'taskfile_dir'),
-                default_config_timestamp=default_config_timestamp)
-worker.run()
+def start_worker(redis, services,
+                 ttl_policy,
+                 refresh_counter,
+                 quarantine_time,
+                 keyw,
+                 taskfile_dir,
+                 default_config_timestamp=default_config_timestamp):
+
+    worker = Worker(redis, services,
+                    ttl_policy,
+                    refresh_counter,
+                    quarantine_time,
+                    keyw,
+                    taskfile_dir,
+                    default_config_timestamp)
+    worker.run()
+
+
+worker_count = os.cpu_count()
+
+# if cfg.has_option('worker', 'total'):
+#     worker_count = cfg.getint('worker', 'total')
+
+for i in range(0, worker_count):
+    Process(target=start_worker, args=(redis, services,
+                                       ttl_policy,
+                                       cfg.getint('default', 'refresh_counter'),
+                                       cfg.getint('default', 'quarantine_time'),
+                                       keyw,
+                                       cfg.get('default', 'taskfile_dir'),
+                                       default_config_timestamp)).start()

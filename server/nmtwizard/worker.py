@@ -154,174 +154,166 @@ class Worker(object):
             if status == 'stopped':
                 return
 
-            service_name = self._redis.hget(keyt, 'service')
-            if service_name not in self._services:
-                raise ValueError('unknown service %s' % service_name)
-            service = self._services[service_name]
-
             self._logger.info('%s: trying to advance from status %s', task_id, status)
-
             if status == 'queued':
-                resource = self._redis.hget(keyt, 'resource')
-                parent = self._redis.hget(keyt, 'parent')
-                if parent:
-                    keyp = 'task:%s' % parent
-                    # if the parent task is in the database, check for dependencies
-                    if self._redis.exists(keyp):
-                        status = self._redis.hget(keyp, 'status')
-                        if status == 'stopped':
-                            if self._redis.hget(keyp, 'message') != 'completed':
-                                task.terminate(self._redis, task_id, phase='dependency_error')
-                                return
-                        else:
-                            self._logger.warning('%s: depending on other task, waiting', task_id)
-                            task.service_queue(self._redis, task_id, service.name)
-                            return
-                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-                resource = self._allocate_resource(task_id, resource, service, nxpus)
-                if resource is not None:
-                    self._logger.info('%s: resource %s reserved %s',
-                                      task_id, resource, nxpus)
-                    self._redis.hset(keyt, 'alloc_resource', resource)
-                    task.set_status(self._redis, keyt, 'allocated')
-                    task.work_queue(self._redis, task_id, service_name)
-                else:
-                    self._logger.warning('%s / %s: no resources available, waiting', task_id, nxpus)
-                    task.service_queue(self._redis, task_id, service.name)
-            elif status == 'allocating':
-                resource = self._redis.hget(keyt, 'alloc_resource')
-                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-                already_allocated_xpus = Capacity()
-                keygr = 'gpu_resource:%s:%s' % (service.name, resource)
-                for k, v in six.iteritems(self._redis.hgetall(keygr)):
-                    if v == task_id:
-                        already_allocated_xpus.incr_ngpus(1)
-                keycr = 'cpu_resource:%s:%s' % (service.name, resource)
-                for k, v in six.iteritems(self._redis.hgetall(keycr)):
-                    if v == task_id:
-                        already_allocated_xpus.incr_ncpus(1)
-                capacity = service.list_resources()[resource]
-                available_xpus, remaining_xpus = self._reserve_resource(service, resource,
-                                                                        capacity, task_id,
-                                                                        nxpus - already_allocated_xpus,
-                                                                        Capacity(), Capacity(-1, -1), True)
-                self._logger.info(
-                    'task: %s - resource: %s (capacity %s)- already %s - available %s',
-                    task_id, resource, capacity, already_allocated_xpus, available_xpus)
-                if available_xpus and available_xpus == nxpus - already_allocated_xpus:
-                    task.set_status(self._redis, keyt, 'allocated')
-                    key_reserved = 'reserved:%s:%s' % (service.name, resource)
-                    self._redis.delete(key_reserved)
-                    task.work_queue(self._redis, task_id, service.name)
-                else:
-                    task.work_queue(self._redis, task_id, service.name,
-                                    delay=20)
+                self._handle_queued_task(task_id=task_id)
             elif status == 'allocated':
-                content = json.loads(self._redis.hget(keyt, 'content'))
-                resource = self._redis.hget(keyt, 'alloc_resource')
-                self._logger.info('%s: launching on %s', task_id, service.name)
-                try:
-                    entity_config = self._get_current_config(task_id)
-                    keygr = 'gpu_resource:%s:%s' % (service.name, resource)
-                    lgpu = []
-                    for k, v in six.iteritems(self._redis.hgetall(keygr)):
-                        if v == task_id:
-                            lgpu.append(k)
-                    self._redis.hset(keyt, 'alloc_lgpu', ",".join(lgpu))
-                    keycr = 'cpu_resource:%s:%s' % (service.name, resource)
-                    lcpu = []
-                    for k, v in six.iteritems(self._redis.hgetall(keycr)):
-                        if v == task_id:
-                            lcpu.append(k)
-                    self._redis.hset(keyt, 'alloc_lcpu', ",".join(lcpu))
-                    data = service.launch(
-                        task_id,
-                        content['options'],
-                        (lgpu, lcpu),
-                        resource,
-                        entity_config["storages"],
-                        entity_config["docker"],
-                        content['docker']['registry'],
-                        content['docker']['image'],
-                        content['docker']['tag'],
-                        content['docker']['command'],
-                        task.file_list(self._redis, self._taskfile_dir, task_id),
-                        content['wait_after_launch'],
-                        self._redis.hget(keyt, 'token'),
-                        content.get('support_statistics'))
-                except EnvironmentError as e:
-                    # the resource is not available and will be set busy
-                    self._block_resource(resource, service, str(e))
-                    self._redis.hdel(keyt, 'alloc_resource')
-                    # set the task as queued again
-                    self._release_resource(service, resource, task_id,
-                                           Capacity(self._redis.hget(keyt, 'ngpus'),
-                                                    self._redis.hget(keyt, 'ncpus')
-                                                    ))
-                    task.set_status(self._redis, keyt, 'queued')
-                    task.service_queue(self._redis, task_id, service.name)
-                    self._logger.info('could not launch [%s] %s on %s: blocking resource',
-                                      str(e), task_id, resource)
-                    self._logger.info(traceback.format_exc())
-                    return
-                except Exception as e:
-                    # all other errors make the task fail
-                    self._logger.info('fail task [%s] - %s', task_id, str(e))
-                    self._logger.info(traceback.format_exc())
-                    task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
-                    task.terminate(self._redis, task_id, phase='launch_error')
-                    self._logger.info(traceback.format_exc())
-                    return
-                self._logger.info('%s: task started on %s', task_id, service.name)
-                self._redis.hset(keyt, 'job', json.dumps(data))
-                task.set_status(self._redis, keyt, 'running')
-                # For services that do not notify their activity, we should
-                # poll the task status more regularly.
-                task.work_queue(self._redis, task_id, service.name,
-                                delay=service.is_notifying_activity and 120 or 30)
-
+                self._handle_allocated_task(task_id=task_id)
             elif status == 'running':
-                self._logger.debug('- checking activity of task: %s', task_id)
-                data = json.loads(self._redis.hget(keyt, 'job'))
-                try:
-                    status = service.status(task_id, data)
-                except Exception as e:
-                    self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
-                    self._redis.hincrby(keyt, 'status_fail', 1)
-                    if self._redis.hget(keyt, 'status_fail') > 4:
-                        task.terminate(self._redis, task_id, phase='lost_connection')
+                self._handle_running_task(task_id=task_id)
+            elif status == 'terminating':
+                self._handle_terminating_task(task_id=task_id)
+
+    def _handle_queued_task(self, task_id):
+        keyt = 'task:%s' % task_id
+        service_name, service = self._get_service(keyt=keyt)
+        resource = self._redis.hget(keyt, 'resource')
+        parent = self._redis.hget(keyt, 'parent')
+        if parent:
+            keyp = 'task:%s' % parent
+            # if the parent task is in the database, check for dependencies
+            if self._redis.exists(keyp):
+                status = self._redis.hget(keyp, 'status')
+                if status == 'stopped':
+                    if self._redis.hget(keyp, 'message') != 'completed':
+                        task.terminate(self._redis, task_id, phase='dependency_error')
                         return
                 else:
-                    self._redis.hdel(keyt, 'status_fail')
-                if status == 'dead':
-                    self._logger.info('%s: task no longer running on %s, request termination',
-                                      task_id, service.name)
-                    task.terminate(self._redis, task_id, phase='exited')
-                else:
-                    task.work_queue(self._redis, task_id, service.name,
-                                    delay=service.is_notifying_activity and 600 or 120)
+                    self._logger.warning('%s: depending on other task, waiting', task_id)
+                    task.service_queue(self._redis, task_id, service.name)
+                    return
+        nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+        resource = self._allocate_resource(task_id, resource, service, nxpus)
+        if resource is not None:
+            self._logger.info('%s: resource %s reserved %s',
+                              task_id, resource, nxpus)
+            self._redis.hset(keyt, 'alloc_resource', resource)
+            task.set_status(self._redis, keyt, 'allocated')
+            task.work_queue(self._redis, task_id, service_name)
+        else:
+            self._logger.warning('%s / %s: no resources available, waiting', task_id, nxpus)
+            task.service_queue(self._redis, task_id, service.name)
 
-            elif status == 'terminating':
-                data = self._redis.hget(keyt, 'job')
-                nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-                if data is not None:
-                    container_id = self._redis.hget(keyt, 'container_id')
-                    data = json.loads(data)
-                    data['container_id'] = container_id
-                    self._logger.info('%s: terminating task (job: %s)', task_id, json.dumps(data))
-                    try:
-                        service.terminate(data)
-                        self._logger.info('%s: terminated', task_id)
-                    except Exception:
-                        self._logger.warning('%s: failed to terminate', task_id)
-                        self._logger.info(traceback.format_exc())
-                else:
-                    self._logger.info('%s: terminating task (on error)', task_id)
-                resource = self._redis.hget(keyt, 'alloc_resource')
-                if resource:
-                    self._release_resource(service, resource, task_id, nxpus)
-                task.set_status(self._redis, keyt, 'stopped')
-                task.disable(self._redis, task_id)
+    def _handle_allocated_task(self, task_id):
+        keyt = 'task:%s' % task_id
+        service_name, service = self._get_service(keyt=keyt)
+        content = json.loads(self._redis.hget(keyt, 'content'))
+        resource = self._redis.hget(keyt, 'alloc_resource')
+        self._logger.info('%s: launching on %s', task_id, service.name)
+        try:
+            entity_config = self._get_current_config(task_id)
+            keygr = 'gpu_resource:%s:%s' % (service.name, resource)
+            lgpu = []
+            for k, v in six.iteritems(self._redis.hgetall(keygr)):
+                if v == task_id:
+                    lgpu.append(k)
+            self._redis.hset(keyt, 'alloc_lgpu', ",".join(lgpu))
+            keycr = 'cpu_resource:%s:%s' % (service.name, resource)
+            lcpu = []
+            for k, v in six.iteritems(self._redis.hgetall(keycr)):
+                if v == task_id:
+                    lcpu.append(k)
+            self._redis.hset(keyt, 'alloc_lcpu', ",".join(lcpu))
+            data = service.launch(
+                task_id,
+                content['options'],
+                (lgpu, lcpu),
+                resource,
+                entity_config["storages"],
+                entity_config["docker"],
+                content['docker']['registry'],
+                content['docker']['image'],
+                content['docker']['tag'],
+                content['docker']['command'],
+                task.file_list(self._redis, self._taskfile_dir, task_id),
+                content['wait_after_launch'],
+                self._redis.hget(keyt, 'token'),
+                content.get('support_statistics'))
+        except EnvironmentError as e:
+            # the resource is not available and will be set busy
+            self._block_resource(resource, service, str(e))
+            self._redis.hdel(keyt, 'alloc_resource')
+            # set the task as queued again
+            self._release_resource(service, resource, task_id,
+                                   Capacity(self._redis.hget(keyt, 'ngpus'),
+                                            self._redis.hget(keyt, 'ncpus')
+                                            ))
+            task.set_status(self._redis, keyt, 'queued')
+            task.service_queue(self._redis, task_id, service.name)
+            self._logger.info('could not launch [%s] %s on %s: blocking resource',
+                              str(e), task_id, resource)
+            self._logger.info(traceback.format_exc())
+            return
+        except Exception as e:
+            # all other errors make the task fail
+            self._logger.info('fail task [%s] - %s', task_id, str(e))
+            self._logger.info(traceback.format_exc())
+            task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
+            task.terminate(self._redis, task_id, phase='launch_error')
+            self._logger.info(traceback.format_exc())
+            return
+        self._logger.info('%s: task started on %s', task_id, service.name)
+        self._redis.hset(keyt, 'job', json.dumps(data))
+        task.set_status(self._redis, keyt, 'running')
+        # For services that do not notify their activity, we should
+        # poll the task status more regularly.
+        task.work_queue(self._redis, task_id, service.name,
+                        delay=service.is_notifying_activity and 120 or 30)
+
+    def _handle_running_task(self, task_id):
+        keyt = 'task:%s' % task_id
+        service_name, service = self._get_service(keyt=keyt)
+        self._logger.debug('- checking activity of task: %s', task_id)
+        data = json.loads(self._redis.hget(keyt, 'job'))
+        try:
+            status = service.status(task_id, data)
+            if status == 'dead':
+                self._logger.info('%s: task no longer running on %s, request termination',
+                                  task_id, service.name)
+                task.terminate(self._redis, task_id, phase='exited')
+            else:
+                task.work_queue(self._redis, task_id, service.name,
+                                delay=service.is_notifying_activity and 600 or 120)
+        except Exception as e:
+            self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
+            self._redis.hincrby(keyt, 'status_fail', 1)
+            if self._redis.hget(keyt, 'status_fail') > 4:
+                task.terminate(self._redis, task_id, phase='lost_connection')
+                return
+            else:
+                self._redis.hdel(keyt, 'status_fail')
+
+    def _handle_terminating_task(self, task_id):
+        keyt = 'task:%s' % task_id
+        service_name, service = self._get_service(keyt=keyt)
+        data = self._redis.hget(keyt, 'job')
+        nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+        if data is not None:
+            container_id = self._redis.hget(keyt, 'container_id')
+            data = json.loads(data)
+            data['container_id'] = container_id
+            self._logger.info('%s: terminating task (job: %s)', task_id, json.dumps(data))
+            try:
+                service.terminate(data)
+                self._logger.info('%s: terminated', task_id)
+            except Exception:
+                self._logger.warning('%s: failed to terminate', task_id)
+                self._logger.info(traceback.format_exc())
+        else:
+            self._logger.info('%s: terminating task (on error)', task_id)
+        resource = self._redis.hget(keyt, 'alloc_resource')
+        if resource:
+            self._release_resource(service, resource, task_id, nxpus)
+        task.set_status(self._redis, keyt, 'stopped')
+        task.disable(self._redis, task_id)
+
+    def _get_service(self, keyt):
+        service_name = self._redis.hget(keyt, 'service')
+        if service_name not in self._services:
+            raise ValueError('unknown service %s' % service_name)
+        service = self._services[service_name]
+
+        return service_name, service
 
     def _block_resource(self, resource, service, err):
         """Block a resource on which we could not launch a task
@@ -334,11 +326,55 @@ class Worker(object):
         """Allocates a resource for task_id and returns the name of the resource
            (or None if none where allocated), and the number of allocated gpus/cpus
         """
-        best_resource = None
-        br_remaining_xpus = Capacity(-1, -1)
         task_entity = task.get_owner_entity(self._redis, task_id)
         resources = service.list_resources()
-        machines = {res: Worker.Machine(service, res, resources[res], self._logger) for res in resources}
+
+        # Distribute resource by type
+        only_cpus_task_machines, only_gpus_task_machines, mix_task_machines = self._split_machines_by_task_support(
+            resources=resources, service=service)
+        is_required_gpu_task = self._is_required_gpu_task(task_expected_capacity)
+
+        if is_required_gpu_task:
+            best_resource = self._distribute_machine_for_task(task_id, task_entity, task_expected_capacity,
+                                                              request_resource, service,
+                                                              {**only_gpus_task_machines, **mix_task_machines})
+        else:
+            best_resource = self._distribute_machine_for_task(task_id, task_entity, task_expected_capacity,
+                                                              request_resource, service,
+                                                              only_cpus_task_machines)
+            if not best_resource:
+                best_resource = self._distribute_machine_for_task(task_id, task_entity, task_expected_capacity,
+                                                                  request_resource, service,
+                                                                  mix_task_machines)
+        return best_resource
+
+    def _split_machines_by_task_support(self, resources, service):
+        only_cpus_task_machines = {}
+        only_gpus_task_machines = {}
+        mix_task_machines = {}
+        for resource_name in resources:
+            resource_specs = resources[resource_name]
+            machine = Worker.Machine(service, resource_name, resource_specs, self._logger)
+            is_only_gpu_task = service.get_server_detail(resource_name, "only_gpu_task")
+            if is_only_gpu_task:
+                only_gpus_task_machines[resource_name] = machine
+                continue
+            resource_gpus = resource_specs.ngpus
+            if resource_gpus:
+                mix_task_machines[resource_name] = machine
+                continue
+            only_cpus_task_machines[resource_name] = machine
+
+        return only_cpus_task_machines, only_gpus_task_machines, mix_task_machines
+
+    @staticmethod
+    def _is_required_gpu_task(task_expected_capacity):
+        task_required_ngpus = task_expected_capacity.ngpus
+        return task_required_ngpus > 0
+
+    def _distribute_machine_for_task(self, task_id, task_entity, task_expected_capacity, request_resource, service, machines):
+        best_resource = None
+        br_remaining_xpus = Capacity(-1, -1)
         for name, machine in six.iteritems(machines):
             if _compatible_resource(name, request_resource) and machine._is_authorized(task_entity, task_expected_capacity):
                 better_remaining_xpus = self._reserve_resource(
@@ -349,7 +385,6 @@ class Worker(object):
                         self._release_resource(service, best_resource, task_id, task_expected_capacity)
                     best_resource = name
                     br_remaining_xpus = better_remaining_xpus
-
         return best_resource
 
     def _reserve_resource(self, service, resource, capacity, task_id, task_asked_capacity, br_remaining_xpus):
@@ -477,7 +512,7 @@ class Worker(object):
     def _select_best_task_to_process(self, service):
         """find the best next task to push to the work queue
         """
-        class EntityUsage():
+        class EntityUsage:
             def __init__(self, current_usage, entity_name, usage_coeff):
                 self._entity = entity_name
                 self._current_usage_capacity = current_usage if current_usage else Capacity()
@@ -511,7 +546,7 @@ class Worker(object):
                                   for e, r in six.iteritems(entity_usage_weights)}
                 return entities_usage
 
-        class CandidateTask():
+        class CandidateTask:
             def __init__(self, task_id, task_entity, redis, task_capacity, entity_usage, logger):
                 assert task_id
                 self._task_id = task_id
@@ -736,9 +771,30 @@ class Worker(object):
                     if machine is None:
                         return
 
-                task.work_queue(self._redis, best_runnable_task._task_id, service.name)
-                self._redis.lrem(queue, 0, best_runnable_task._task_id)
-                self._logger.info('[AZ-SELECTED] %s to be launched on %s', best_runnable_task._task_id, service.name)
+                task_id = best_runnable_task._task_id
+                keyt = 'task:%s' % task_id
+                resource = self._redis.hget(keyt, 'resource')
+
+                # nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+                nxpus = best_runnable_task._capacity
+                resource = self._allocate_resource(task_id, resource, service, nxpus)
+                if resource is not None:
+                    self._logger.info('%s: resource %s reserved %s',
+                                      task_id, resource, nxpus)
+                    self._redis.hset(keyt, 'alloc_resource', resource)
+                    task.set_status(self._redis, keyt, 'allocated')
+                    task.work_queue(self._redis, task_id, service.name)
+                    self._redis.lrem(queue, 0, task_id)
+                    self._logger.info('[AZ-SELECTED] %s to be launched on %s', best_runnable_task._task_id,
+                                      service.name)
+                else:
+                    self._logger.info('[AZ-SELECTED] %s to be launched on %s, but not able to allocate resource',
+                                      best_runnable_task._task_id,
+                                      service.name)
+
+                # task.work_queue(self._redis, best_runnable_task._task_id, service.name)
+                # self._redis.lrem(queue, 0, best_runnable_task._task_id)
+                # self._logger.info('[AZ-SELECTED] %s to be launched on %s', best_runnable_task._task_id, service.name)
 
     def _get_current_config(self, task_id):
         task_entity = task.get_owner_entity(self._redis, task_id)
