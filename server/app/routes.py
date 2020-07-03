@@ -767,7 +767,7 @@ def launch(service):
                 if ngpus == 0 or trans_as_release:
                     file_per_gpu = len(totranslate)
                 else:
-                    file_per_gpu = (len(totranslate) + ngpus - 1) / ngpus
+                    file_per_gpu = int((len(totranslate) + ngpus - 1) / ngpus)
                 subset_idx = 0
                 while subset_idx * file_per_gpu < len(totranslate):
                     content_translate["docker"]["command"] = ["trans"]
