@@ -84,10 +84,20 @@ class RedisLock(object):
     def __enter__(self):
         """Adds a lock for a specific name and expires the lock after some delay."""
         LOGGER.debug('Acquire lock for %s', self._name)
-        self._identifier = str(uuid.uuid4())
+        separator = ':time:'
+        self._identifier = f'{uuid.uuid4()}{separator}{time.time()}'
         end = time.time() + self._acquire_timeout
         lock = 'lock:%s' % self._name
         while time.time() < end:
+            identifier = self._redis.get(lock)
+            ttl = self._redis.ttl(lock)
+            if identifier and ttl == -1:
+                spited_identifier = identifier.split(separator)
+                if len(spited_identifier) == 2:
+                    created_at = float(spited_identifier[1])
+                    # If ttl is not set after 3s when created, delete it
+                    if created_at + 3 < time.time():
+                        self._redis.expire(lock, 0)
             if self._redis.setnx(lock, self._identifier):
                 self._redis.expire(lock, self._expire_time)
                 return self

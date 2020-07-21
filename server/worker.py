@@ -10,9 +10,9 @@ import argparse
 import signal
 
 # from redis.exceptions import ConnectionError
+from multiprocessing import Process
 import six
 from six.moves import configparser
-from multiprocessing import Process
 
 from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
@@ -213,10 +213,10 @@ def start_worker(redis, services,
     worker.run()
 
 
-worker_count = os.cpu_count()
+worker_count = 1
 
-# if cfg.has_option('worker', 'total'):
-#     worker_count = cfg.getint('worker', 'total')
+if cfg.has_option('worker', 'total'):
+    worker_count = cfg.getint('worker', 'total')
 
 for i in range(0, worker_count):
     Process(target=start_worker, args=(redis, services,
@@ -226,3 +226,4 @@ for i in range(0, worker_count):
                                        keyw,
                                        cfg.get('default', 'taskfile_dir'),
                                        default_config_timestamp)).start()
+

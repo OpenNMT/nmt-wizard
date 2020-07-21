@@ -10,6 +10,7 @@ from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
 from nmtwizard import configuration as config
+from nmtwizard.task import TaskInfo
 
 
 def _compatible_resource(resource, request_resource):
@@ -155,53 +156,55 @@ class Worker(object):
                 return
 
             self._logger.info('%s: trying to advance from status %s', task_id, status)
-            if status == 'queued':
-                self._handle_queued_task(task_id=task_id)
-            elif status == 'allocated':
+            # if status == 'queued':
+            #     self._handle_queued_task(task_id=task_id)
+            if status == 'allocated':
                 self._handle_allocated_task(task_id=task_id)
             elif status == 'running':
                 self._handle_running_task(task_id=task_id)
             elif status == 'terminating':
                 self._handle_terminating_task(task_id=task_id)
 
-    def _handle_queued_task(self, task_id):
-        keyt = 'task:%s' % task_id
-        service_name, service = self._get_service(keyt=keyt)
-        resource = self._redis.hget(keyt, 'resource')
-        parent = self._redis.hget(keyt, 'parent')
-        if parent:
-            keyp = 'task:%s' % parent
-            # if the parent task is in the database, check for dependencies
-            if self._redis.exists(keyp):
-                status = self._redis.hget(keyp, 'status')
-                if status == 'stopped':
-                    if self._redis.hget(keyp, 'message') != 'completed':
-                        task.terminate(self._redis, task_id, phase='dependency_error')
-                        return
-                else:
-                    self._logger.warning('%s: depending on other task, waiting', task_id)
-                    task.service_queue(self._redis, task_id, service.name)
-                    return
-        nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-        resource = self._allocate_resource(task_id, resource, service, nxpus)
-        if resource is not None:
-            self._logger.info('%s: resource %s reserved %s',
-                              task_id, resource, nxpus)
-            self._redis.hset(keyt, 'alloc_resource', resource)
-            task.set_status(self._redis, keyt, 'allocated')
-            task.work_queue(self._redis, task_id, service_name)
-        else:
-            self._logger.warning('%s / %s: no resources available, waiting', task_id, nxpus)
-            task.service_queue(self._redis, task_id, service.name)
+    # def _handle_queued_task(self, task_id):
+    #     keyt = 'task:%s' % task_id
+    #     service_name, service = self._get_service(keyt=keyt)
+    #     resource = self._redis.hget(keyt, 'resource')s
+    #     parent = self._redis.hget(keyt, 'parent')
+    #     if parent:
+    #         keyp = 'task:%s' % parent
+    #         # if the parent task is in the database, check for dependencies
+    #         if self._redis.exists(keyp):
+    #             status = self._redis.hget(keyp, 'status')
+    #             if status == 'stopped':
+    #                 if self._redis.hget(keyp, 'message') != 'completed':
+    #                     task.terminate(self._redis, task_id, phase='dependency_error')
+    #                     return
+    #             else:
+    #                 self._logger.warning('%s: depending on other task, waiting', task_id)
+    #                 task.service_queue(self._redis, task_id, service.name)
+    #                 return
+    #     nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
+    #     resource = self._allocate_resource(task_id, resource, service, nxpus)
+    #     if resource is not None:
+    #         self._logger.info('%s: resource %s reserved %s',
+    #                           task_id, resource, nxpus)
+    #         self._redis.hset(keyt, 'alloc_resource', resource)
+    #         task.set_status(self._redis, keyt, 'allocated')
+    #         task.work_queue(self._redis, task_id, service_name)
+    #     else:
+    #         self._logger.warning('%s / %s: no resources available, waiting', task_id, nxpus)
+    #         task.service_queue(self._redis, task_id, service.name)
 
     def _handle_allocated_task(self, task_id):
         keyt = 'task:%s' % task_id
         service_name, service = self._get_service(keyt=keyt)
         content = json.loads(self._redis.hget(keyt, 'content'))
+        docker = json.loads(self._redis.hget(keyt, TaskInfo.DOCKER.value))
+        storage_entities = json.loads(self._redis.hget(keyt, TaskInfo.STORAGE_ENTITIES.value))
         resource = self._redis.hget(keyt, 'alloc_resource')
         self._logger.info('%s: launching on %s', task_id, service.name)
         try:
-            entity_config = self._get_current_config(task_id)
+            # entity_config = self._get_current_config(task_id)
             keygr = 'gpu_resource:%s:%s' % (service.name, resource)
             lgpu = []
             for k, v in six.iteritems(self._redis.hgetall(keygr)):
@@ -219,8 +222,8 @@ class Worker(object):
                 content['options'],
                 (lgpu, lcpu),
                 resource,
-                entity_config["storages"],
-                entity_config["docker"],
+                storage_entities,
+                docker,
                 content['docker']['registry'],
                 content['docker']['image'],
                 content['docker']['tag'],
@@ -278,10 +281,8 @@ class Worker(object):
             self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
             self._redis.hincrby(keyt, 'status_fail', 1)
             if self._redis.hget(keyt, 'status_fail') > 4:
-                task.terminate(self._redis, task_id, phase='lost_connection')
-                return
-            else:
-                self._redis.hdel(keyt, 'status_fail')
+                return task.terminate(self._redis, task_id, phase='lost_connection')
+            self._redis.hdel(keyt, 'status_fail')
 
     def _handle_terminating_task(self, task_id):
         keyt = 'task:%s' % task_id
