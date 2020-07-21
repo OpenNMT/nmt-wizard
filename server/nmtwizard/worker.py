@@ -156,44 +156,12 @@ class Worker(object):
                 return
 
             self._logger.info('%s: trying to advance from status %s', task_id, status)
-            # if status == 'queued':
-            #     self._handle_queued_task(task_id=task_id)
             if status == 'allocated':
                 self._handle_allocated_task(task_id=task_id)
             elif status == 'running':
                 self._handle_running_task(task_id=task_id)
             elif status == 'terminating':
                 self._handle_terminating_task(task_id=task_id)
-
-    # def _handle_queued_task(self, task_id):
-    #     keyt = 'task:%s' % task_id
-    #     service_name, service = self._get_service(keyt=keyt)
-    #     resource = self._redis.hget(keyt, 'resource')s
-    #     parent = self._redis.hget(keyt, 'parent')
-    #     if parent:
-    #         keyp = 'task:%s' % parent
-    #         # if the parent task is in the database, check for dependencies
-    #         if self._redis.exists(keyp):
-    #             status = self._redis.hget(keyp, 'status')
-    #             if status == 'stopped':
-    #                 if self._redis.hget(keyp, 'message') != 'completed':
-    #                     task.terminate(self._redis, task_id, phase='dependency_error')
-    #                     return
-    #             else:
-    #                 self._logger.warning('%s: depending on other task, waiting', task_id)
-    #                 task.service_queue(self._redis, task_id, service.name)
-    #                 return
-    #     nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-    #     resource = self._allocate_resource(task_id, resource, service, nxpus)
-    #     if resource is not None:
-    #         self._logger.info('%s: resource %s reserved %s',
-    #                           task_id, resource, nxpus)
-    #         self._redis.hset(keyt, 'alloc_resource', resource)
-    #         task.set_status(self._redis, keyt, 'allocated')
-    #         task.work_queue(self._redis, task_id, service_name)
-    #     else:
-    #         self._logger.warning('%s / %s: no resources available, waiting', task_id, nxpus)
-    #         task.service_queue(self._redis, task_id, service.name)
 
     def _handle_allocated_task(self, task_id):
         keyt = 'task:%s' % task_id
