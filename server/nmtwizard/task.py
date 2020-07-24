@@ -10,7 +10,6 @@ import six
 class TaskInfo(Enum):
     ENTITY_OWNER = "owner"
     STORAGE_ENTITIES = "storage_entities"
-    DOCKER = "docker"
 
 
 ttl_policy_func = None

@@ -568,12 +568,9 @@ def launch(service):
     service_entities = config.get_entities(current_configuration)
     entity_owner = get_entity_owner(service_entities, service)
     trainer_entities = get_entities_by_permission("train", flask.g)
-    merged_storage_current_config = config.get_entity_cfg_from_redis(redis_db, service, trainer_entities, entity_owner)
-
     assert trainer_entities  # Here: almost sure you are trainer
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
-                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(merged_storage_current_config['storages']),
-                       TaskInfo.DOCKER.value: json.dumps(merged_storage_current_config['docker'])}
+                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):
@@ -934,12 +931,6 @@ def launch(service):
         task_ids = task_ids[0]
 
     return flask.jsonify(task_ids)
-
-
-def get_default_storage():
-    default_config = redis_db.hget('default', 'configuration')
-    default_storages = json.loads(default_config)["storages"] if "storages" in default_config else {}
-    return default_storages
 
 
 @app.route("/task/status/<string:task_id>", methods=["GET"])
