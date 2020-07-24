@@ -569,20 +569,20 @@ class Worker(object):
                     return False
                 return self._is_more_respectful_usage(other_task)
 
-            def find_machine_without_blocking(self, higher_prio_task):
-                for machine in self._runnable_machines:
-                    if not machine._is_authorized(higher_prio_task._entity, higher_prio_task._capacity):
-                        self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
-                        return machine
-
-                    can_go = all(higher_prio_task._capacity.inf_or_eq(machine._available_cap + capacity - self._capacity)
-                                 for capacity in machine._tasks.values())
-                    if can_go:
-                        self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
-                        return machine
-
-                self._logger.info('[AZ-KO_TAKE_PLACE] task %s VS %s', self, highest_priority_blocked_task)
-                return None
+            # def find_machine_without_blocking(self, higher_prio_task):
+            #     for machine in self._runnable_machines:
+            #         if not machine._is_authorized(higher_prio_task._entity, higher_prio_task._capacity):
+            #             self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
+            #             return machine
+            #
+            #         can_go = all(higher_prio_task._capacity.inf_or_eq(machine._available_cap + capacity - self._capacity)
+            #                      for capacity in machine._tasks.values())
+            #         if can_go:
+            #             self._logger.info('[AZ-OK_TAKE_PLACE] %s (machine %s) instead of %s', self, machine._name, higher_prio_task)
+            #             return machine
+            #
+            #     self._logger.info('[AZ-KO_TAKE_PLACE] task %s VS %s', self, highest_priority_blocked_task)
+            #     return None
 
             def find_machines_to_run(self):
                 if self._task_id in resource_mgr.preallocated_task_resource:
@@ -708,10 +708,8 @@ class Worker(object):
             resource_mgr = ResourceManager(self)
             if not resource_mgr.load_machines(service.name):
                 return
-            # Go through the tasks, find if there are tasks that can be launched and queue the best one
-            best_runnable_task = None
+
             runnable_tasks = []
-            highest_priority_blocked_task = None
             for e in resource_mgr.entities_usage.values():
                 print("[AZ-USE] %s" % e)
             while count > 0:
@@ -719,51 +717,31 @@ class Worker(object):
                 next_task_id = self._redis.lindex(queue, count)
                 candidate_task = CandidateTask.try_create(next_task_id)
                 if candidate_task:
-                    if candidate_task.find_machines_to_run():
-                        runnable_tasks.append(candidate_task)
-                        if candidate_task.is_higher_priority(best_runnable_task):
-                            best_runnable_task = candidate_task
-                            self._logger.debug("--->[AZ-PERMUTE PRIORITY] %s  < %s", " " if best_runnable_task else best_runnable_task, candidate_task)
-                    elif candidate_task.is_higher_priority(highest_priority_blocked_task):
-                        highest_priority_blocked_task = candidate_task
+                    print(candidate_task._priority)
+                    runnable_tasks.append(candidate_task)
+            if len(runnable_tasks) > 0:
+                sorted_runnable_tasks = sorted(runnable_tasks, key=lambda task: task._priority)
+                for runnable_task in sorted_runnable_tasks:
+                    task_id = runnable_task._task_id
+                    keyt = 'task:%s' % task_id
+                    resource = self._redis.hget(keyt, 'resource')
 
-            if best_runnable_task:
-                if highest_priority_blocked_task and highest_priority_blocked_task.is_higher_priority(best_runnable_task):
-                    runnable_tasks.sort(reverse=True)
-                    machine = None
-                    for t in runnable_tasks:
-                        machine = t.find_machine_without_blocking(highest_priority_blocked_task)
-                        if machine:
-                            best_runnable_task = t
-                            self._redis.hset(best_runnable_task._redis_key, "resource", machine._name)
-                            break
-                    if machine is None:
-                        return
-
-                task_id = best_runnable_task._task_id
-                keyt = 'task:%s' % task_id
-                resource = self._redis.hget(keyt, 'resource')
-
-                # nxpus = Capacity(self._redis.hget(keyt, 'ngpus'), self._redis.hget(keyt, 'ncpus'))
-                nxpus = best_runnable_task._capacity
-                resource = self._allocate_resource(task_id, resource, service, nxpus)
-                if resource is not None:
-                    self._logger.info('%s: resource %s reserved %s',
-                                      task_id, resource, nxpus)
-                    self._redis.hset(keyt, 'alloc_resource', resource)
-                    task.set_status(self._redis, keyt, 'allocated')
-                    task.work_queue(self._redis, task_id, service.name)
-                    self._redis.lrem(queue, 0, task_id)
-                    self._logger.info('[AZ-SELECTED] %s to be launched on %s', best_runnable_task._task_id,
-                                      service.name)
-                else:
-                    self._logger.info('[AZ-SELECTED] %s to be launched on %s, but not able to allocate resource',
-                                      best_runnable_task._task_id,
-                                      service.name)
-
-                # task.work_queue(self._redis, best_runnable_task._task_id, service.name)
-                # self._redis.lrem(queue, 0, best_runnable_task._task_id)
-                # self._logger.info('[AZ-SELECTED] %s to be launched on %s', best_runnable_task._task_id, service.name)
+                    nxpus = runnable_task._capacity
+                    resource = self._allocate_resource(task_id, resource, service, nxpus)
+                    if resource is not None:
+                        self._logger.info('%s: resource %s reserved %s',
+                                          task_id, resource, nxpus)
+                        self._redis.hset(keyt, 'alloc_resource', resource)
+                        task.set_status(self._redis, keyt, 'allocated')
+                        task.work_queue(self._redis, task_id, service.name)
+                        self._redis.lrem(queue, 0, task_id)
+                        self._logger.info('[AZ-SELECTED] %s to be launched on %s', runnable_task._task_id,
+                                          service.name)
+                        break
+                    else:
+                        self._logger.info('[AZ-SELECTED] %s to be launched on %s, but not able to allocate resource',
+                                          runnable_task._task_id,
+                                          service.name)
 
     def _get_current_config(self, task_id):
         task_entity = task.get_owner_entity(self._redis, task_id)
