@@ -94,40 +94,6 @@ def get_registries(redis, service):
     return registries
 
 
-def _get_shared_storages_of_entity(redis, service, entity):
-    result = {}
-    all_storages = _get_storage_of_all_service(redis)
-    for storage_name in all_storages.keys():
-        storage_value = all_storages[storage_name]
-        shared_config = storage_value["shared"] if "shared" in storage_value else {}
-        if _is_storage_shared_with_entity(service, entity, shared_config):
-            result[storage_name] = storage_value
-    return result
-
-
-def _get_storage_of_all_service(redis):
-    all_pool_config = _get_config_of_all_service(redis)
-    all_storages = {}
-    for config in all_pool_config:
-        entities = list(config["entities"].values())
-        for entity in entities:
-            storages = entity["storages"] if "storages" in entity else {}
-            all_storages.update(storages)
-    return all_storages
-
-
-def _is_storage_shared_with_entity(service, entity, shared_config):
-    # TODO: Define permission (read, write, delete)
-    return f'{service}.{entity}' in shared_config and len(shared_config[f'{service}.{entity}']) > 0
-
-
-def _get_config_of_all_service(redis):
-    all_service_configurations_keys = redis.keys("admin:service:*")
-    all_service_keys = list(map(lambda key: key[14:], all_service_configurations_keys))
-    all_service_current_configurations = list(map(lambda key: _get_config_from_redis(redis, key), all_service_keys))
-    return all_service_current_configurations
-
-
 def _get_config_from_redis(redis, service):
     current_configuration_name = redis.hget("admin:service:%s" % service, "current_configuration")
     configurations = json.loads(redis.hget("admin:service:%s" % service, "configurations"))
@@ -174,8 +140,6 @@ def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner):
                             owner_config["docker"]["envvar"].update(ent_config["docker"]["envvar"])
                         else:
                             owner_config["docker"]["envvar"] = ent_config["docker"]["envvar"]
-                shared_storages = _get_shared_storages_of_entity(redis, service, ent)
-                owner_config["storages"].update(shared_storages)
         # put entity config outside entities
         for k in owner_config:
             service_config[k] = owner_config[k]

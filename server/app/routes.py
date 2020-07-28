@@ -25,6 +25,7 @@ from nmtwizard.helper import change_parent_task, remove_config_option, model_nam
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity, TaskInfo
 
+
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
 # get maximum log size from configuration
@@ -568,12 +569,9 @@ def launch(service):
     service_entities = config.get_entities(current_configuration)
     entity_owner = get_entity_owner(service_entities, service)
     trainer_entities = get_entities_by_permission("train", flask.g)
-    merged_storage_current_config = config.get_entity_cfg_from_redis(redis_db, service, trainer_entities, entity_owner)
-
     assert trainer_entities  # Here: almost sure you are trainer
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
-                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(merged_storage_current_config['storages']),
-                       TaskInfo.DOCKER.value: json.dumps(merged_storage_current_config['docker'])}
+                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
 
     # Sanity check on content.
     if 'options' not in content or not isinstance(content['options'], dict):

@@ -9,7 +9,6 @@ from nmtwizard import task
 from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
 from nmtwizard import configuration as config
-from nmtwizard.task import TaskInfo
 
 
 def _compatible_resource(resource, request_resource):
@@ -165,12 +164,10 @@ class Worker(object):
         keyt = 'task:%s' % task_id
         service_name, service = self._get_service(keyt=keyt)
         content = json.loads(self._redis.hget(keyt, 'content'))
-        docker = json.loads(self._redis.hget(keyt, TaskInfo.DOCKER.value))
-        storage_entities = json.loads(self._redis.hget(keyt, TaskInfo.STORAGE_ENTITIES.value))
         resource = self._redis.hget(keyt, 'alloc_resource')
         self._logger.info('%s: launching on %s', task_id, service.name)
         try:
-            # entity_config = self._get_current_config(task_id)
+            entity_config = self._get_current_config(task_id)
             keygr = 'gpu_resource:%s:%s' % (service.name, resource)
             lgpu = []
             for k, v in six.iteritems(self._redis.hgetall(keygr)):
@@ -188,8 +185,8 @@ class Worker(object):
                 content['options'],
                 (lgpu, lcpu),
                 resource,
-                storage_entities,
-                docker,
+                entity_config["storages"],
+                entity_config["docker"],
                 content['docker']['registry'],
                 content['docker']['image'],
                 content['docker']['tag'],
