@@ -1,20 +1,25 @@
 import time
 import json
 import logging
-import sys
 import traceback
 import six
+import os
+import signal
+import sys
 
 from nmtwizard import task
-from nmtwizard import workeradmin
 from nmtwizard.capacity import Capacity
 from nmtwizard import configuration as config
 
 
 def _compatible_resource(resource, request_resource):
-    if request_resource in ['auto', request_resource]:
+    if request_resource in ['auto', resource]:
         return True
-    return (","+request_resource+",").find(","+resource+",") != -1
+    return request_resource.find(resource) != -1
+
+
+def graceful_exit(signum, frame):
+    sys.exit(0)
 
 
 class Worker(object):
@@ -52,13 +57,14 @@ class Worker(object):
             return True
 
     def __init__(self, redis, services, ttl_policy, refresh_counter,
-                 quarantine_time, worker_id, taskfile_dir,
+                 quarantine_time, instance_id, taskfile_dir,
                  default_config_timestamp=None):
+        self._worker_id = os.getpid()
         self._redis = redis
         self._service = next(iter(services))
         self._services = services
         self._logger = logging.getLogger('worker')
-        self._worker_id = worker_id
+        self._instance_id = instance_id
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
         self._taskfile_dir = taskfile_dir
@@ -66,35 +72,17 @@ class Worker(object):
         task.set_ttl_policy(ttl_policy)
 
     def run(self):
-        self._logger.info('Starting worker')
+        signal.signal(signal.SIGTERM, graceful_exit)
+        signal.signal(signal.SIGINT, graceful_exit)
+        self._logger.info(f'[{self._service}-{self._instance_id}]: Starting worker {self._worker_id}')
 
         # Subscribe to beat expiration.
         pubsub = self._redis.pubsub()
         pubsub.psubscribe('__keyspace@0__:beat:*')
         pubsub.psubscribe('__keyspace@0__:queue:*')
         counter = 0
-        counter_beat = 1000
 
         while True:
-            counter_beat += 1
-            # every 1000 * 0.01s (10s) - check & reset beat of the worker
-            if counter_beat > 1000:
-                counter_beat = 0
-                if self._redis.exists(self._worker_id):
-                    self._redis.hset(self._worker_id, "beat_time", time.time())
-                    self._redis.expire(self._worker_id, 1200)
-                else:
-                    self._logger.info('stopped by key expiration/removal')
-                    sys.exit(0)
-
-            # every 100 * 0.01s (1s) - check worker administration command
-            if counter_beat % 100 == 0:
-                workeradmin.process(self._logger, self._redis, self._service)
-                if (self._default_config_timestamp and
-                        self._redis.hget('default', 'timestamp') != self._default_config_timestamp):
-                    self._logger.info('stopped by default configuration change')
-                    sys.exit(0)
-
             # process one message from the queue
             message = pubsub.get_message()
             if message:
@@ -579,19 +567,15 @@ class Worker(object):
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
                 candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity, resource_mgr.entities_usage[task_entity], self._logger)
                 # check now the task has a chance to be processed by any machine
-                can_be_processed = False
                 for srv, machine in six.iteritems(resource_mgr._machines):
                     can_be_processed = machine._is_authorized(candidate_task._entity, candidate_task._capacity) \
                                        and candidate_task._capacity.inf_or_eq(machine._init_capacity)
                     if can_be_processed:
-                        break
-
-                if can_be_processed:
-                    return candidate_task
+                        return candidate_task
 
                 return None
 
-        class ResourceManager():
+        class ResourceManager:
             def __init__(self, worker):
                 self.preallocated_task_resource = {}
                 resources = service.list_resources()
@@ -677,12 +661,11 @@ class Worker(object):
                     task_id = runnable_task._task_id
                     nxpus = runnable_task._capacity
                     keyt = 'task:%s' % task_id
-                    resource = self._redis.hget(keyt, 'resource')
-                    resource = self._allocate_resource(task_id, resource, service, nxpus)
-                    if resource is not None:
-                        self._logger.info('%s: resource %s reserved %s',
-                                          task_id, resource, nxpus)
-                        self._redis.hset(keyt, 'alloc_resource', resource)
+                    request_resource = self._redis.hget(keyt, 'resource')
+                    allocated_resource = self._allocate_resource(task_id, request_resource, service, nxpus)
+                    if allocated_resource is not None:
+                        self._logger.info('%s: resource %s reserved %s', task_id, allocated_resource, nxpus)
+                        self._redis.hset(keyt, 'alloc_resource', allocated_resource)
                         task.set_status(self._redis, keyt, 'allocated')
                         task.work_queue(self._redis, task_id, service.name)
                         self._redis.lrem(queue, 0, task_id)
