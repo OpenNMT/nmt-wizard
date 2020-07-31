@@ -19,16 +19,12 @@ from nmtwizard import workeradmin
 parser = argparse.ArgumentParser()
 parser.add_argument('config', type=str,
                     help="path to config file for the service")
-parser.add_argument('process_count', type=int,
-                    help="Num of worker process")
 args = parser.parse_args()
 
 assert os.path.isfile(args.config) and args.config.endswith(".json"), \
     "`config` must be path to JSON service configuration file"
 assert os.path.isfile('settings.ini'), "missing `settings.ini` file in current directory"
 assert os.path.isfile('logging.conf'), "missing `logging.conf` file in current directory"
-process_count = args.process_count
-assert process_count > 0, "Num of worker process must be greater than 0"
 
 
 def md5file(fp):
@@ -45,6 +41,13 @@ cfg.read('settings.ini')
 
 logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('worker')
+
+process_count = 1
+if cfg.has_option('worker', 'process_count'):
+    process_count_config = cfg.get('worker', 'process_count')
+    assert process_count_config.isnumeric() and int(
+        process_count_config) > 0, "process_count must be numeric and greater than 0"
+    process_count = int(process_count_config)
 
 redis_password = None
 if cfg.has_option('redis', 'password'):
@@ -335,3 +338,4 @@ def set_expire_time_of_instance(time_in_sec):
 
 
 start()
+
