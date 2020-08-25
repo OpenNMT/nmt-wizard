@@ -1,9 +1,9 @@
 import io
-import pickle
 import json
 import logging
 import os
 import time
+from threading import Thread
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 import flask
 from flask import abort, make_response, jsonify, Response
 
-from app import app, redis_db, redis_db_without_decode, get_version, taskfile_dir
+from app import app, redis_db, redis_db_without_decode, get_version, taskfile_dir, mongo_client
 from nmtwizard import task, configuration as config
 from nmtwizard.helper import build_task_id, shallow_command_analysis, \
     get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
@@ -64,7 +64,6 @@ class StorageId():
 
 
 def get_entity_owner(service_entities, service_name):
-
     trainer_of_entities = get_entities_by_permission("train", flask.g)
 
     if not trainer_of_entities:
@@ -96,7 +95,7 @@ def get_entities_by_permission(the_permission, g):
 
 
 def check_permission(service, permission):
-    is_polyentity = config.is_polyentity_service(redis_db, service)
+    is_polyentity = config.is_polyentity_service(mongo_client, service)
     if is_polyentity and not has_ability(flask.g, permission, ""):  # super admin
         abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
                             403))
@@ -129,11 +128,11 @@ def cust_jsonify(obj):
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    def_string = redis_db_without_decode.hget("admin:service:" + service, "def")
-    if def_string is None:
-        response = flask.jsonify(message="invalid service name: %s" % service)
-        abort(flask.make_response(response, 404))
-    return pickle.loads(def_string)
+    current_config = config.get_current_config_of_service(mongo_client, service)
+    default_config = config.get_default_config(mongo_client)
+    services, merged_config = config.load_service_config(current_config, default_config)
+
+    return services[service]
 
 
 def _duplicate_adapt(service, content):
@@ -217,11 +216,10 @@ def _find_compatible_resource(service, ngpus, ncpus, request_resource):
 def _get_registry(service_module, image):
     p = image.find("/")
     if p == -1:
-        abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
-                                  400))
+        abort(flask.make_response(flask.jsonify(message="image should be repository/name"), 400))
     repository = image[:p]
     registry = None
-    docker_registries = config.get_registries(redis_db, service_module.name)
+    docker_registries = config.get_registries(mongo_client, service_module.name)
     for r in docker_registries:
         v = docker_registries[r]
         if "default_for" in v and repository in v['default_for']:
@@ -332,14 +330,12 @@ def list_services():
     minimal = boolean_param(flask.request.args.get('minimal'))
     showall = boolean_param(flask.request.args.get('all'))
     res = {}
-    for keys in redis_db.scan_iter("admin:service:*"):
-        service = keys[14:]
-        configurations = redis_db.hget("admin:service:%s" % service, "configurations")
-        current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
-        if current_configuration is None or configurations is None:
+    for service in redis_db.smembers("admin:services"):
+        current_configuration = config.get_current_config_of_service(mongo_client, service)
+        if current_configuration is None:
             abort(make_response(jsonify(message="service configuration %s unknown" % service), 404))
 
-        pool_entities = config.get_entities(json.loads(json.loads(configurations)[current_configuration][1]))
+        pool_entities = config.get_entities(current_configuration)
 
         if not showall and flask.g.user.entity.entity_code not in pool_entities:
             continue
@@ -376,29 +372,25 @@ def describe(service):
 @filter_request("GET/service/listconfig", "edit_config")
 def server_listconfig(service):
     check_permission(service, "edit_config")
-    current_configuration = redis_db.hget("admin:service:%s" % service, "current_configuration")
-    configurations = redis_db.hget("admin:service:%s" % service, "configurations")
-    return flask.jsonify({
-        'current': current_configuration,
-        'configurations': json.loads(configurations)
-    })
+    views = {"_id": 0}
+    configs = config.get_all_config_of_service(mongo_client, service, views)
+    return jsonify(configs)
 
 
-def post_adminrequest(app, service, action, configname="base", value="1"):
+def post_adminrequest(app, service, action, value="1"):
     identifier = "%d.%d" % (os.getpid(), app._requestid)
     app._requestid += 1
-    redis_db.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
+    redis_db.set("admin:command:%s:%s:%s" % (service, action, identifier), value)
     wait = 0
     while wait < 360:
-        configresult = redis_db.get("admin:configresult:%s:%s:%s:%s" % (service, action,
-                                                                        configname, identifier))
+        configresult = redis_db.get("admin:commandresult:%s:%s:%s" % (service, action, identifier))
         if configresult:
             break
         wait += 1
         time.sleep(1)
     if configresult is None:
         redis_db.delete(
-            "admin:configresult:%s:%s:%s:%s" % (service, action, configname, identifier))
+            "admin:configresult:%s:%s:%s" % (service, action, identifier))
         abort(flask.make_response(flask.jsonify(message="request time-out"), 408))
     elif configresult != "ok":
         abort(flask.make_response(flask.jsonify(message=configresult), 400))
@@ -409,8 +401,15 @@ def post_adminrequest(app, service, action, configname="base", value="1"):
 @filter_request("GET/service/selectconfig", "edit_config")
 def server_selectconfig(service, configname):
     check_permission(service, "edit_config")
-    configresult = post_adminrequest(app, service, "select", configname)
-    return flask.jsonify(configresult)
+    configuration = config.get_service_config_by_name(mongo_client, service, configname)
+    if not configuration:
+        abort(flask.make_response(flask.jsonify(message=f'ERROR: Missing config {configname}'), 400))
+    if configuration["activated"]:
+        abort(flask.make_response(flask.jsonify(message=f'ERROR: {configname} configuration already set'), 400))
+    config.deactivate_current_config(mongo_client, service)
+    config.active_config(mongo_client, service, configname)
+    Thread(target=post_adminrequest, args=(app, service, "restart")).start()
+    return flask.jsonify({"message": "ok"})
 
 
 @app.route("/service/setconfig/<string:service>/<string:configname>", methods=["POST"])
@@ -418,16 +417,34 @@ def server_selectconfig(service, configname):
 def server_setconfig(service, configname):
     check_permission(service, "edit_config")
     the_config = flask.request.form.get('config')
-    configresult = post_adminrequest(app, service, "set", configname, the_config)
-    return flask.jsonify(configresult)
+    try:
+        config_json = json.loads(the_config)
+        # assert config_json.get("service_name") == service, "service_name does not match"
+        assert configname != "base", f"invalid name {configname} for set"
+        current_config = config.get_current_config_of_service(mongo_client, service)
+        assert configname != current_config["config_name"], 'cannot set current configuration'
+        config_json['updated_at'] = time.time()
+        config_json['config_name'] = configname
+        config_json['activated'] = False
+        config_json["service_name"] = service
+        config.upsert_config(mongo_client, service, configname, config_json)
+    except Exception as err:
+        abort(flask.make_response(flask.jsonify(message=f'ERROR: cannot set configuration: {str(err)}'), 400))
+    return flask.jsonify({"message": "ok"})
 
 
 @app.route("/service/delconfig/<string:service>/<string:configname>", methods=["GET"])
 @filter_request("GET/service/delconfig", "edit_config")
 def server_delconfig(service, configname):
     check_permission(service, "edit_config")
-    configresult = post_adminrequest(app, service, "del", configname)
-    return flask.jsonify(configresult)
+    try:
+        assert configname != "base", "cannot delete `base` configuration"
+        current_config = config.get_current_config_of_service(mongo_client, service)
+        assert configname != current_config["config_name"], 'cannot delete current configuration'
+        config.delete_service_config_by_name(mongo_client, service, configname)
+    except Exception as err:
+        abort(flask.make_response(flask.jsonify(message=f'ERROR: cannot del configuration: {str(err)}'), 400))
+    return flask.jsonify({"message": "ok"})
 
 
 @app.route("/service/restart/<string:service>", methods=["GET"])
@@ -484,7 +501,7 @@ def check(service):
         service_options = {}
 
     service_module = get_service(service)
-    registries = config.get_registries(redis_db, service)
+    registries = config.get_registries(mongo_client, service)
     try:
         details = service_module.check(service_options, registries)
     except ValueError as e:
@@ -518,10 +535,7 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
-    current_configuration_name = redis_db.hget("admin:service:%s" % service, "current_configuration")
-    configurations = json.loads(redis_db.hget("admin:service:%s" % service, "configurations"))
-    current_configuration = json.loads(configurations[current_configuration_name][1])
-
+    current_configuration = config.get_current_config_of_service(mongo_client, service)
     pool_entities = config.get_entities(current_configuration)
     if all(not has_ability(flask.g, "train", entity) for entity in pool_entities):
         abort(make_response(jsonify(message="insufficient credentials for train (entity %s)" % service), 403))

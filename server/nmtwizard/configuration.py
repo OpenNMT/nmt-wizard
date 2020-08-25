@@ -12,13 +12,13 @@ def add_log_handler(fh):
     logger.addHandler(fh)
 
 
-def merge_config(a, b, name):
+def merge_config(a, b):
     if isinstance(a, dict):
         for k in six.iterkeys(b):
             if k not in a or not isinstance(a[k], type(b[k])):
                 a[k] = b[k]
             elif isinstance(a[k], dict):
-                merge_config(a[k], b[k], name)
+                merge_config(a[k], b[k])
 
 
 def validate_polyentity_pool_format(config):
@@ -34,18 +34,18 @@ def validate_polyentity_pool_format(config):
 
 
 def get_entities(config):
-    entities = config["entities"].keys() if is_polyentity_config(config) else [config["name"][0:2]]
+    entities = config["entities"].keys() if is_polyentity_config(config) else [config["service_name"][0:2]]
     return [i.upper() for i in entities if i]
 
 
-def get_entities_from_service(redis, service_name):
-    service_config = _get_config_from_redis(redis, service_name)
+def get_entities_from_service(mongo_client, service_name):
+    service_config = get_current_config_of_service(mongo_client, service_name)
     entities = get_entities(service_config)
     return entities
 
 
-def is_polyentity_service(redis, service_name):
-    service_config = _get_config_from_redis(redis, service_name)
+def is_polyentity_service(mongo_client, service_name):
+    service_config = get_current_config_of_service(mongo_client, service_name)
     is_polyentity = is_polyentity_config(service_config)
     return is_polyentity
 
@@ -62,8 +62,8 @@ def get_docker(config, entity):
     return config["docker"]
 
 
-def get_entities_limit_rate(redis, service):
-    service_config = _get_config_from_redis(redis, service)
+def get_entities_limit_rate(mongo_client, service):
+    service_config = get_current_config_of_service(mongo_client, service)
     entities = service_config.get("entities")
     entities_rate = {}
     if entities:
@@ -71,15 +71,15 @@ def get_entities_limit_rate(redis, service):
                          entities[e]["occup_weight"] > 0}
     # mono entity so
     else:
-        entity_name = service_config["name"][0:2].upper()
+        entity_name = service_config["service_name"][0:2].upper()
         entities_rate[entity_name] = 1
 
     return entities_rate
 
 
-def get_registries(redis, service):
-    base_config = get_default_storage(redis)
-    service_config = _get_config_from_redis(redis, service)
+def get_registries(mongo_client, service):
+    base_config = get_default_config(mongo_client)
+    service_config = get_current_config_of_service(mongo_client, service)
     registries = []
     if "docker" in base_config and "registries" in base_config["docker"]:
         registries = base_config["docker"]["registries"]
@@ -112,15 +112,10 @@ def set_entity_config(redis, service, pool_entity, the_config):
     redis.hset(keys, "configurations", json.dumps(service_config))
 
 
-def get_default_storage(redis):
-    default_config = redis.hget('default', 'configuration')
-    base_config = json.loads(default_config)
-    return base_config
-
-
-def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner):
-    base_config = get_default_storage(redis)
-    service_config = _get_config_from_redis(redis, service)
+def get_entity_cfg_from_mongo(mongo_client, service, entities_filters, entity_owner):
+    all_activated_configs = mongo_client.get_all_active_config()
+    base_config = get_default_config(mongo_client)
+    service_config = get_current_config_of_service(mongo_client, service)
 
     if is_polyentity_config(service_config) and entity_owner in service_config["entities"]:
         # remove other entities + and entities tag to have the same format as default config.
@@ -145,74 +140,196 @@ def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner):
             service_config[k] = owner_config[k]
         del service_config["entities"]
 
-    merge_config(service_config, base_config, "")
+        # Get all share storages
+    for config in all_activated_configs:
+        if not is_polyentity_config(config):
+            continue
+        for entity in config["entities"]:
+            if entity == entity_owner:
+                continue
+            ent_config = config["entities"][entity]
+            if "storages" not in ent_config:
+                continue
+            storages_config = ent_config["storages"]
+            for storage_name in storages_config:
+                storage_config = storages_config[storage_name]
+                if "shared" not in storage_config:
+                    continue
+                shared_config = storage_config["shared"]
+                for ent in entities_filters:
+                    if ent not in shared_config:
+                        continue
+                    storage = {
+                        storage_name: storage_config
+                    }
+                    if "storages" in service_config:
+                        service_config["storages"].update(storage)
+                    else:
+                        service_config["storages"] = storage
+
+                    if "docker" in ent_config and "envvar" in ent_config["docker"]:
+                        if "docker" in service_config and "envvar" in service_config["docker"]:
+                            service_config["docker"]["envvar"].update(ent_config["docker"]["envvar"])
+                        else:
+                            service_config["docker"]["envvar"] = ent_config["docker"]["envvar"]
+
+    merge_config(service_config, base_config)
     return service_config
 
 
-def load_service(config_path, base_config=None):
+def load_service(current_service_config, base_config=None):
     """Loads a service configuration.
 
     Args:
-      config_path: Path the service configuration to load.
+      current_service_config: Path the service configuration to load.
       base_config: The shared configuration to include in this service.
 
     Returns:
       name: The service name
       service: The service manager.
     """
-    with open(config_path) as config_file:
-        config = json.load(config_file)
+    if is_polyentity_config(current_service_config):
+        validate_polyentity_pool_format(current_service_config)
 
-        if is_polyentity_config(config):
-            validate_polyentity_pool_format(config)
+    service_name = current_service_config["service_name"]
 
-        name = config["name"]
+    if base_config is not None:
+        merge_config(current_service_config, base_config)
+    if current_service_config.get("disabled") == 1:
+        return service_name, None
 
-        if not os.path.basename(config_path).startswith(name):
-            raise ValueError("config name (%s) does not match filename (%s)" % (name, config_path))
+    try:
+        if "module" not in current_service_config or "docker" not in current_service_config or "description" not in current_service_config:
+            raise ValueError("invalid service definition in %s" % service_name)
+        service = importlib.import_module(current_service_config["module"]).init(current_service_config)
+    except Exception as e:
+        current_service_config["description"] = "**INVALID CONFIG: %s" % str(e)
+        service = importlib.import_module("services.invalid").init(current_service_config)
 
-        if base_config is not None:
-            merge_config(config, base_config, config_path)
-        if config.get("disabled") == 1:
-            return name, None
-
-        try:
-            if "module" not in config or "docker" not in config or "description" not in config:
-                raise ValueError("invalid service definition in %s" % config_path)
-
-            service = importlib.import_module(config["module"]).init(config)
-        except Exception as e:
-            config["description"] = "**INVALID CONFIG: %s" % str(e)
-            service = importlib.import_module("services.invalid").init(config)
-
-        return name, service, config
-
-    raise ValueError("cannot open the config (%s)" % config_path)
+    return service_name, service, current_service_config
 
 
-def load_service_config(filename, base_config):
+def load_service_config(current_service_config, base_config):
     """Load configured service given a json file applying on a provided base configuration
 
     Args:
-      filename: The path to the json file configuring the service.
+      current_service_config: The path to the json file configuring the service.
       base_config: Configuration for service
 
     Returns:
       A map of service name to service module.
     """
-    if not os.path.isfile(filename):
-        raise ValueError("invalid path to service configuration: %s" % filename)
-
-    directory = os.path.dirname(os.path.abspath(filename))
-
-    logger.info("Loading services from %s", directory)
     services = {}
 
-    logger.info("Loading service configuration %s", filename)
-    name, service, merged_config = load_service(filename, base_config=base_config)
+    service_name, service, merged_config = load_service(current_service_config, base_config=base_config)
     if service is None:
-        raise RuntimeError("disabled service %s/%s" % (filename, name))
-    services[name] = service
-    logger.info("Loaded service %s (total capacity: %s)", name, service.total_capacity)
+        raise RuntimeError("disabled service %s" % service_name)
+    services[service_name] = service
+    logger.info("Loaded service %s (total capacity: %s)", service_name, service.total_capacity)
 
     return services, merged_config
+
+
+def get_service_config_from_mongo(mongo_client, service_name, config_name, views=None):
+    if views is None:
+        views = {"id": 0}
+    service_config = mongo_client.get_config_of_service(service_name, config_name, views)
+    return service_config
+
+
+def get_service_config_from_file(service_name, config_name):
+    config_path = os.path.join("configurations", f"{service_name}_{config_name}.json")
+    assert os.path.isfile(config_path), f"Config file not found {config_path}"
+    with open(config_path) as config_file:
+        service_config = json.load(config_file)
+        service_config["updated_at"] = os.path.getmtime(config_path)
+        return service_config
+
+
+def get_default_config_from_file(default_config_path):
+    assert os.path.isfile(default_config_path), f"Config file not found {default_config_path}"
+    with open(default_config_path) as config_file:
+        default_config = json.load(config_file)
+        return default_config
+
+
+# Is content of config file match content of config in mongo
+def is_conflict_config(mongo_client, service_name, config_name):
+    config_from_file = get_service_config_from_file(service_name, config_name)
+    views = {
+        "_id": 0,
+        "service_name": 0,
+        "config_name": 0,
+        "activated": 0
+    }
+    config_from_mongo = get_service_config_from_mongo(mongo_client, service_name, config_name, views)
+    return config_from_mongo is not None and ordered(config_from_file) != ordered(config_from_mongo)
+
+
+def is_conflict_default_config(mongo_client, default_config_path):
+    config_from_file = get_default_config_from_file(default_config_path)
+    views = {
+        "_id": 0,
+        "config_name": 0
+    }
+    config_from_mongo = get_default_config(mongo_client, views)
+    return config_from_mongo is not None and ordered(config_from_file) != ordered(config_from_mongo)
+
+
+def ordered(obj):
+    if isinstance(obj, dict):
+        return sorted((k, ordered(v)) for k, v in obj.items())
+    if isinstance(obj, list):
+        return sorted(ordered(x) for x in obj)
+    else:
+        return obj
+
+
+def upsert_config(mongo_client, service_name, config_name, data):
+    mongo_client.upsert_config(service_name, config_name, data)
+
+
+def upsert_default_config(mongo_client, data):
+    mongo_client.upsert_default_config(data)
+
+
+def active_config(mongo_client, service_name, config_name):
+    mongo_client.active_config(service_name, config_name)
+
+
+def deactivate_current_config(mongo_client, service_name):
+    mongo_client.deactivate_current_config(service_name)
+
+
+def get_default_config(mongo_client, views=None):
+    if views is None:
+        views = {"id": 0}
+    default_config = mongo_client.get_default_config(views)
+    return default_config
+
+
+def get_current_config_of_service(mongo_client, service_name):
+    current_config = mongo_client.get_current_config_of_service(service_name)
+    return current_config
+
+
+def get_current_configs_of_services(mongo_client, service_names):
+    current_configs = mongo_client.get_current_configs_of_services(service_names)
+    return current_configs
+
+
+def get_all_config_of_service(mongo_client, service_name, views):
+    if views is None:
+        views = {}
+    configs = mongo_client.get_all_config_of_service(service_name, views)
+    return configs
+
+
+def get_service_config_by_name(mongo_client, service_name, config_name):
+    config = mongo_client.get_service_config_by_name(service_name, config_name)
+    return config
+
+
+def delete_service_config_by_name(mongo_client, service_name, config_name):
+    config = mongo_client.delete_service_config_by_name(service_name, config_name)
+    return config

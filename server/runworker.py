@@ -9,10 +9,16 @@ import argparse
 import signal
 import logging
 
-# from redis.exceptions import ConnectionError
 from six.moves import configparser
-
 from nmtwizard.redis_database import RedisDatabase
+from app import mongo_client
+from nmtwizard import configuration as config
+
+CONFIG_LOAD_METHOD = {
+    "from_mongo": 1,
+    "from_file_upsert_to_mongo": 2,
+    "from_file_check_duplicate_mongo": 3
+}
 
 # connecting to redis to monitor the worker process
 cfg = configparser.ConfigParser()
@@ -50,6 +56,10 @@ def md5file(fp):
 parser = argparse.ArgumentParser()
 parser.add_argument('service', type=str,
                     help="name of the service to launch")
+parser.add_argument('--config_load_method', type=int,
+                    help="how to download data", default=CONFIG_LOAD_METHOD["from_mongo"])
+parser.add_argument('--config_name', type=str,
+                    help="config name", default="base")
 parser.add_argument('--fast_restart_delay', type=int, default=30,
                     help="time interval analysed as fast_restart - default 30")
 args = parser.parse_args()
@@ -57,32 +67,41 @@ args = parser.parse_args()
 assert os.path.isdir("configurations"), "missing `configurations` directory"
 
 service = args.service
+config_load_method = args.config_load_method
+config_name = args.config_name
 
-config_service = {}
-config_service_md5 = {}
-for filename in os.listdir("configurations"):
-    if filename.startswith(service+"_") and filename.endswith(".json"):
-        config_service[filename] = md5file(os.path.join("configurations", filename))
-        config_service_md5[config_service[filename]] = filename
+current_config = {}
 
-assert "%s_base.json" % service in config_service, "missing base configuration for "+service
 
-if os.path.isfile("%s.json" % service):
-    current_config_md5 = md5file("%s.json" % service)
-    assert current_config_md5 in config_service_md5, "current configuration file not " \
-                                                     "in `configurations`"
-    print("[%s] ** current configuration is: %s" % (service,
-                                                    config_service_md5[current_config_md5]))
-    sys.stdout.flush()
-else:
-    shutil.copyfile("configurations/%s_base.json" % service, "%s.json" % service)
-    print("[%s] ** using base configuration: configurations/%s_base.json" % (service, service))
-    sys.stdout.flush()
+def process_config():
+    config_from_mongo = config.get_service_config_from_mongo(mongo_client, service, config_name)
+    if config_load_method == CONFIG_LOAD_METHOD["from_mongo"]:
+        assert config_from_mongo is not None, "Config not found"
+        config.deactivate_current_config(mongo_client, service)
+        config.active_config(mongo_client, service, config_name)
+        current_config.update(config_from_mongo)
+    elif config_load_method == CONFIG_LOAD_METHOD["from_file_upsert_to_mongo"]:
+        load_config_from_file_to_mongo(service, config_name)
+    else:
+        conflict_config = config.is_conflict_config(mongo_client, service, config_name)
+        assert not conflict_config, "Conflict config"
+        load_config_from_file_to_mongo(service, config_name)
+
+
+def load_config_from_file_to_mongo(service, config_name):
+    config_from_file = config.get_service_config_from_file(service, config_name)
+    config_from_file["activated"] = True
+    config_from_file["config_name"] = config_name
+    config.deactivate_current_config(mongo_client, service)
+    config.upsert_config(mongo_client, service, config_name, config_from_file)
+    current_config.update(config_from_file)
+
+
+process_config()
 
 assert sys.argv[0].find("runworker") != -1
 
-config_file = "%s.json" % service
-worker_arg = [sys.executable, sys.argv[0].replace("runworker", "worker"), config_file]
+worker_arg = [sys.executable, sys.argv[0].replace("runworker", "worker"), service]
 
 count_fast_fail = 0
 counter = 0
@@ -100,9 +119,6 @@ signal.signal(signal.SIGTERM, graceful_exit)
 signal.signal(signal.SIGINT, graceful_exit)
 
 while True:
-    with open(config_file) as f:
-        config = f.read()
-
     start = time.time()
     date = time.strftime('%Y-%m-%d_%H%M%S', time.localtime(start))
     logfile = "logs/log-%s-%s:%d" % (service, date, counter)
@@ -110,7 +126,7 @@ while True:
     counter += 1
     cmdline = "%s '%s'" % (worker_arg[0], "','".join(worker_arg[1:]))
     log_fh.write("%s - RUN %s\n" % (date, cmdline))
-    log_fh.write("CONFIG: %s\n" % config)
+    log_fh.write("CONFIG: %s\n" % current_config)
     log_fh.write("-" * 80)
     log_fh.write("\n")
     log_fh.flush()

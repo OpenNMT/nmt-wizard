@@ -1,8 +1,5 @@
 import logging.config
-import hashlib
 import time
-import json
-import pickle
 import os
 import sys
 import argparse
@@ -15,26 +12,17 @@ from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard.worker import Worker
 from nmtwizard import workeradmin
+from app import base_config, mongo_client
 
 parser = argparse.ArgumentParser()
-parser.add_argument('config', type=str,
-                    help="path to config file for the service")
-args = parser.parse_args()
+parser.add_argument('service', type=str,
+                    help="name of service")
 
-assert os.path.isfile(args.config) and args.config.endswith(".json"), \
-    "`config` must be path to JSON service configuration file"
+args = parser.parse_args()
+service = args.service
+
 assert os.path.isfile('settings.ini'), "missing `settings.ini` file in current directory"
 assert os.path.isfile('logging.conf'), "missing `logging.conf` file in current directory"
-
-
-def md5file(fp):
-    """Returns the MD5 of the file fp."""
-    m = hashlib.md5()
-    with open(fp, 'rb') as f:
-        for l in f.readlines():
-            m.update(l)
-    return m.hexdigest()
-
 
 cfg = configparser.ConfigParser()
 cfg.read('settings.ini')
@@ -58,11 +46,6 @@ redis = RedisDatabase(cfg.get('redis', 'host'),
                       cfg.get('redis', 'db'),
                       redis_password)
 
-redis2 = RedisDatabase(cfg.get('redis', 'host'),
-                       cfg.getint('redis', 'port'),
-                       cfg.get('redis', 'db'),
-                       redis_password, False)
-
 retry = 0
 while retry < 10:
     try:
@@ -76,39 +59,18 @@ while retry < 10:
 
 assert retry < 10, "Cannot connect to redis DB - aborting"
 
-# load default configuration from database
-retry = 0
-while retry < 10:
-    default_config = redis.hget('default', 'configuration')
-    default_config_timestamp = redis.hget('default', 'timestamp')
-    if default_config:
-        break
-    time.sleep(5)
+base_config = config.get_default_config(mongo_client)
+current_config = config.get_current_config_of_service(mongo_client, service)
 
-assert retry < 10, "Cannot retrieve default config from redis DB - aborting"
+assert current_config is not None, "Config not found"
+services, merged_config = config.load_service_config(current_config, base_config)
 
-base_config = json.loads(default_config)
-
-services, merged_config = config.load_service_config(args.config, base_config)
 assert len(services) == 1, "workers are now dedicated to one single service"
 service = next(iter(services))
 
 current_configuration = None
-configurations = {}
 
-if os.path.isdir("configurations"):
-    configurations = {}
-    config_service_md5 = {}
-    for filename in os.listdir("configurations"):
-        if filename.startswith(service + "_") and filename.endswith(".json"):
-            file_path = os.path.join("configurations", filename)
-            with open(file_path) as f:
-                configurations[filename[len(service) + 1:-5]] = (os.path.getmtime(file_path),
-                                                                 f.read())
-            config_service_md5[md5file(file_path)] = filename[len(service) + 1:-5]
-    current_configuration_md5 = md5file(args.config)
-    if current_configuration_md5 in config_service_md5:
-        current_configuration = config_service_md5[current_configuration_md5]
+last_change_default_config_ts = redis.get("last_change_default_config_ts")
 
 pid = os.getpid()
 logger.info('Running worker for %s - PID = %d' % (service, pid))
@@ -118,10 +80,8 @@ redis.hset(instance_id, "launch_time", time.time())
 redis.hset(instance_id, "beat_time", time.time())
 redis.expire(instance_id, 600)
 
-keys = 'admin:service:%s' % service
-redis.hset(keys, "current_configuration", current_configuration)
-redis.hset(keys, "configurations", json.dumps(configurations))
-redis2.hset(keys, "def", pickle.dumps(services[service]))
+keys = 'admin:services'
+redis.sadd(keys, service)
 
 
 def graceful_exit(signum, frame):
@@ -186,7 +146,6 @@ def reorganize_resources():
     if services[service].valid:
         # Deallocate all resources that are not anymore associated to a running task
         resources = services[service].list_resources()
-
         # TODO:
         # if multiple workers are for same service with different configurations
         # or storage definition change - restart all workers`
@@ -273,46 +232,43 @@ def restart_all_worker():
 def kill_all_worker():
     for worker_process in worker_processes:
         if worker_process.is_alive():
-            logger.debug(f"[{service}-{pid}]: Killing { worker_process.pid}")
+            logger.debug(f"[{service}-{pid}]: Killing {worker_process.pid}")
             worker_process.terminate()
 
 
 def start_all_worker():
     logger.debug(f"[{service}-{pid}]: Starting {process_count} workers")
     for i in range(0, process_count):
-        worker_process = Process(target=start_worker, args=(redis, services,
+        worker_process = Process(target=start_worker, args=(redis, mongo_client, services,
                                                             ttl_policy,
                                                             cfg.getint('default', 'refresh_counter'),
                                                             cfg.getint('default', 'quarantine_time'),
                                                             instance_id,
-                                                            cfg.get('default', 'taskfile_dir'),
-                                                            default_config_timestamp))
+                                                            cfg.get('default', 'taskfile_dir')))
         worker_process.daemon = True
         worker_process.start()
         worker_processes.append(worker_process)
 
 
-def start_worker(redis, services,
+def start_worker(redis, mongo_client, services,
                  ttl_policy,
                  refresh_counter,
                  quarantine_time,
                  instance_id,
-                 taskfile_dir,
-                 default_config_timestamp=default_config_timestamp):
+                 taskfile_dir):
 
-    worker = Worker(redis, services,
+    worker = Worker(redis, mongo_client, services,
                     ttl_policy,
                     refresh_counter,
                     quarantine_time,
                     instance_id,
-                    taskfile_dir,
-                    default_config_timestamp)
+                    taskfile_dir)
     worker.run()
 
 
 def process_worker_admin_command():
     workeradmin.process(logger, redis, service)
-    if default_config_timestamp and redis.hget('default', 'timestamp') != default_config_timestamp:
+    if last_change_default_config_ts and redis.get('last_change_default_config_ts') != last_change_default_config_ts:
         logger.info('stopped by default configuration change')
         sys.exit(0)
 

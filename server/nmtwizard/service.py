@@ -11,7 +11,6 @@ from nmtwizard.capacity import Capacity
 @six.add_metaclass(abc.ABCMeta)
 class Service(object):
     """Base class for services."""
-
     def __init__(self, config):
         self._config = config
         self._default_ms = None
@@ -52,7 +51,7 @@ class Service(object):
     @property
     def name(self):
         """Returns the name of the service."""
-        return self._config['name']
+        return self._config['service_name']
 
     @property
     def display_name(self):

@@ -9,6 +9,14 @@ from flask_ini import FlaskIni
 
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard import common
+from lib.pn9databases import MongodbClient
+from nmtwizard import configuration as config
+
+CONFIG_LOAD_METHOD = {
+    "from_mongo": "1",
+    "from_file_upsert_to_mongo": "2",
+    "from_file_check_duplicate_mongo": "3"
+}
 
 VERSION = "1.11.1"
 
@@ -24,16 +32,20 @@ ch.setFormatter(formatter)
 common.add_log_handler(ch)
 
 config_file = os.getenv('LAUNCHER_CONFIG', 'settings.ini')
-assert config_file is not None and os.path.isfile(config_file), "invalid LAUNCHER_CONFIG"
+assert os.path.isfile(config_file), "invalid LAUNCHER_CONFIG"
+default_config_location = os.getenv('DEFAULT_CONFIG', CONFIG_LOAD_METHOD["from_mongo"])
+assert default_config_location in CONFIG_LOAD_METHOD.values(), "invalid DEFAULT_CONFIG"
 
-default_file = os.path.join(os.path.dirname(config_file), "default.json")
-assert os.path.isfile(default_file), "Cannot find default.json: %s" % default_file
+default_config_path = os.path.join(os.path.dirname(config_file), "default.json")
+mongo_config_file = os.path.join(os.path.dirname(config_file), "mongo_config.json")
+assert os.path.isfile(mongo_config_file), "Cannot find mongo_config_file.json: %s" % mongo_config_file
 
-with open(default_file) as default_fh:
-    default_config = default_fh.read()
-    base_config = json.loads(default_config)
-    assert 'storages' in base_config, "incomplete configuration - missing " \
-                                      "`storages` in %s" % default_file
+with open(mongo_config_file) as mongo_config_file_fh:
+    mongo_config = mongo_config_file_fh.read()
+    mongo_config = json.loads(mongo_config)
+
+mongo_client = MongodbClient(mongo_config)
+base_config = {}
 
 app.iniconfig = FlaskIni()
 with app.app_context():
@@ -56,21 +68,32 @@ assert app.iniconfig.get('default', 'taskfile_dir'), "missing taskfile_dir from 
 taskfile_dir = app.iniconfig.get('default', 'taskfile_dir')
 assert os.path.isdir(taskfile_dir), "taskfile_dir (%s) must be a directory" % taskfile_dir
 
-retry = 0
-while retry < 10:
-    try:
-        current_default_config = redis_db.exists("default") \
-                                 and redis_db.hget("default", "configuration")
-        break
-    except (ConnectionError, AssertionError) as e:
-        retry += 1
-        time.sleep(1)
 
-assert retry < 10, "Cannot connect to redis DB - aborting"
+def process_config():
+    config_from_mongo = config.get_default_config(mongo_client)
+    if default_config_location == CONFIG_LOAD_METHOD["from_mongo"]:
+        assert config_from_mongo is not None, "Config not found"
+        base_config.update(config_from_mongo)
+    else:
+        conflict_config = config.is_conflict_default_config(mongo_client, default_config_path)
+        if default_config_location == CONFIG_LOAD_METHOD["from_file_upsert_to_mongo"]:
+            load_config_from_file_to_mongo()
+        else:
+            assert not conflict_config, "Conflict config"
+            load_config_from_file_to_mongo()
+        if conflict_config:
+            redis_db.set("last_change_default_config_ts", time.time())
 
-if current_default_config != default_config:
-    redis_db.hset("default", "configuration", default_config)
-    redis_db.hset("default", "timestamp", time.time())
+
+def load_config_from_file_to_mongo():
+    config_from_file = config.get_default_config_from_file(default_config_path)
+    config.upsert_default_config(mongo_client, config_from_file)
+    base_config.update(config_from_file)
+
+
+process_config()
+
+base_config["database"] = mongo_config
 
 
 def append_version(v):
