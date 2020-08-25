@@ -19,16 +19,13 @@ from nmtwizard import workeradmin
 parser = argparse.ArgumentParser()
 parser.add_argument('config', type=str,
                     help="path to config file for the service")
-parser.add_argument('process_count', type=int,
-                    help="Num of worker process")
+
 args = parser.parse_args()
 
 assert os.path.isfile(args.config) and args.config.endswith(".json"), \
     "`config` must be path to JSON service configuration file"
 assert os.path.isfile('settings.ini'), "missing `settings.ini` file in current directory"
 assert os.path.isfile('logging.conf'), "missing `logging.conf` file in current directory"
-process_count = args.process_count
-assert process_count > 0, "Num of worker process must be greater than 0"
 
 
 def md5file(fp):
