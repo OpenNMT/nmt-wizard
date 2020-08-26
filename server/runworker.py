@@ -9,22 +9,24 @@ import argparse
 import signal
 import logging
 
-# from redis.exceptions import ConnectionError
-from six.moves import configparser
-
 from nmtwizard.redis_database import RedisDatabase
+from utils.config_utils import ConfigUtils
 
-# connecting to redis to monitor the worker process
-cfg = configparser.ConfigParser()
-cfg.read('settings.ini')
+system_config_file = "settings.yaml"
+assert os.path.isfile(system_config_file), f"missing `{system_config_file}` file in current directory"
+system_config = ConfigUtils.read_file(system_config_file)
+
+assert "redis" in system_config, f"Can't read redis config from {system_config_file}"
+redis_config = system_config["redis"]
 redis_password = None
-if cfg.has_option('redis', 'password'):
-    redis_password = cfg.get('redis', 'password')
-redis = RedisDatabase(cfg.get('redis', 'host'),
-                      cfg.getint('redis', 'port'),
-                      cfg.get('redis', 'db'),
-                      redis_password)
 
+if "password" in redis_config:
+    redis_password = redis_config["password"]
+
+redis = RedisDatabase(redis_config["host"],
+                      redis_config["port"],
+                      redis_config["db"],
+                      redis_password)
 
 retry = 0
 while retry < 10:
