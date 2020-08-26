@@ -28,7 +28,7 @@ from nmtwizard.task import get_task_entity, TaskInfo
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
 # get maximum log size from configuration
-max_log_size = app.iniconfig.get('default', 'max_log_size', fallback=None)
+max_log_size = app.get_other_config(['default', 'max_log_size'], fallback=None)
 if max_log_size is not None:
     max_log_size = int(max_log_size)
 
@@ -384,8 +384,8 @@ def server_listconfig(service):
 
 
 def post_adminrequest(app, service, action, configname="base", value="1"):
-    identifier = "%d.%d" % (os.getpid(), app._requestid)
-    app._requestid += 1
+    identifier = "%d.%d" % (os.getpid(), app.request_id)
+    app.request_id += 1
     redis_db.set("admin:config:%s:%s:%s:%s" % (service, action, configname, identifier), value)
     wait = 0
     while wait < 360:
