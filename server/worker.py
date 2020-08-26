@@ -10,22 +10,23 @@ import signal
 from multiprocessing import Process
 
 import six
-from six.moves import configparser
 from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard.worker import Worker
 from nmtwizard import workeradmin
+from utils.config_utils import ConfigUtils
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument('config', type=str,
-                    help="path to config file for the service")
+parser.add_argument('config', type=str, help="path to config file for the service")
 
 args = parser.parse_args()
 
+system_config_file = "settings.yaml"
+
 assert os.path.isfile(args.config) and args.config.endswith(".json"), \
     "`config` must be path to JSON service configuration file"
-assert os.path.isfile('settings.ini'), "missing `settings.ini` file in current directory"
-assert os.path.isfile('logging.conf'), "missing `logging.conf` file in current directory"
+assert os.path.isfile(system_config_file), f"missing `{system_config_file}` file in current directory"
 
 
 def md5file(fp):
@@ -37,32 +38,44 @@ def md5file(fp):
     return m.hexdigest()
 
 
-cfg = configparser.ConfigParser()
-cfg.read('settings.ini')
+def get_logger(logger_config):
+    logger_config["version"] = 1
+    logging.config.dictConfig(logger_config)
+    return logging.getLogger("worker")
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('worker')
+
+system_config = ConfigUtils.read_file(system_config_file)
+
+assert "default" in system_config, f"Can't read default config from {system_config_file}"
+system_config_default = system_config["default"]
+
+assert 'logging' in system_config, f"Can't read logging config from {system_config_file}"
+logger = get_logger(system_config["logging"])
+
 
 process_count = 1
-if cfg.has_option('worker', 'process_count'):
-    process_count_config = cfg.get('worker', 'process_count')
-    assert process_count_config.isnumeric() and int(
-        process_count_config) > 0, "process_count must be numeric and greater than 0"
-    process_count = int(process_count_config)
+if "worker" in system_config and "process_count" in system_config["worker"]:
+    process_count_config = system_config["worker"]["process_count"]
+    assert isinstance(process_count_config, int), "worker/process_count config must be integer"
+    process_count = process_count_config
 
+
+assert "redis" in system_config, f"Can't read redis config from {system_config_file}"
+redis_config = system_config["redis"]
 redis_password = None
-if cfg.has_option('redis', 'password'):
-    redis_password = cfg.get('redis', 'password')
 
-redis = RedisDatabase(cfg.get('redis', 'host'),
-                      cfg.getint('redis', 'port'),
-                      cfg.get('redis', 'db'),
+if "password" in redis_config:
+    redis_password = redis_config["password"]
+
+redis = RedisDatabase(redis_config["host"],
+                      redis_config["port"],
+                      redis_config["db"],
                       redis_password)
 
-redis2 = RedisDatabase(cfg.get('redis', 'host'),
-                       cfg.getint('redis', 'port'),
-                       cfg.get('redis', 'db'),
-                       redis_password, False)
+redis_without_decode_response = RedisDatabase(redis_config["host"],
+                                              redis_config["port"],
+                                              redis_config["db"],
+                                              redis_password, False)
 
 retry = 0
 while retry < 10:
@@ -122,7 +135,7 @@ redis.expire(instance_id, 600)
 keys = 'admin:service:%s' % service
 redis.hset(keys, "current_configuration", current_configuration)
 redis.hset(keys, "configurations", json.dumps(configurations))
-redis2.hset(keys, "def", pickle.dumps(services[service]))
+redis_without_decode_response.hset(keys, "def", pickle.dumps(services[service]))
 
 
 def graceful_exit(signum, frame):
@@ -283,10 +296,10 @@ def start_all_worker():
     for i in range(0, process_count):
         worker_process = Process(target=start_worker, args=(redis, services,
                                                             ttl_policy,
-                                                            cfg.getint('default', 'refresh_counter'),
-                                                            cfg.getint('default', 'quarantine_time'),
+                                                            system_config_default["refresh_counter"],
+                                                            system_config_default["quarantine_time"],
                                                             instance_id,
-                                                            cfg.get('default', 'taskfile_dir'),
+                                                            system_config_default["taskfile_dir"],
                                                             default_config_timestamp))
         worker_process.daemon = True
         worker_process.start()
