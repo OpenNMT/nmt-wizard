@@ -3,10 +3,8 @@ import time
 import logging
 import zlib
 import json
-
 import redis
 
-# from app.routes import cust_jsonify
 from nmtwizard.helper import cust_jsondump
 
 LOGGER = logging.getLogger(__name__)
@@ -73,7 +71,6 @@ class RedisDatabase(redis.Redis):
 
 
 class RedisLock(object):
-
     def __init__(self, redis, name, acquire_timeout=20, expire_time=60):
         self._redis = redis
         self._name = name
@@ -84,10 +81,22 @@ class RedisLock(object):
     def __enter__(self):
         """Adds a lock for a specific name and expires the lock after some delay."""
         LOGGER.debug('Acquire lock for %s', self._name)
-        self._identifier = str(uuid.uuid4())
+        separator = ':time:'
+        self._identifier = f'{uuid.uuid4()}{separator}{time.time()}'
         end = time.time() + self._acquire_timeout
         lock = 'lock:%s' % self._name
+
         while time.time() < end:
+            identifier = self._redis.get(lock)
+            ttl = self._redis.ttl(lock)
+            if identifier and ttl == -1:
+                split_identifier = identifier.split(separator)
+                if len(split_identifier) == 2:
+                    created_at = float(split_identifier[1])
+                    # If ttl is not set after 3s when created, delete it
+                    if created_at + 3 < time.time():
+                        LOGGER.debug('Delete lock: %s' % lock)
+                        self._redis.delete(lock)
             if self._redis.setnx(lock, self._identifier):
                 self._redis.expire(lock, self._expire_time)
                 return self

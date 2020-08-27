@@ -140,7 +140,6 @@ def get_entity_cfg_from_redis(redis, service, entities_filters, entity_owner):
                             owner_config["docker"]["envvar"].update(ent_config["docker"]["envvar"])
                         else:
                             owner_config["docker"]["envvar"] = ent_config["docker"]["envvar"]
-
         # put entity config outside entities
         for k in owner_config:
             service_config[k] = owner_config[k]

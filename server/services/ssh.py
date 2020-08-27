@@ -117,13 +117,7 @@ class SSHService(Service):
 
     def check(self, options, docker_registries):
         params = _get_params(self._config, options)
-        client = common.ssh_connect_with_retry(
-            params['host'],
-            params['port'],
-            params['login'],
-            pkey=self._config.get('pkey'),
-            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
-            login_cmd=params['login_cmd'])
+        client = self._get_client(params=params)
         try:
             details = common.check_environment(
                 client,
@@ -153,13 +147,7 @@ class SSHService(Service):
                support_statistics):
         options['server'] = resource
         params = _get_params(self._config, options)
-        client = common.ssh_connect_with_retry(
-            params['host'],
-            params['port'],
-            params['login'],
-            pkey=self._config.get('pkey'),
-            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
-            login_cmd=params['login_cmd'])
+        client = self._get_client(params=params)
         try:
             callback_url = self._config.get('callback_url')
             if auth_token:
@@ -186,6 +174,16 @@ class SSHService(Service):
         params['model'] = task['model']
         params['pgid'] = task['pgid']
         return params
+
+    def _get_client(self, params):
+        client = common.ssh_connect_with_retry(
+            params['host'],
+            params['port'],
+            params['login'],
+            pkey=self._config.get('pkey'),
+            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
+            login_cmd=params['login_cmd'])
+        return client
 
     def status(self, task_id, params, get_log=True):
         client = common.ssh_connect_with_retry(
