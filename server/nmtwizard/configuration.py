@@ -196,6 +196,8 @@ def load_service_config(service_config, base_config):
 
 def set_service_config(mongo_client, service_name, config_data):
     mongo_client.update_insert_service_config(service_name, config_data)
+    service_config = mongo_client.update_insert_service_config(service_name, config_data)
+    return service_config
 
 
 def read_yaml_file(file_path):
@@ -261,6 +263,3 @@ def is_db_service_config_outdated(mongo_client, service_name):
     return config is None or is_outdated
 
 
-def get_service_configs(mongo_client, services):
-    service_configs = mongo_client.get_service_configs(services)
-    return service_configs
