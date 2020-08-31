@@ -150,4 +150,3 @@ class MongoDatabase:
         }
         images = the_table.find(conditions)
         return images
-
