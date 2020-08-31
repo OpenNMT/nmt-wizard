@@ -7,9 +7,13 @@ import signal
 import sys
 import six
 
-from nmtwizard import task
+from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from nmtwizard import configuration as config
+from utils.database_utils import DatabaseUtils
+
+
+system_config = config.get_system_config()
+mongo_client = DatabaseUtils.get_mongo_client(system_config)
 
 
 def _compatible_resource(resource, request_resource):
@@ -57,10 +61,10 @@ class Worker(object):
             return True
 
     def __init__(self, redis, services, ttl_policy, refresh_counter,
-                 quarantine_time, instance_id, taskfile_dir,
-                 default_config_timestamp=None):
+                 quarantine_time, instance_id, taskfile_dir):
         self._worker_id = os.getpid()
         self._redis = redis
+        self._mongo_client = mongo_client
         self._service = next(iter(services))
         self._services = services
         self._logger = logging.getLogger('worker')
@@ -68,7 +72,6 @@ class Worker(object):
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
         self._taskfile_dir = taskfile_dir
-        self._default_config_timestamp = default_config_timestamp
         task.set_ttl_policy(ttl_policy)
 
     def run(self):
@@ -456,7 +459,7 @@ class Worker(object):
 
             def __str__(self):
                 return 'EntityUsage (%s, Absolute usage :%s . Weighted usage : %s. Weight:%f)' % (
-                self._entity, self._current_usage_capacity, self._weighted_usage, self._usage_coeff)
+                    self._entity, self._current_usage_capacity, self._weighted_usage, self._usage_coeff)
 
             @property
             def _weighted_usage(self):
@@ -476,8 +479,8 @@ class Worker(object):
                 return self == other or self < other
 
             @staticmethod
-            def initialize_entities_usage(redis, service_name):
-                entity_usage_weights = config.get_entities_limit_rate(redis, service_name)
+            def initialize_entities_usage(mongo_client, service_name):
+                entity_usage_weights = config.get_entities_limit_rate(mongo_client, service_name)
                 weight_sum = float(sum([w for w in entity_usage_weights.values() if w > 0]))
                 entities_usage = {e: EntityUsage(None, e, float(weight_sum)/r if r > 0 else 0)
                                   for e, r in six.iteritems(entity_usage_weights)}
@@ -588,7 +591,7 @@ class Worker(object):
                 return "ResourceManager ( %s )." % msg
 
             def load_machines(self, service_name):
-                self.entities_usage = EntityUsage.initialize_entities_usage(self.worker._redis, service_name)
+                self.entities_usage = EntityUsage.initialize_entities_usage(self.worker._mongo_client, service_name)
                 for resource, machine in six.iteritems(self._machines):
                     current_xpu_usage = Capacity()
                     keygr = 'gpu_resource:%s:%s' % (self.worker._service, resource)
@@ -672,10 +675,10 @@ class Worker(object):
                         self._logger.info('[AZ-SELECTED] %s to be launched on %s', task_id, service.name)
                         break
                     self._logger.info('[AZ-SELECTED] %s to be launched on %s, but not able to allocate resource',
-                                          task_id, service.name)
+                                      task_id, service.name)
 
     def _get_current_config(self, task_id):
         task_entity = task.get_owner_entity(self._redis, task_id)
         storages_entities_filter = task.get_storages_entity(self._redis, task_id)
-        current_config = config.get_entity_cfg_from_redis(self._redis, self._service, storages_entities_filter, task_entity)
+        current_config = config.get_entity_config(self._mongo_client, self._service, storages_entities_filter, task_entity)
         return current_config
