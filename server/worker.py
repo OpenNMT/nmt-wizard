@@ -19,7 +19,6 @@ args = parser.parse_args()
 service_name = args.service_name
 assert service_name, "Name of service mustn't None"
 
-
 def is_float(value):
     try:
         float(value)
@@ -67,7 +66,6 @@ if "worker" in system_config and "worker_butler_cycle" in system_config["worker"
     assert is_float(worker_butler_cycle_config) and float(
         worker_butler_cycle_config) > 0, "worker_butler_cycle must be numeric and greater than 0"
     worker_butler_cycle = float(worker_butler_cycle_config)
-
 
 retry = 0
 while retry < 10:

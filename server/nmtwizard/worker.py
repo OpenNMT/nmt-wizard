@@ -460,7 +460,7 @@ class Worker(object):
 
             def __str__(self):
                 return 'EntityUsage (%s, Absolute usage :%s . Weighted usage : %s. Weight:%f)' % (
-                self._entity, self._current_usage_capacity, self._weighted_usage, self._usage_coeff)
+                    self._entity, self._current_usage_capacity, self._weighted_usage, self._usage_coeff)
 
             @property
             def _weighted_usage(self):
