@@ -58,13 +58,13 @@ if "worker" in system_config and "process_count" in system_config["worker"]:
 if "worker" in system_config and "worker_cycle" in system_config["worker"]:
     worker_cycle_config = system_config["worker"]["worker_cycle"]
     assert is_float(worker_cycle_config) and float(
-        worker_cycle_config) > 0, "worker_cycle must be numeric and greater than 0"
+        worker_cycle_config) > 0, "worker/worker_cycle must be numeric and greater than 0"
     worker_cycle = float(worker_cycle_config)
 
 if "worker" in system_config and "worker_butler_cycle" in system_config["worker"]:
     worker_butler_cycle_config = system_config["worker"]["worker_butler_cycle"]
     assert is_float(worker_butler_cycle_config) and float(
-        worker_butler_cycle_config) > 0, "worker_butler_cycle must be numeric and greater than 0"
+        worker_butler_cycle_config) > 0, "worker/worker_butler_cycle must be numeric and greater than 0"
     worker_butler_cycle = float(worker_butler_cycle_config)
 
 retry = 0
@@ -267,7 +267,8 @@ def start_all():
 
     logger.debug(f"[{service}-{pid}]: Starting {process_count} workers")
     for i in range(0, process_count):
-        worker_process = Process(target=start_worker, args=(redis_db, mongo_client, services,
+        mongodb_client = DatabaseUtils.get_mongo_client(system_config)
+        worker_process = Process(target=start_worker, args=(redis_db, mongodb_client, services,
                                                             ttl_policy,
                                                             system_config_default["refresh_counter"],
                                                             system_config_default["quarantine_time"],
@@ -279,14 +280,14 @@ def start_all():
         worker_processes.append(worker_process)
 
 
-def start_worker(redis_db, mongo_client, services,
+def start_worker(redis_db, mongodb_client, services,
                  ttl_policy,
                  refresh_counter,
                  quarantine_time,
                  instance_id,
                  taskfile_dir,
                  worker_cycle):
-    worker = Worker(redis_db, mongo_client, services,
+    worker = Worker(redis_db, mongodb_client, services,
                     ttl_policy,
                     refresh_counter,
                     quarantine_time,
