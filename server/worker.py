@@ -19,13 +19,6 @@ args = parser.parse_args()
 service_name = args.service_name
 assert service_name, "Name of service mustn't None"
 
-def is_float(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
-
 
 def get_logger(logger_config):
     logger_config["version"] = 1
@@ -50,22 +43,23 @@ process_count = 1
 worker_cycle = 0.05
 worker_butler_cycle = 0.5
 
-if "worker" in system_config and "process_count" in system_config["worker"]:
-    process_count_config = system_config["worker"]["process_count"]
-    assert isinstance(process_count_config, int), "worker/process_count config must be integer"
+
+if "worker" in service_config and "process_count" in service_config["worker"]:
+    process_count_config = service_config["worker"]["process_count"]
+    assert isinstance(process_count_config, int), "number_of_workers config must be integer"
     process_count = process_count_config
 
-if "worker" in system_config and "worker_cycle" in system_config["worker"]:
-    worker_cycle_config = system_config["worker"]["worker_cycle"]
-    assert is_float(worker_cycle_config) and float(
-        worker_cycle_config) > 0, "worker/worker_cycle must be numeric and greater than 0"
-    worker_cycle = float(worker_cycle_config)
+if "worker" in service_config and "worker_cycle" in service_config["worker"]:
+    worker_cycle_config = service_config["worker"]["worker_cycle"]
+    assert isinstance(worker_cycle_config,
+                      float) and worker_cycle_config > 0, "worker/worker_cycle must be numeric and greater than 0"
+    worker_cycle = worker_cycle_config
 
-if "worker" in system_config and "worker_butler_cycle" in system_config["worker"]:
-    worker_butler_cycle_config = system_config["worker"]["worker_butler_cycle"]
-    assert is_float(worker_butler_cycle_config) and float(
-        worker_butler_cycle_config) > 0, "worker/worker_butler_cycle must be numeric and greater than 0"
-    worker_butler_cycle = float(worker_butler_cycle_config)
+if "worker" in service_config and "worker_butler_cycle" in service_config["worker"]:
+    worker_butler_cycle_config = service_config["worker"]["worker_butler_cycle"]
+    assert isinstance(worker_butler_cycle_config,
+                      float) and worker_butler_cycle_config > 0, "worker/worker_butler_cycle must be numeric and greater than 0"
+    worker_butler_cycle = worker_butler_cycle_config
 
 retry = 0
 while retry < 10:

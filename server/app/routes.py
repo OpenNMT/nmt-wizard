@@ -31,8 +31,6 @@ from systran_storages import StorageClient
 from nmtwizard.common import rmprivate
 from nmtwizard.helper import boolean_param
 
-# from nmtwizard import configuration as config
-
 
 GLOBAL_POOL_NAME = "sa_global_pool"
 
@@ -955,6 +953,7 @@ def is_valid_corpus_extension(file_name):
     name, extension = os.path.splitext(file_name)
     # return extension in valid_extensions
     return True
+
 
 def validate_model_name(model_name):
     reg = r"(^[a-zA-Z0-9\.]+$)"
