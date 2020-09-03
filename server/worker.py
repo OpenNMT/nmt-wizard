@@ -228,7 +228,8 @@ def kill_all_worker():
 def start_all_worker():
     logger.debug(f"[{service}-{pid}]: Starting {process_count} workers")
     for i in range(0, process_count):
-        worker_process = Process(target=start_worker, args=(redis_db, services,
+        mongodb_client = DatabaseUtils.get_mongo_client(system_config)
+        worker_process = Process(target=start_worker, args=(redis_db, mongodb_client, services,
                                                             ttl_policy,
                                                             system_config_default["refresh_counter"],
                                                             system_config_default["quarantine_time"],
@@ -239,13 +240,13 @@ def start_all_worker():
         worker_processes.append(worker_process)
 
 
-def start_worker(redis_db, services,
+def start_worker(redis_db, mongodb_client, services,
                  ttl_policy,
                  refresh_counter,
                  quarantine_time,
                  instance_id,
                  taskfile_dir):
-    worker = Worker(redis_db, services,
+    worker = Worker(redis_db, mongodb_client, services,
                     ttl_policy,
                     refresh_counter,
                     quarantine_time,

@@ -9,11 +9,6 @@ import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from utils.database_utils import DatabaseUtils
-
-
-system_config = config.get_system_config()
-mongo_client = DatabaseUtils.get_mongo_client(system_config)
 
 
 def _compatible_resource(resource, request_resource):
@@ -60,7 +55,7 @@ class Worker(object):
                 return False
             return True
 
-    def __init__(self, redis, services, ttl_policy, refresh_counter,
+    def __init__(self, redis, mongo_client, services, ttl_policy, refresh_counter,
                  quarantine_time, instance_id, taskfile_dir):
         self._worker_id = os.getpid()
         self._redis = redis
