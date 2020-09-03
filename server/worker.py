@@ -39,9 +39,9 @@ assert 'logging' in system_config, "Can't read logging config from settings.yaml
 logger = get_logger(system_config["logging"])
 
 process_count = 1
-if "worker" in system_config and "process_count" in system_config["worker"]:
-    process_count_config = system_config["worker"]["process_count"]
-    assert isinstance(process_count_config, int), "worker/process_count config must be integer"
+if "number_of_workers" in service_config:
+    process_count_config = service_config["number_of_workers"]
+    assert isinstance(process_count_config, int), "number_of_workers config must be integer"
     process_count = process_count_config
 
 retry = 0
