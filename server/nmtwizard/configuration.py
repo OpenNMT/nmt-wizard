@@ -196,8 +196,6 @@ def load_service_config(service_config, base_config):
 
 def set_service_config(mongo_client, service_name, config_data):
     mongo_client.update_insert_service_config(service_name, config_data)
-    service_config = mongo_client.update_insert_service_config(service_name, config_data)
-    return service_config
 
 
 def read_yaml_file(file_path):
@@ -261,5 +259,3 @@ def is_db_service_config_outdated(mongo_client, service_name):
     is_outdated = config is not None and os.path.isfile(config_file) and config[
         "updated_at"] < os.path.getmtime(config_file)
     return config is None or is_outdated
-
-
