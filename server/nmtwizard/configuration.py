@@ -195,8 +195,7 @@ def load_service_config(service_config, base_config):
 
 
 def set_service_config(mongo_client, service_name, config_data):
-    service_config = mongo_client.update_insert_service_config(service_name, config_data)
-    return service_config
+    mongo_client.update_insert_service_config(service_name, config_data)
 
 
 def read_yaml_file(file_path):

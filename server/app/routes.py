@@ -350,9 +350,7 @@ def list_services():
                 res[service_name] = {'name': name}
             else:
                 usage, queued, capacity, busy, detail = _usagecapacity(service_def)
-                pids = []
-                for keyw in redis_db.scan_iter("admin:worker:%s:*" % service_name):
-                    pids.append(keyw[len("admin:worker:%s:" % service_name):])
+                pids = get_worker_pids(service_name)
                 pid = ",".join(pids)
                 if len(pids) == 0:
                     busy = "yes"
@@ -372,7 +370,7 @@ def describe(service):
 
 
 @app.route("/service/configs/_base", methods=["GET"])
-@filter_request("GET/service/configs", "admin_user")
+@filter_request("GET/service/configs", "is_super")
 def get_base_config():
     base_config = config.get_base_config(mongo_client)
     return flask.jsonify(base_config)
@@ -415,6 +413,9 @@ def set_service_config(service):
         update_config = json.loads(request_body)
         update_config["updated_at"] = time.time()
         config.set_service_config(mongo_client, service, update_config)
+        worker_pids = get_worker_pids(service)
+        if len(worker_pids) == 0:
+            return flask.jsonify("ok")
         command_response = post_admin_request(app, service, "restart")
         return flask.jsonify(command_response)
     except Exception as e:
@@ -1198,3 +1199,10 @@ def get_status():
 @app.route("/version", methods=["GET"])
 def get_version_request():
     return flask.make_response(get_version())
+
+
+def get_worker_pids(service_name):
+    worker_pids = []
+    for keyw in redis_db.scan_iter("admin:worker:%s:*" % service_name):
+        worker_pids.append(keyw[len("admin:worker:%s:" % service_name):])
+    return worker_pids

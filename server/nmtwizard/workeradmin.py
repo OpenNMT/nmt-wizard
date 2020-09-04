@@ -1,7 +1,4 @@
-import re
 import sys
-
-re_badchar = re.compile(r"[^-A-Za-z_0-9]")
 
 
 def result(redis, cmd, message):
@@ -11,7 +8,7 @@ def result(redis, cmd, message):
     redis.expire(key, 120)
 
 
-def process(logger, redis, service):
+def process(logger, redis, service, instance_id):
     for cmd_key in redis.scan_iter('admin:command:%s:*' % service):
         redis.delete(cmd_key)
         cmd = cmd_key.split(':')
@@ -21,10 +18,12 @@ def process(logger, redis, service):
 
         if cmd[3] == 'restart':
             result(redis, cmd, 'ok')
+            redis.delete(instance_id)
             logger.info("restarting worker `%s` by admin request" % cmd[4])
             sys.exit(1)
         elif cmd[3] == 'stop':
             result(redis, cmd, 'ok')
+            redis.delete(instance_id)
             logger.info("stopping worker `%s` by admin request" % cmd[4])
             sys.exit(55)
         else:

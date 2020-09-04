@@ -256,7 +256,7 @@ def start_worker(redis_db, mongodb_client, services,
 
 
 def process_worker_admin_command():
-    workeradmin.process(logger, redis_db, service)
+    workeradmin.process(logger, redis_db, service, instance_id)
 
 
 def process_heart_beat():
