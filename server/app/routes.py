@@ -419,7 +419,7 @@ def set_service_config(service):
         command_response = post_admin_request(app, service, "restart")
         return flask.jsonify(command_response)
     except Exception as e:
-        return flask.jsonify({"message": str(e)})
+        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
 
 
 @app.route("/service/restart/<string:service>", methods=["GET"])
