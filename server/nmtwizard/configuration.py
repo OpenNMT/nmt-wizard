@@ -259,3 +259,8 @@ def is_db_service_config_outdated(mongo_client, service_name):
     is_outdated = config is not None and os.path.isfile(config_file) and config[
         "updated_at"] < os.path.getmtime(config_file)
     return config is None or is_outdated
+
+
+def get_service_configs(mongo_client, services):
+    service_configs = mongo_client.get_service_configs(services)
+    return service_configs

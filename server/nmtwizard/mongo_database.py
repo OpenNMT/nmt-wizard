@@ -94,3 +94,19 @@ class MongoDatabase:
             "name": service_name
         }
         the_table.replace_one(query, config_data, upsert=True)
+
+    def get_service_configs(self, services, views=None):
+        the_table = self.get("configs")
+        if views is None:
+            views = {
+                "_id": 0
+            }
+        query = {
+            "name": {
+                "$in": services
+            }
+        }
+
+        service_configs = the_table.find(query, views)
+
+        return service_configs
