@@ -380,8 +380,11 @@ def get_base_config():
 @filter_request("GET/service/configs", "edit_config")
 def get_service_config(service):
     check_permission(service, "edit_config")
-    service_config = config.get_service_config(mongo_client, service)
-    return flask.jsonify(service_config)
+    try:
+        service_config = config.get_service_config(mongo_client, service)
+        return flask.jsonify(service_config)
+    except Exception as e:
+        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
 
 
 def post_admin_request(app, service, action, value="1"):
