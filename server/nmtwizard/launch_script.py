@@ -138,7 +138,7 @@ finally:
 if p1.returncode == 0:
     phase = "completed"
 else:
-    phase = "error"
+    phase = "launch_error"
 
 if callback_url:
     mutex.acquire()
