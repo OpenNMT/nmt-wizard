@@ -97,7 +97,7 @@ def confirm(prompt=None, resp=False):
         prompt = '%s [%s]|%s: ' % (prompt, 'n', 'y')
 
     while True:
-        ans = input(prompt)
+        ans = six.moves.input(prompt)
         if not ans:
             return resp
         if ans not in ['y', 'Y', 'n', 'N']:
@@ -578,10 +578,11 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                     date = datetime.fromtimestamp(math.ceil(current)).isoformat(' ')
                     res += "\t%-12s\t%s\t%s\n" % (k[:-5], date, delay[idx])
                     idx += 1
-            content = result["content"]
-            content = json.loads(content)
-            res += "CONTENT"
-            res += json.dumps(content, indent=True) + "\n"
+            if "content" in result:
+                content = result["content"]
+                content = json.loads(content)
+                res += "CONTENT"
+                res += json.dumps(content, indent=True) + "\n"
     elif cmd == "task" and subcmd == "delete":
         r = requests.get(os.path.join(args.url, "task/list", args.prefix + '*'), auth=auth)
         if r.status_code != 200:
