@@ -1,7 +1,9 @@
 from pymongo import MongoClient
 
 tables = {
-    "configs": "pn9-config"
+    "configs": "pn9-config",
+    "tags": "pn9-tag",
+    "dockers": "pn9-docker"
 }
 
 
@@ -110,3 +112,43 @@ class MongoDatabase:
         service_configs = the_table.find(query, views)
 
         return service_configs
+
+    def tags_put(self, items):
+        the_table = self.get("tags")
+        for item in items:
+            item["tag"] = item["tag"].lower().strip()
+        the_table.insert_many(items)
+
+    def get_tags_by_ids(self, tag_ids):
+        the_table = self.get("tags")
+        conditions = {
+            "_id": {
+                "$in": tag_ids
+            }
+        }
+
+        tags = the_table.find(conditions)
+        return tags
+
+    def get_tags_by_value(self, tags):
+        the_table = self.get("tags")
+        conditions = {
+            "tag": {
+                "$in": tags
+            }
+        }
+
+        tags = the_table.find(conditions)
+        return tags
+
+    def get_latest_docker_image(self, image):
+        the_table = self.get("dockers")
+        conditions = {
+            "image": {
+                '$regex': f'^{image}:*'
+            }
+        }
+        images = list(the_table.find(conditions).sort("date", -1).limit(1))  # Sort by date or image?
+        if len(images) == 0:
+            return None
+        return images[0]

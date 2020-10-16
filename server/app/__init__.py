@@ -6,12 +6,14 @@ from nmtwizard import common
 from nmtwizard import configuration as config
 from utils.database_utils import DatabaseUtils
 
+from flask_cors import CORS
+
 VERSION = "1.12.0"
 
 app = Flask(__name__)
 app.request_id = 1
 
-
+CORS(app)
 def get_log_handler():
     log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler = logging.StreamHandler()

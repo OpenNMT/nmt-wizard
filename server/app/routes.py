@@ -14,8 +14,11 @@ import semver
 import six
 from werkzeug.exceptions import HTTPException
 import flask
-from flask import abort, make_response, jsonify, Response
-
+from flask import abort, make_response, jsonify, Response, request, g
+import tempfile
+import uuid
+from requests.auth import HTTPBasicAuth
+from bson import ObjectId
 from app import app, redis_db, redis_db_without_decode, mongo_client, get_version, taskfile_dir
 from nmtwizard import task, configuration as config
 from nmtwizard.helper import build_task_id, shallow_command_analysis, \
@@ -23,6 +26,14 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, \
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity, TaskInfo
+
+from systran_storages import StorageClient
+from nmtwizard.common import rmprivate
+from nmtwizard.helper import boolean_param
+from nmtwizard import configuration as config
+
+
+GLOBAL_POOL_NAME = "sa_global_pool"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -505,6 +516,740 @@ def patch_config_explicitname(content, explicitname):
                 command[idx + 1] = json.dumps(config)
                 return
             idx += 2
+
+
+@app.route("/v2/task/launch", methods=["POST"])
+@filter_request("POST/v2/task/launch", "train")
+def launch_v2():
+    service = GLOBAL_POOL_NAME
+    entity_code = g.user.entity.entity_code
+    trainer_id = g.user.user_code
+
+    request_data = parse_request_data(request)
+
+    service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
+    entity_storages_config = get_entity_storages(service_config, entity_code)
+    storage_client = get_storage_client(entity_storages_config)
+    storage_id = next(iter(entity_storages_config))
+    upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
+
+    training_data = request_data.get("training_data")
+    testing_data = request_data.get("testing_data")
+
+    upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
+    upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+
+    service_config = config.get_service_config(mongo_client, service)
+    service_module = get_service(service)
+    service_entities = config.get_entities(service_config)
+    entity_owner = get_entity_owner(service_entities, service)
+    trainer_entities = get_entities_by_permission("train", flask.g)
+    assert trainer_entities  # Here: almost sure you are trainer
+
+    content = get_training_config(service, request_data, trainer_id, service_module, entity_owner, upload_path)
+
+    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
+                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
+
+    task_type = "train"
+    task_suffix = task_type
+    resource = service_module.get_resource_from_options(content["options"])
+    iterations = content.get("iterations", 1)
+    files = {}
+    ngpus = content.get("ngpus", 1)
+    ncpus = content.get("ncpus")
+    exec_mode = False
+
+    totranslate = content["totranslate"]
+    toscore = content["toscore"]
+    totuminer = None
+
+    del content["totranslate"]
+    del content["toscore"]
+
+    priority = content.get("priority", 0)
+
+    xxyy = f'{request_data["source"]}{request_data["source"]}'
+    parent_task_id = None
+    parent_struct = None
+    parent_task_type = None
+
+    task_ids = []
+    task_create = []
+
+    docker_version = content['docker']['tag']
+    if docker_version.startswith('v'):
+        docker_version = docker_version[1:]
+    try:
+        chain_prepr_train = semver.match(docker_version, ">=1.4.0")
+        can_trans_as_release = semver.match(docker_version, ">=1.8.0")
+        trans_as_release = semver.match(docker_version, ">=1.8.0")
+        content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
+    except ValueError as err:
+        # could not match docker_version - not valid semver
+        chain_prepr_train = False
+        trans_as_release = False
+
+    while iterations > 0:
+        if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
+            prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
+
+            if explicitname:
+                patch_config_explicitname(content, explicitname)
+
+            idx = 0
+            prepr_command = []
+            train_command = content["docker"]["command"]
+            while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
+                prepr_command.append(train_command[idx])
+                idx += 1
+
+            # create preprocess command, don't push the model on the catalog,
+            # and generate a pseudo model
+            prepr_command.append("--no_push")
+            prepr_command.append("preprocess")
+            prepr_command.append("--build_model")
+
+            content["docker"]["command"] = prepr_command
+
+            content["ncpus"] = ncpus or get_cpu_count(service_config, 0, "preprocess")
+            content["ngpus"] = 0
+
+            preprocess_resource = service_module.select_resource_from_capacity(
+                resource, Capacity(content["ngpus"], content["ncpus"]))
+
+            # launch preprocess task on cpus only
+            task_create.append(
+                (redis_db, taskfile_dir,
+                 prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
+                 _duplicate_adapt(service_module, content),
+                 files, priority, 0, content["ncpus"], other_task_info))
+            task_ids.append(
+                "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
+            remove_config_option(train_command)
+            change_parent_task(train_command, prepr_task_id)
+            parent_task_id = prepr_task_id
+            content["docker"]["command"] = train_command
+
+        if task_type != "prepr":
+
+            task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            if explicitname:
+                patch_config_explicitname(content, explicitname)
+
+            file_to_transtaskid = {}
+            if task_type == "trans":
+                try:
+                    idx = content["docker"]["command"].index("trans")
+                    output_files = get_params(("-o", "--output"), content["docker"]["command"][idx + 1:])
+                    for ofile in output_files:
+                        file_to_transtaskid[ofile] = task_id
+                except Exception:
+                    pass
+
+            content["ncpus"] = ncpus or \
+                               get_cpu_count(service_config, ngpus, task_type)
+            content["ngpus"] = ngpus
+
+            if task_type == "trans" and can_trans_as_release:
+                if "--as_release" not in content["docker"]["command"] and trans_as_release:
+                    content["docker"]["command"].append("--as_release")
+                    content["ngpus"] = ngpus = 0
+
+            task_resource = service_module.select_resource_from_capacity(
+                resource, Capacity(content["ngpus"],
+                                   content["ncpus"]))
+
+            task_create.append(
+                (redis_db, taskfile_dir,
+                 task_id, task_type, parent_task_id, task_resource, service,
+                 _duplicate_adapt(service_module, content),
+                 files, priority,
+                 content["ngpus"], content["ncpus"],
+                 other_task_info))
+            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                task_type, task_id,
+                content["ngpus"], content["ncpus"]))
+            parent_task_type = task_type[:5]
+            remove_config_option(content["docker"]["command"])
+
+            if totranslate:
+                content_translate = deepcopy(content)
+                content_translate["priority"] = priority + 1
+                if trans_as_release:
+                    content_translate["ngpus"] = 0
+                else:
+                    content_translate["ngpus"] = min(ngpus, 1)
+
+                content_translate["ncpus"] = ncpus or get_cpu_count(service_config,
+                                                                    content_translate["ngpus"],
+                                                                    "trans")
+
+                translate_resource = service_module.select_resource_from_capacity(
+                    resource, Capacity(content_translate["ngpus"],
+                                       content_translate["ncpus"]))
+
+                if ngpus == 0 or trans_as_release:
+                    file_per_gpu = len(totranslate)
+                else:
+                    file_per_gpu = int((len(totranslate) + ngpus - 1) / ngpus)
+                subset_idx = 0
+                while subset_idx * file_per_gpu < len(totranslate):
+                    content_translate["docker"]["command"] = ["trans"]
+                    if trans_as_release:
+                        content_translate["docker"]["command"].append("--as_release")
+                    content_translate["docker"]["command"].append('-i')
+                    subset_totranslate = totranslate[subset_idx * file_per_gpu:
+                                                     (subset_idx + 1) * file_per_gpu]
+                    for f in subset_totranslate:
+                        content_translate["docker"]["command"].append(f[0])
+
+                    change_parent_task(content_translate["docker"]["command"], task_id)
+                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans",
+                                                                task_id)
+
+                    content_translate["docker"]["command"].append('-o')
+                    for f in subset_totranslate:
+                        ofile = f[1].replace('<MODEL>', task_id)
+                        file_to_transtaskid[ofile] = trans_task_id
+                        content_translate["docker"]["command"].append(ofile)
+
+                    task_create.append(
+                        (redis_db, taskfile_dir,
+                         trans_task_id, "trans", task_id, translate_resource, service,
+                         _duplicate_adapt(service_module, content_translate),
+                         (), content_translate["priority"],
+                         content_translate["ngpus"], content_translate["ncpus"],
+                         other_task_info))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                        "trans", trans_task_id,
+                        content_translate["ngpus"], content_translate["ncpus"]))
+                    subset_idx += 1
+
+            if toscore:
+                toscore_parent = {}
+                for (ofile, rfile) in toscore:
+                    ofile = ofile.replace('<MODEL>', task_id)
+                    parent_task_id = file_to_transtaskid.get(ofile)
+                    if parent_task_id:
+                        if parent_task_id not in toscore_parent:
+                            toscore_parent[parent_task_id] = {"output": [], "ref": []}
+                        ofile_split = ofile.split(':')
+                        if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
+                            ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
+                        toscore_parent[parent_task_id]["output"].append(ofile)
+                        toscore_parent[parent_task_id]["ref"].append(rfile)
+                for parent_task_id, oref in six.iteritems(toscore_parent):
+                    content_score = deepcopy(content)
+                    content_score["priority"] = priority + 1
+                    content_score["ngpus"] = 0
+                    content_score["ncpus"] = 1
+
+                    score_resource = service_module.select_resource_from_capacity(resource,
+                                                                                  Capacity(0, 1))
+
+                    image_score = "nmtwizard/score"
+
+                    option_lang = []
+                    if parent_struct is not None:
+                        option_lang.append('-l')
+                        option_lang.append(parent_struct['xxyy'][-2:])
+
+                    content_score["docker"] = {
+                        "image": image_score,
+                        "registry": _get_registry(service_module, image_score),
+                        "tag": "latest",
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
+                                                                                                            "launcher:scores"]
+                    }
+
+                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
+                                                                parent_task_id)
+                    task_create.append(
+                        (redis_db, taskfile_dir,
+                         score_task_id, "exec", parent_task_id, score_resource, service,
+                         content_score,
+                         files, priority + 2,
+                         0, 1,
+                         other_task_info))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                        "score", score_task_id,
+                        0, 1))
+
+            if totuminer:
+                # tuminer can run in CPU only mode, but it will be very slow for large data
+                ngpus_recommend = ngpus
+                ncpus_recommend = ncpus or get_cpu_count(service_config, 0, "tuminer")
+
+                totuminer_parent = {}
+                for (ifile, ofile) in totuminer:
+                    # ofile = ofile.replace('<MODEL>', task_id)
+                    parent_task_id = file_to_transtaskid.get(ofile)
+                    if parent_task_id:
+                        if parent_task_id not in totuminer_parent:
+                            totuminer_parent[parent_task_id] = {"infile": [], "outfile": [],
+                                                                "scorefile": []}
+                        ofile_split = ofile.split(':')
+                        if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
+                            ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
+                        totuminer_parent[parent_task_id]["infile"].append(ifile)
+                        totuminer_parent[parent_task_id]["outfile"].append(ofile)
+                        scorefile = ofile
+                        if scorefile.endswith(".gz"):
+                            scorefile = scorefile[:-3]
+                        totuminer_parent[parent_task_id]["scorefile"].append(scorefile[:-3])
+                for parent_task_id, in_out in six.iteritems(totuminer_parent):
+                    content_tuminer = deepcopy(content)
+                    content_tuminer["priority"] = priority + 1
+                    content_tuminer["ngpus"] = ngpus_recommend
+                    content_tuminer["ncpus"] = ncpus_recommend
+
+                    tuminer_resource = service_module.select_resource_from_capacity(resource,
+                                                                                    Capacity(
+                                                                                        ngpus_recommend,
+                                                                                        ncpus_recommend))
+
+                    image_score = "nmtwizard/tuminer"
+
+                    content_tuminer["docker"] = {
+                        "image": image_score,
+                        "registry": _get_registry(service_module, image_score),
+                        "tag": "latest",
+                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                    }
+
+                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
+                    task_create.append(
+                        (redis_db, taskfile_dir,
+                         tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
+                         content_tuminer,
+                         (), priority + 2,
+                         ngpus_recommend, ncpus_recommend,
+                         other_task_info))
+                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                        "tuminer", tuminer_task_id,
+                        ngpus_recommend, ncpus_recommend))
+
+            if task_type == TASK_RELEASE_TYPE:
+                j = 0
+                while j < len(content["docker"]["command"]) - 1:
+                    if content["docker"]["command"][j] == "-m" \
+                            or content["docker"]["command"][j] == "--model":
+                        model_name = content["docker"]["command"][j + 1]
+                        builtins.pn9model_db.model_set_release_state(model_name,
+                                                                     content.get("trainer_id"),
+                                                                     task_id,
+                                                                     "in progress")
+                        break
+                    j = j + 1
+
+        iterations -= 1
+        if iterations > 0:
+            parent_task_id = task_id
+            change_parent_task(content["docker"]["command"], parent_task_id)
+
+    (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
+
+    for tc in task_create:
+        task.create(*tc)
+
+    if len(task_ids) == 1:
+        task_ids = task_ids[0]
+
+    return flask.jsonify(task_ids)
+
+
+def parse_request_data(request):
+    validate_request_data(request)
+
+    request_files = request.files
+    request_data = request.form
+
+    training_data = request_files.getlist("training_data")
+    testing_data = request_files.getlist("testing_data")
+
+    return {**request_data, **{
+        "training_data": training_data,
+        "testing_data": testing_data
+    }}
+
+
+def validate_request_data(request):
+    request_files = request.files
+    request_data = request.form
+
+    training_data = request_files.getlist("training_data")
+    testing_data = request_files.getlist("testing_data")
+
+    # source = request_data.get("source")
+    # target = request_data.get("target")
+    # tags = request_data.getlist("tags")
+    model_name = request_data.get("model_name")
+    # parent_model = request_data.get("parent_model")
+    docker_image = request_data.get("docker_image")
+    ncpus = request_data.get("ncpus")
+    priority = request_data.get("priority")
+    num_of_iteration = request_data.get("num_of_iteration")
+
+    validate_training_data(training_data)
+    validate_testing_data(testing_data)
+    validate_model_name(model_name)
+    validate_docker_image(docker_image)
+    validate_ncpus(ncpus)
+    validate_priority(priority)
+    validate_iteration(num_of_iteration)
+
+
+def validate_training_data(training_data):
+    if not isinstance(training_data, list) or len(training_data) == 0:
+        raise Exception("training data is required")
+    for file in training_data:
+        logger.info(file.filename)
+        # TODO: Validate file
+
+
+def validate_testing_data(testing_data):
+    if not isinstance(testing_data, list):
+        raise Exception("testing data must be Array")
+    if len(testing_data) == 0:
+        return
+    for file in testing_data:
+        logger.info(file.filename)
+        # TODO: Validate file
+
+
+def validate_model_name(model_name):
+    # TODO: Validate model name
+    return
+
+
+def validate_docker_image(docker_image):
+    if docker_image is None:
+        return
+    # TODO: Validate image
+    return
+
+
+def validate_ncpus(ncpus):
+    if ncpus is None:
+        return
+    if not ncpus.isnumeric():
+        raise Exception('ncpus must be numeric')
+
+    # TODO: Validate ncpus
+
+
+def validate_priority(priority):
+    if priority is None:
+        return
+    if not priority.isnumeric():
+        raise Exception('priority must be numeric')
+
+    # TODO: Validate priority
+
+
+def validate_iteration(num_of_iteration):
+    if num_of_iteration is None:
+        return
+    if not num_of_iteration.isnumeric():
+        raise Exception('num_of_iteration must be numeric')
+
+    # TODO: Validate num_of_iteration
+
+
+def get_entity_storages(service_config, entity_code):
+    if config.is_polyentity_config(service_config):
+        entity_config = service_config["entities"][entity_code]
+        return entity_config["storages"]
+    return service_config["storages"]
+
+
+def get_storage_client(storage_config):
+    storage_client = StorageClient(rmprivate(storage_config))
+    return storage_client
+
+
+def upload_user_files(storage_client, storage_id, parent_path, data_type, files):
+    path = f"{parent_path}/{data_type}/"
+    temp_files = tempfile.mkdtemp()
+    for file in files:
+        file.save(os.path.join(temp_files, file.filename))
+        storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
+
+
+def get_to_translate_corpus():
+    # TODO: Get translate corpus
+    return [['shared_testdata:en_fr/test-1.mon.ticket.53395.en', 'pn9_testtrans:<MODEL>/en_fr/test-1.mon.ticket.53395.en.fr']]
+
+
+def get_to_score_corpus():
+    # TODO: Get score corpus
+    return [['pn9_testtrans:<MODEL>/en_fr/test-1.mon.ticket.53395.en.fr', 'shared_testdata:en_fr/test-1.mon.ticket.53395.fr']]
+
+
+def get_training_data_config(uploaded_data_path, parent_model):
+    training_data_config = {
+        "sample": 50,
+        "sample_dist": [{
+            "path": "${GLOBAL_DATA}" + uploaded_data_path + "/train/",
+            "distribution": [["*", 1]]
+        }]
+    }
+    if not parent_model:
+        return training_data_config
+
+    parent_data_config = get_parent_model_training_data_config(parent_model)
+
+    return merge_training_data_config(training_data_config, parent_data_config)
+
+
+def get_parent_model_training_data_config(parent_model):
+    # TODO: Get config from api
+    return {
+        "sample": 100,
+        "sample_dist": [{
+            "distribution": ["..."],
+            "mode_strict": True,
+            "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train"
+        },
+        {
+            "distribution": ["..."],
+            "mode_strict": True,
+            "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_restricted"
+        },
+        {
+            "distribution": ["..."],
+            "mode_strict": True,
+            "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_synthetic"
+        },
+        {
+            "distribution": ["..."],
+            "mode_strict": True,
+            "path": "${CLIENT_DATA_TRAIN_DIR}/xx_yy/train"
+        }]
+    }
+
+
+def merge_training_data_config(training_data_config, parent_data_config):
+    return {
+        "sample": training_data_config["sample"] + parent_data_config["sample"],
+        "sample_dist": training_data_config["sample_dist"] + parent_data_config["sample_dist"]
+    }
+
+
+def get_docker_image_info(service_module, entity_owner, docker_image):
+    if not docker_image:
+        return get_latest_docker_image(service_module)
+    return get_docker_image_from_request(service_module, entity_owner, docker_image)
+
+
+def get_latest_docker_image(service_module):
+    # TODO: Get image from Mongo
+    image = "systran/pn9_tf"
+    registry = _get_registry(service_module, image)
+    tag = "v1.35.1"
+
+    result = {
+        "image": image,
+        "tag": tag,
+        "registry": registry
+    }
+
+    # return result
+    latest_image = mongo_client.get_latest_docker_image(image)
+    if not latest_image:
+        return result
+    tag = latest_image["image"].split(":")[1]
+
+    return {**result, **{"tag": tag}}
+
+
+def get_docker_image_from_request(service_module, entity_owner, docker_image):
+    result = {**docker_image}
+    registry = docker_image["registry"]
+    if registry == "auto":
+        result["registry"] = _get_registry(service_module, docker_image["image"])
+        return result
+    if registry not in service_module.get_docker_config(entity_owner)['registries']:
+        raise Exception(f"Unknown docker registry: {registry}")
+    return result
+
+
+def get_training_config(service, request_data, trainer_id, service_module, entity_owner, uploaded_data_path):
+    model_name = request_data["model_name"]
+    parent_model = request_data.get("parent_model", None)
+    source = request_data["source"]
+    target = request_data["target"]
+    ncpus = request_data.get("ncpus", None)
+    priority = request_data.get("priority", None)
+    iterations = request_data.get("iterations", None)
+    docker_image = request_data.get("docker_image", None)
+
+    training_data_config = get_training_data_config(uploaded_data_path, parent_model)
+    docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
+    to_translate_corpus = get_to_translate_corpus()
+    to_score_corpus = get_to_score_corpus()
+
+    docker_commands = ["-c", json.dumps({
+        "tokenization": {
+            "source": {
+                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
+                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab32k.en",
+                "preserve_placeholders": True,
+                "mode": "aggressive",
+                "preserve_segmented_tokens": True,
+                "segment_numbers": True,
+                "segment_case": True,
+                "joiner_annotate": True
+            },
+            "target": {
+                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
+                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab34k.fr",
+                "preserve_placeholders": True,
+                "mode": "aggressive",
+                "preserve_segmented_tokens": True,
+                "segment_numbers": True,
+                "segment_case": True,
+                "joiner_annotate": True
+            }
+        },
+        "description": "apostrophe test",
+        "source": source,
+        "target": target,
+        "data": training_data_config,
+        "options": {
+            "model_type": "Transformer",
+            "config": {
+                "train": {
+                    "maximum_labels_length": 100,
+                    "save_summary_steps": 100,
+                    "keep_checkpoint_max": 8,
+                    "bucket_width": 1,
+                    "maximum_features_length": 100,
+                    "batch_size": 9000,
+                    "batch_type": "tokens",
+                    "sample_buffer_size": 5000000,
+                    "save_checkpoints_steps": 5000,
+                    "single_pass": True
+                },
+                "params": {
+                    "optimizer": "LazyAdamOptimizer",
+                    "decay_steps": 8000,
+                    "length_penalty": 0.6,
+                    "decay_step_duration": 1,
+                    "learning_rate": 2,
+                    "average_loss_in_time": True,
+                    "decay_rate": 512,
+                    "decay_type": "noam_decay",
+                    "label_smoothing": 0.1,
+                    "beam_width": 5
+                },
+                "infer": {
+                    "batch_size": 32
+                }
+            }
+        }
+    }), "train"]
+
+    content = {
+        "service": service,
+        "model_name": model_name,
+        "docker": {**docker_image_info, **{
+            "command": docker_commands
+        }},
+        "wait_after_launch": 2,
+        "trainer_id": trainer_id,
+        "options": {},
+        "totranslate": to_translate_corpus,
+        "toscore": to_score_corpus
+    }
+
+    if ncpus:
+        content["ncpus"] = ncpus
+    if priority:
+        content["priority"] = priority
+    if iterations:
+        content["iterations"] = iterations
+
+    return json.loads(json.dumps(content))
+
+
+# def build_preprocess_task(content, ):
+#     prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
+#
+#     if explicitname:
+#         patch_config_explicitname(content, explicitname)
+#
+#     idx = 0
+#     prepr_command = []
+#     train_command = content["docker"]["command"]
+#     while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
+#         prepr_command.append(train_command[idx])
+#         idx += 1
+#
+#     # create preprocess command, don't push the model on the catalog,
+#     # and generate a pseudo model
+#     prepr_command.append("--no_push")
+#     prepr_command.append("preprocess")
+#     prepr_command.append("--build_model")
+#
+#     content["docker"]["command"] = prepr_command
+#
+#     content["ncpus"] = ncpus or get_cpu_count(service_config, 0, "preprocess")
+#     content["ngpus"] = 0
+#
+#     preprocess_resource = service_module.select_resource_from_capacity(
+#         resource, Capacity(content["ngpus"], content["ncpus"]))
+#
+#     # launch preprocess task on cpus only
+#     task_create.append(
+#         (redis_db, taskfile_dir,
+#          prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
+#          _duplicate_adapt(service_module, content),
+#          files, priority, 0, content["ncpus"], other_task_info))
+#     task_ids.append(
+#         "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
+#     remove_config_option(train_command)
+#     change_parent_task(train_command, prepr_task_id)
+#     parent_task_id = prepr_task_id
+#     content["docker"]["command"] = train_command
+
+
+
+def is_valid_object_id(value):
+    return ObjectId.is_valid(value)
+
+
+def process_tags(tags, entity_code, trainer_id):
+    tags = list(map(lambda tag: tag.lower().strip(), tags))
+
+    final_tags = []
+    tag_ids = list(map(lambda tag: ObjectId(tag), list(filter(lambda tag: is_valid_object_id(tag), tags))))
+    exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
+    not_exists_tags = list(filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["_id"]), exists_tags_by_id)), tags))
+
+    exists_tags_by_value = list(mongo_client.get_tags_by_value(not_exists_tags))
+    not_exists_tags = list(filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["tag"]), exists_tags_by_value)), not_exists_tags))
+
+    if len(not_exists_tags) > 0:
+        insert_tags = list(map(lambda tag: {
+            "entity": entity_code,
+            "creator": trainer_id,
+            "tag": tag
+        }, not_exists_tags))
+
+        mongo_client.tags_put(insert_tags)
+
+        inserted_tags = list(mongo_client.get_tags_by_value(not_exists_tags))
+
+        final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], inserted_tags)))
+
+    final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], exists_tags_by_id)))
+    final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], exists_tags_by_value)))
+
+    return final_tags
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
