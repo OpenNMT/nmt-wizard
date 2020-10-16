@@ -6,7 +6,6 @@ from nmtwizard import common
 from nmtwizard import configuration as config
 from utils.database_utils import DatabaseUtils
 
-
 VERSION = "1.12.0"
 app = Flask(__name__)
 app.request_id = 1

@@ -1253,6 +1253,7 @@ def get_training_config(service, request_data, user_code, service_module, entity
         content["priority"] = priority
     if iterations:
         content["iterations"] = iterations
+
     return json.loads(json.dumps(content))
 
 
