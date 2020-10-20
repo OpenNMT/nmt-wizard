@@ -1309,7 +1309,6 @@ def process_tags(tags, entity_code, trainer_id):
 
     tag_ids = list(map(lambda tag: ObjectId(tag), existed_tags))
     exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
-
     exists_tags_by_value = list(mongo_client.get_tags_by_value(new_tags))
     not_exists_tags = list(
         filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["tag"]), exists_tags_by_value)),
