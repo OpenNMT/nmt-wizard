@@ -141,14 +141,13 @@ class MongoDatabase:
         tags = the_table.find(conditions)
         return tags
 
-    def get_latest_docker_image(self, image):
+    def get_docker_images(self, image):
         the_table = self.get("dockers")
         conditions = {
             "image": {
                 '$regex': f'^{image}:*'
             }
         }
-        images = list(the_table.find(conditions).sort("date", -1).limit(1))  # Sort by date or image?
-        if len(images) == 0:
-            return None
-        return images[0]
+        images = the_table.find(conditions)
+        return images
+

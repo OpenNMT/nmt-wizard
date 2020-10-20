@@ -17,7 +17,7 @@ import flask
 from flask import abort, make_response, jsonify, Response, request, g
 import tempfile
 import uuid
-from requests.auth import HTTPBasicAuth
+from functools import cmp_to_key
 from bson import ObjectId
 from app import app, redis_db, redis_db_without_decode, mongo_client, get_version, taskfile_dir
 from nmtwizard import task, configuration as config
@@ -30,7 +30,8 @@ from nmtwizard.task import get_task_entity, TaskInfo
 from systran_storages import StorageClient
 from nmtwizard.common import rmprivate
 from nmtwizard.helper import boolean_param
-from nmtwizard import configuration as config
+
+# from nmtwizard import configuration as config
 
 
 GLOBAL_POOL_NAME = "sa_global_pool"
@@ -86,7 +87,8 @@ def get_entity_owner(service_entities, service_name):
             entity_owner = service_entities[0]
 
     if not entity_owner:
-        abort(flask.make_response(flask.jsonify(message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
+        abort(flask.make_response(flask.jsonify(
+            message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
     entity_owner = entity_owner.upper()
 
     if not has_ability(flask.g, 'train', entity_owner):
@@ -100,7 +102,8 @@ def get_entity_owner(service_entities, service_name):
 
 
 def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if isinstance(ent_code, str) and has_ability(g, the_permission, ent_code)]
+    return [ent_code for ent_code in g.entities if
+            isinstance(ent_code, str) and has_ability(g, the_permission, ent_code)]
 
 
 def check_permission(service, permission):
@@ -546,7 +549,7 @@ def launch_v2():
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
 
-    content = get_training_config(service, request_data, trainer_id, service_module, entity_owner, upload_path)
+    content = get_training_config(service, request_data, trainer_id, service_module, entity_owner, upload_path, storage_id)
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -569,7 +572,7 @@ def launch_v2():
 
     priority = content.get("priority", 0)
 
-    xxyy = f'{request_data["source"]}{request_data["source"]}'
+    xxyy = f'{request_data["source"]}{request_data["target"]}'
     parent_task_id = None
     parent_struct = None
     parent_task_type = None
@@ -581,10 +584,18 @@ def launch_v2():
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
     try:
-        chain_prepr_train = semver.match(docker_version, ">=1.4.0")
-        can_trans_as_release = semver.match(docker_version, ">=1.8.0")
-        trans_as_release = semver.match(docker_version, ">=1.8.0")
-        content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
+        # Note: If docker_version = 'latest', what we will do? Set all True? Get detail docker_version via ??? to
+        # calculate?
+        if docker_version == 'latest':
+            chain_prepr_train = True
+            can_trans_as_release = True
+            trans_as_release = True
+            content["support_statistics"] = True
+        else:
+            chain_prepr_train = semver.match(docker_version, ">=1.4.0")
+            can_trans_as_release = semver.match(docker_version, ">=1.8.0")
+            trans_as_release = semver.match(docker_version, ">=1.8.0")
+            content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
     except ValueError as err:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
@@ -632,7 +643,6 @@ def launch_v2():
             content["docker"]["command"] = train_command
 
         if task_type != "prepr":
-
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
             if explicitname:
@@ -979,14 +989,35 @@ def upload_user_files(storage_client, storage_id, parent_path, data_type, files)
         storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
 
 
-def get_to_translate_corpus():
-    # TODO: Get translate corpus
-    return [['shared_testdata:en_fr/test-1.mon.ticket.53395.en', 'pn9_testtrans:<MODEL>/en_fr/test-1.mon.ticket.53395.en.fr']]
+def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id):
+    result = []
+    test_folder_name = get_test_folder_name(source, target)
+
+    for corpus in testing_data:
+        corpus_name = corpus.filename
+        result.append([
+            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}',
+            f'pn9_testtrans:<MODEL>/{test_folder_name}/{corpus_name}.{target}'
+        ])
+
+    return result
 
 
-def get_to_score_corpus():
-    # TODO: Get score corpus
-    return [['pn9_testtrans:<MODEL>/en_fr/test-1.mon.ticket.53395.en.fr', 'shared_testdata:en_fr/test-1.mon.ticket.53395.fr']]
+def get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id):
+    result = []
+    test_folder_name = get_test_folder_name(source, target)
+    for corpus in testing_data:
+        corpus_name = corpus.filename
+        result.append([
+            f'pn9_testtrans:<MODEL>/{test_folder_name}/{corpus_name}.{target}',
+            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{target}'
+        ])
+
+    return result
+
+
+def get_test_folder_name(source, target):
+    return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
 def get_training_data_config(uploaded_data_path, parent_model):
@@ -1014,21 +1045,21 @@ def get_parent_model_training_data_config(parent_model):
             "mode_strict": True,
             "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train"
         },
-        {
-            "distribution": ["..."],
-            "mode_strict": True,
-            "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_restricted"
-        },
-        {
-            "distribution": ["..."],
-            "mode_strict": True,
-            "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_synthetic"
-        },
-        {
-            "distribution": ["..."],
-            "mode_strict": True,
-            "path": "${CLIENT_DATA_TRAIN_DIR}/xx_yy/train"
-        }]
+            {
+                "distribution": ["..."],
+                "mode_strict": True,
+                "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_restricted"
+            },
+            {
+                "distribution": ["..."],
+                "mode_strict": True,
+                "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_synthetic"
+            },
+            {
+                "distribution": ["..."],
+                "mode_strict": True,
+                "path": "${CLIENT_DATA_TRAIN_DIR}/xx_yy/train"
+            }]
     }
 
 
@@ -1041,14 +1072,14 @@ def merge_training_data_config(training_data_config, parent_data_config):
 
 def get_docker_image_info(service_module, entity_owner, docker_image):
     if not docker_image:
-        return get_latest_docker_image(service_module)
+        return get_docker_image_from_db(service_module)
     return get_docker_image_from_request(service_module, entity_owner, docker_image)
 
 
-def get_latest_docker_image(service_module):
-    # TODO: Get image from Mongo
+def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
     registry = _get_registry(service_module, image)
+    # tag = "latest"
     tag = "v1.35.1"
 
     result = {
@@ -1057,13 +1088,38 @@ def get_latest_docker_image(service_module):
         "registry": registry
     }
 
-    # return result
-    latest_image = mongo_client.get_latest_docker_image(image)
-    if not latest_image:
-        return result
-    tag = latest_image["image"].split(":")[1]
+    return result
+    # latest_docker_image_tag = get_latest_docker_image_tag(image)
+    #
+    # if not latest_docker_image_tag:
+    #     return result
+    # return {**result, **{"tag": latest_docker_image_tag}}
 
-    return {**result, **{"tag": tag}}
+
+def get_latest_docker_image_tag(image):
+    docker_images = list(mongo_client.get_docker_images(image))
+    if len(docker_images) == 0:
+        return None
+    only_tag_docker_images = list(map(lambda docker_image: get_docker_image_tag(docker_image["image"]), docker_images))
+    if len(only_tag_docker_images) == 1:
+        return only_tag_docker_images[0]
+    if "latest" in only_tag_docker_images:
+        return "latest"
+    sorted_docker_images = sorted(only_tag_docker_images, key=cmp_to_key(
+        lambda x, y: semver.compare(x, y)), reverse=True)
+    return get_docker_image_tag(sorted_docker_images[0])
+
+
+def get_docker_image_tag(image):
+    split_name = image.split(":")
+    if len(split_name) < 2:
+        return None
+    tag = split_name[-1]
+    if tag == "latest":
+        return "0.1.1"
+    if not tag.startswith("v"):
+        return tag
+    return tag[1:]
 
 
 def get_docker_image_from_request(service_module, entity_owner, docker_image):
@@ -1077,7 +1133,7 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
     return result
 
 
-def get_training_config(service, request_data, trainer_id, service_module, entity_owner, uploaded_data_path):
+def get_training_config(service, request_data, trainer_id, service_module, entity_owner, uploaded_data_path, storage_id):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
     source = request_data["source"]
@@ -1086,11 +1142,12 @@ def get_training_config(service, request_data, trainer_id, service_module, entit
     priority = request_data.get("priority", None)
     iterations = request_data.get("iterations", None)
     docker_image = request_data.get("docker_image", None)
+    testing_data = request_data.get("testing_data", None)
 
     training_data_config = get_training_data_config(uploaded_data_path, parent_model)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
-    to_translate_corpus = get_to_translate_corpus()
-    to_score_corpus = get_to_score_corpus()
+    to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id)
+    to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id)
 
     docker_commands = ["-c", json.dumps({
         "tokenization": {
@@ -1217,7 +1274,6 @@ def get_training_config(service, request_data, trainer_id, service_module, entit
 #     content["docker"]["command"] = train_command
 
 
-
 def is_valid_object_id(value):
     return ObjectId.is_valid(value)
 
@@ -1228,10 +1284,13 @@ def process_tags(tags, entity_code, trainer_id):
     final_tags = []
     tag_ids = list(map(lambda tag: ObjectId(tag), list(filter(lambda tag: is_valid_object_id(tag), tags))))
     exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
-    not_exists_tags = list(filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["_id"]), exists_tags_by_id)), tags))
+    not_exists_tags = list(
+        filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["_id"]), exists_tags_by_id)), tags))
 
     exists_tags_by_value = list(mongo_client.get_tags_by_value(not_exists_tags))
-    not_exists_tags = list(filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["tag"]), exists_tags_by_value)), not_exists_tags))
+    not_exists_tags = list(
+        filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["tag"]), exists_tags_by_value)),
+               not_exists_tags))
 
     if len(not_exists_tags) > 0:
         insert_tags = list(map(lambda tag: {
@@ -1339,7 +1398,8 @@ def launch(service):
     # check that we have a resource able to run such a request
     if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
         abort(flask.make_response(
-            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (service, ngpus, ncpus and str(ncpus) or "-")), 400))
+            flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
+                service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
     if "totranslate" in content:
         if exec_mode:
@@ -1569,7 +1629,8 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f', "launcher:scores"]
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
+                                                                                                            "launcher:scores"]
                     }
 
                     score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
@@ -1624,7 +1685,8 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
-                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] + in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
@@ -1850,7 +1912,7 @@ def get_file(task_id, filename):
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
-    #https://www.pythonanywhere.com/forums/topic/13570/
+    # https://www.pythonanywhere.com/forums/topic/13570/
     w = FileWrapper(io.BytesIO(content))
     return Response(w, mimetype="application/octet-stream", direct_passthrough=True,
                     headers={'Content-Disposition': 'attachment; filename="{}"'.format(filename)})
