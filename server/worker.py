@@ -285,7 +285,7 @@ def start_all_worker():
                                                             ttl_policy,
                                                             cfg.getint('default', 'refresh_counter'),
                                                             cfg.getint('default', 'quarantine_time'),
-                                                            instance_id,
+                                                            pid,
                                                             cfg.get('default', 'taskfile_dir'),
                                                             default_config_timestamp))
         worker_process.daemon = True

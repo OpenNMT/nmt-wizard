@@ -168,7 +168,7 @@ def load_service(config_path, base_config=None):
 
         name = config["name"]
 
-        if not os.path.basename(config_path).startswith(name):
+        if os.path.basename(config_path) != f'{name}.json':
             raise ValueError("config name (%s) does not match filename (%s)" % (name, config_path))
 
         if base_config is not None:

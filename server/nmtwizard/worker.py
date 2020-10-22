@@ -56,14 +56,47 @@ class Worker(object):
                 return False
             return True
 
+    class WorkerLogger:
+        def __init__(self, service, instance_id, worker_id):
+            self._logger = logging.getLogger('worker')
+            self._service = service
+            self._instance_id = instance_id
+            self._worker_id = worker_id
+
+        def override_msg(self, msg):
+            override_msg = f'[{self._service}-instance:{self._instance_id}-worker:{self._worker_id}]: {msg}'
+            return override_msg
+
+        def debug(self, msg, *args, **kwargs):
+            override_msg = self.override_msg(msg)
+            return self._logger.debug(override_msg, *args, **kwargs)
+
+        def info(self, msg, *args, **kwargs):
+            override_msg = self.override_msg(msg)
+            return self._logger.info(override_msg, *args, **kwargs)
+
+        def warning(self, msg, *args, **kwargs):
+            override_msg = self.override_msg(msg)
+            return self._logger.warning(override_msg, *args, **kwargs)
+
+        def warn(self, msg, *args, **kwargs):
+            override_msg = self.override_msg(msg)
+            return self._logger.warn(override_msg, *args, **kwargs)
+
+        def error(self, msg, *args, **kwargs):
+            override_msg = self.override_msg(msg)
+            return self._logger.error(override_msg, *args, **kwargs)
+
     def __init__(self, redis, services, ttl_policy, refresh_counter,
                  quarantine_time, instance_id, taskfile_dir,
                  default_config_timestamp=None):
-        self._worker_id = os.getpid()
+        service = next(iter(services))
+        worker_id = os.getpid()
+        self._worker_id = worker_id
         self._redis = redis
-        self._service = next(iter(services))
+        self._service = service
         self._services = services
-        self._logger = logging.getLogger('worker')
+        self._logger = self.WorkerLogger(service, instance_id, worker_id)
         self._instance_id = instance_id
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
@@ -74,7 +107,7 @@ class Worker(object):
     def run(self):
         signal.signal(signal.SIGTERM, graceful_exit)
         signal.signal(signal.SIGINT, graceful_exit)
-        self._logger.info(f'[{self._service}-{self._instance_id}]: Starting worker {self._worker_id}')
+        self._logger.info('Starting...')
 
         # Subscribe to beat expiration.
         pubsub = self._redis.pubsub()
