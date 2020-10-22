@@ -527,7 +527,6 @@ def launch_v2():
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     trainer_id = g.user.user_code
-
     request_data = parse_request_data(request)
 
     service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
@@ -538,9 +537,11 @@ def launch_v2():
 
     training_data = request_data.get("training_data")
     testing_data = request_data.get("testing_data")
+    tags = request_data.get("tags")
 
     upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
     upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+    tag_ids = process_tags(tags, entity_code, trainer_id)
 
     service_config = config.get_service_config(mongo_client, service)
     service_module = get_service(service)
@@ -549,7 +550,7 @@ def launch_v2():
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
 
-    content = get_training_config(service, request_data, trainer_id, service_module, entity_owner, upload_path, storage_id)
+    content = get_training_config(service, request_data, trainer_id, service_module, entity_owner, upload_path, storage_id, tag_ids)
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -876,11 +877,12 @@ def parse_request_data(request):
 
     request_files = request.files
     request_data = request.form
+    tags = request_data.get("tags", [])
 
     training_data = request_files.getlist("training_data")
     testing_data = request_files.getlist("testing_data")
 
-    return {**request_data, **{
+    return {**request_data, **{"tags": json.loads(tags)}, **{
         "training_data": training_data,
         "testing_data": testing_data
     }}
@@ -895,7 +897,7 @@ def validate_request_data(request):
 
     # source = request_data.get("source")
     # target = request_data.get("target")
-    # tags = request_data.getlist("tags")
+    tags = request_data.get("tags")
     model_name = request_data.get("model_name")
     # parent_model = request_data.get("parent_model")
     docker_image = request_data.get("docker_image")
@@ -903,6 +905,7 @@ def validate_request_data(request):
     priority = request_data.get("priority")
     num_of_iteration = request_data.get("num_of_iteration")
 
+    validate_tags(tags)
     validate_training_data(training_data)
     validate_testing_data(testing_data)
     validate_model_name(model_name)
@@ -910,6 +913,27 @@ def validate_request_data(request):
     validate_ncpus(ncpus)
     validate_priority(priority)
     validate_iteration(num_of_iteration)
+
+
+def validate_tags(tags):
+    try:
+        if not tags:
+            return
+        tags_json = json.loads(tags)
+        existed_tags = tags_json.get("existed", [])
+        new_tags = tags_json.get("new", [])
+        if not isinstance(existed_tags, list):
+            raise Exception("new_tags tags must be array")
+        if not isinstance(existed_tags, list):
+            raise Exception("new tags must be array")
+        for tag in existed_tags:
+            if not is_valid_object_id(tag):
+                raise Exception(f"Invalid id: {tag}")
+        for tag in new_tags:
+            print(tag)
+            # TODO: Validate tag
+    except Exception as e:
+        raise Exception("Invalid tags json")
 
 
 def validate_training_data(training_data):
@@ -931,7 +955,9 @@ def validate_testing_data(testing_data):
 
 
 def validate_model_name(model_name):
-    # TODO: Validate model name
+    reg = r"(^[a-zA-Z0-9\.]+$)"
+    if not re.match(reg, model_name):
+        raise Exception("Invalid model_name")
     return
 
 
@@ -1088,12 +1114,11 @@ def get_docker_image_from_db(service_module):
         "registry": registry
     }
 
-    return result
-    # latest_docker_image_tag = get_latest_docker_image_tag(image)
-    #
-    # if not latest_docker_image_tag:
-    #     return result
-    # return {**result, **{"tag": latest_docker_image_tag}}
+    latest_docker_image_tag = get_latest_docker_image_tag(image)
+
+    if not latest_docker_image_tag:
+        return result
+    return {**result, **{"tag": latest_docker_image_tag}}
 
 
 def get_latest_docker_image_tag(image):
@@ -1101,10 +1126,9 @@ def get_latest_docker_image_tag(image):
     if len(docker_images) == 0:
         return None
     only_tag_docker_images = list(map(lambda docker_image: get_docker_image_tag(docker_image["image"]), docker_images))
+    only_tag_docker_images = list(filter(lambda tag: tag is not "latest", only_tag_docker_images))
     if len(only_tag_docker_images) == 1:
         return only_tag_docker_images[0]
-    if "latest" in only_tag_docker_images:
-        return "latest"
     sorted_docker_images = sorted(only_tag_docker_images, key=cmp_to_key(
         lambda x, y: semver.compare(x, y)), reverse=True)
     return get_docker_image_tag(sorted_docker_images[0])
@@ -1133,7 +1157,7 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
     return result
 
 
-def get_training_config(service, request_data, trainer_id, service_module, entity_owner, uploaded_data_path, storage_id):
+def get_training_config(service, request_data, trainer_id, service_module, entity_owner, uploaded_data_path, storage_id, tag_ids):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
     source = request_data["source"]
@@ -1212,7 +1236,7 @@ def get_training_config(service, request_data, trainer_id, service_module, entit
 
     content = {
         "service": service,
-        "model_name": model_name,
+        "name": model_name,
         "docker": {**docker_image_info, **{
             "command": docker_commands
         }},
@@ -1229,7 +1253,8 @@ def get_training_config(service, request_data, trainer_id, service_module, entit
         content["priority"] = priority
     if iterations:
         content["iterations"] = iterations
-
+    if tag_ids:
+        content["tags"] = list(map(lambda tag_id: str(tag_id),tag_ids))
     return json.loads(json.dumps(content))
 
 
@@ -1279,18 +1304,17 @@ def is_valid_object_id(value):
 
 
 def process_tags(tags, entity_code, trainer_id):
-    tags = list(map(lambda tag: tag.lower().strip(), tags))
-
     final_tags = []
-    tag_ids = list(map(lambda tag: ObjectId(tag), list(filter(lambda tag: is_valid_object_id(tag), tags))))
-    exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
-    not_exists_tags = list(
-        filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["_id"]), exists_tags_by_id)), tags))
+    existed_tags = tags.get("existed", [])
+    new_tags = tags.get("new", [])
 
-    exists_tags_by_value = list(mongo_client.get_tags_by_value(not_exists_tags))
+    tag_ids = list(map(lambda tag: ObjectId(tag), existed_tags))
+    exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
+
+    exists_tags_by_value = list(mongo_client.get_tags_by_value(new_tags))
     not_exists_tags = list(
         filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["tag"]), exists_tags_by_value)),
-               not_exists_tags))
+               new_tags))
 
     if len(not_exists_tags) > 0:
         insert_tags = list(map(lambda tag: {
@@ -1309,6 +1333,10 @@ def process_tags(tags, entity_code, trainer_id):
     final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], exists_tags_by_value)))
 
     return final_tags
+
+
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner):
+    return "aaaa"
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
@@ -1454,7 +1482,7 @@ def launch(service):
     if parent_task_type:
         if (parent_task_type == "trans" or parent_task_type == "relea" or
                 (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
-            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % (parent_task_type)), 400))
+            abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % parent_task_type), 400))
 
     task_ids = []
     task_create = []
