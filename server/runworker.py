@@ -132,7 +132,8 @@ while True:
                 # check if worker still there
                 w = redis.exists("admin:worker:%s:%d" % (service, p1.pid))
                 if not w:
-                    p1.kill()
+                    print("[%s-%d] ** No heartbeat" % (service, p1.pid))
+                    p1.terminate()
     except Exception as e:
         log_fh.write("-" * 80)
         log_fh.write("\n")
