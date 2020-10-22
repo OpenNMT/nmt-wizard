@@ -158,18 +158,11 @@ def ssh_connect_with_retry(hostname,
         time.sleep(delay)
     while True:
         try:
-            # client.connect(
-            #     hostname,
-            #     port=port,
-            #     username=username,
-            #     pkey=pkey,
-            #     key_filename=key_filename,
-            #     look_for_keys=False)
             client.connect(
                 hostname,
                 port=port,
                 username=username,
-                password="Rabiloo@999",
+                pkey=pkey,
                 key_filename=key_filename,
                 look_for_keys=False)
             logger.info("Connection to %s successful (%f)", hostname, time.time()-start)
