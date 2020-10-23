@@ -869,6 +869,8 @@ def launch_v2():
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, tag_ids)
+
     return flask.jsonify(task_ids)
 
 
@@ -1335,8 +1337,22 @@ def process_tags(tags, entity_code, trainer_id):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner):
-    return "aaaa"
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, tag_ids):
+    source = request_data.get("source")
+    target = request_data.get("target")
+    parent_model = request_data.get("parent_model")
+
+    config = {
+        "source": source,
+        "target": target,
+        "parent_model": parent_model,
+        "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
+        "tags": tag_ids
+    }
+
+    return builtins.pn9model_db.catalog_declare(training_task_id, config,
+                                                entity_owner=entity_owner,
+                                                lp=None, state=0)
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
