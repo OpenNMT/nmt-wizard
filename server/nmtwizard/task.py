@@ -91,7 +91,9 @@ def work_queue(redis, task_id, service=None, delay=0):
         service = redis.hget('task:'+task_id, 'service')
     # Queues the task in the work queue with a delay.
     if delay == 0:
-        redis.lpush('work:'+service, task_id)
+        with redis.acquire_lock(f'work_queue:{task_id}', acquire_timeout=1, expire_time=10):
+            if task_id not in redis.lrange(f'work:{service}', 0, -1):
+                redis.lpush('work:'+service, task_id)
         redis.delete('queue:'+task_id)
     else:
         redis.set('queue:'+task_id, delay)
