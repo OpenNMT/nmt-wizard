@@ -14,6 +14,7 @@ from six.moves import configparser
 from nmtwizard import configuration as config, task
 from nmtwizard.redis_database import RedisDatabase
 from nmtwizard.worker import Worker
+from nmtwizard.worker_butler import WorkerButler
 from nmtwizard import workeradmin
 
 parser = argparse.ArgumentParser()
@@ -37,6 +38,14 @@ def md5file(fp):
     return m.hexdigest()
 
 
+def is_float(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
 cfg = configparser.ConfigParser()
 cfg.read('settings.ini')
 
@@ -44,11 +53,26 @@ logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('worker')
 
 process_count = 1
+worker_cycle = 0.05
+worker_butler_cycle = 0.5
+
 if cfg.has_option('worker', 'process_count'):
     process_count_config = cfg.get('worker', 'process_count')
     assert process_count_config.isnumeric() and int(
         process_count_config) > 0, "process_count must be numeric and greater than 0"
     process_count = int(process_count_config)
+
+if cfg.has_option('worker', 'worker_cycle'):
+    worker_cycle_config = cfg.get('worker', 'worker_cycle')
+    assert is_float(worker_cycle_config) and float(
+        worker_cycle_config) > 0, "worker_cycle must be numeric and greater than 0"
+    worker_cycle = float(worker_cycle_config)
+
+if cfg.has_option('worker', 'worker_butler_cycle'):
+    worker_butler_cycle_config = cfg.get('worker', 'worker_butler_cycle')
+    assert is_float(worker_butler_cycle_config) and float(
+        worker_butler_cycle_config) > 0, "worker_butler_cycle must be numeric and greater than 0"
+    worker_butler_cycle = float(worker_butler_cycle_config)
 
 redis_password = None
 if cfg.has_option('redis', 'password'):
@@ -235,6 +259,7 @@ def reorganize_reserved_resource_by_key(key):
 reorganize_data()
 
 worker_processes = []
+worker_butler_process = Process()
 
 PROCESS_CHECK_INTERVAL = 3
 WORKER_ADMIN_CHECK_INTERVAL = 1
@@ -242,13 +267,13 @@ HEART_BEAT_CHECK_INTERVAL = 10
 
 
 def start():
-    start_all_worker()
+    start_all()
     count = 0
     while True:
         count += 1
         if count % PROCESS_CHECK_INTERVAL == 0 and is_any_process_stopped():
             logger.debug(f"[{service}-{pid}]: Any process has stopped")
-            restart_all_worker()
+            restart_all()
             continue
         # Currently, WORKER_ADMIN_CHECK_INTERVAL = 1, can ignore this condition
         if count % WORKER_ADMIN_CHECK_INTERVAL == 0:
@@ -261,24 +286,39 @@ def start():
 
 
 def is_any_process_stopped():
-    return any(list(map(lambda worker_process: not worker_process.is_alive(), worker_processes)))
+    for worker_process in worker_processes:
+        if not worker_process.is_alive():
+            logger.debug(f"Worker {worker_process.pid} has stopped")
+            return True
+    if not worker_butler_process.is_alive():
+        logger.debug("Worker butler has stopped")
+        return True
 
 
-def restart_all_worker():
-    kill_all_worker()
+def restart_all():
+    kill_all()
     worker_processes.clear()
     reorganize_data()
-    start_all_worker()
+    start_all()
 
 
-def kill_all_worker():
+def kill_all():
     for worker_process in worker_processes:
         if worker_process.is_alive():
-            logger.debug(f"[{service}-{pid}]: Killing { worker_process.pid}")
+            logger.debug(f"[{service}-{pid}]: Killing worker {worker_process.pid}")
             worker_process.terminate()
+    if worker_butler_process.is_alive():
+        logger.debug(f"[{service}-{pid}]: Killing worker butler")
+        worker_butler_process.terminate()
 
 
-def start_all_worker():
+def start_all():
+    logger.debug(f"[{service}-{pid}]: Starting worker butler")
+    global worker_butler_process
+    worker_butler_process = Process(target=start_worker_butler, args=(redis, services, pid, worker_butler_cycle))
+    worker_butler_process.daemon = True
+    worker_butler_process.start()
+
     logger.debug(f"[{service}-{pid}]: Starting {process_count} workers")
     for i in range(0, process_count):
         worker_process = Process(target=start_worker, args=(redis, services,
@@ -287,6 +327,7 @@ def start_all_worker():
                                                             cfg.getint('default', 'quarantine_time'),
                                                             pid,
                                                             cfg.get('default', 'taskfile_dir'),
+                                                            worker_cycle,
                                                             default_config_timestamp))
         worker_process.daemon = True
         worker_process.start()
@@ -299,16 +340,22 @@ def start_worker(redis, services,
                  quarantine_time,
                  instance_id,
                  taskfile_dir,
+                 worker_cycle,
                  default_config_timestamp=default_config_timestamp):
-
     worker = Worker(redis, services,
                     ttl_policy,
                     refresh_counter,
                     quarantine_time,
                     instance_id,
                     taskfile_dir,
+                    worker_cycle,
                     default_config_timestamp)
     worker.run()
+
+
+def start_worker_butler(redis, services, instance_id, worker_butler_cycle):
+    worker_butler = WorkerButler(redis, services, instance_id, worker_butler_cycle)
+    worker_butler.run()
 
 
 def process_worker_admin_command():
