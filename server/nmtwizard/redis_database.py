@@ -7,7 +7,7 @@ import redis
 
 from nmtwizard.helper import cust_jsondump
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RedisDatabase(redis.Redis):
@@ -20,7 +20,7 @@ class RedisDatabase(redis.Redis):
 
     def __init__(self, host, port, db, password, decode_responses=True):
         """Creates a new database instance."""
-        super(RedisDatabase, self).__init__(
+        super().__init__(
             host=host,
             port=port,
             db=db,
@@ -36,19 +36,19 @@ class RedisDatabase(redis.Redis):
         key = "||".join(map(str, args))
         compressed_value = self.hget(root_key, key)
         if compressed_value is None:
-            LOGGER.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
+            logger.debug('[MODEL_CACHE_NOT_FOUND]: %s %s', root_key, key)
             value = function(*args, **kwargs)
             str_value = cust_jsondump(value)
             compressed_value = zlib.compress(str_value.encode("utf-8"))
             result = self.hset(root_key, key, compressed_value)
             if result == 0:  # continue even in Redis error case , log a Warning
-                LOGGER.error('Cannot save the model cache: %s %s', root_key, key)
+                logger.error('Cannot save the model cache: %s %s', root_key, key)
             else:
                 self.expire(root_key, expired_time_ss)
 
             return value
 
-        LOGGER.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
+        logger.debug('[MODEL_CACHE_FOUND]: %s %s', root_key, key)
         self.expire(root_key, expired_time_ss)
         uncompressed_value = zlib.decompress(compressed_value)
         return json.loads(uncompressed_value)
@@ -80,7 +80,7 @@ class RedisLock(object):
 
     def __enter__(self):
         """Adds a lock for a specific name and expires the lock after some delay."""
-        LOGGER.debug('Acquire lock for %s', self._name)
+        logger.debug('Acquire lock for %s', self._name)
         separator = ':time:'
         self._identifier = f'{uuid.uuid4()}{separator}{time.time()}'
         end = time.time() + self._acquire_timeout
@@ -95,7 +95,7 @@ class RedisLock(object):
                     created_at = float(split_identifier[1])
                     # If ttl is not set after 3s when created, delete it
                     if created_at + 3 < time.time():
-                        LOGGER.debug('Delete lock: %s' % lock)
+                        logger.debug('Delete lock: %s' % lock)
                         self._redis.delete(lock)
             if self._redis.setnx(lock, self._identifier):
                 self._redis.expire(lock, self._expire_time)
@@ -107,7 +107,7 @@ class RedisLock(object):
         """Releases a lock given some identifier and makes sure it is the one we set
         (could have been destroyed in the meantime).
         """
-        LOGGER.debug('Release lock for %s', self._name)
+        logger.debug('Release lock for %s', self._name)
         pipe = self._redis.pipeline(True)
         lock = 'lock:%s' % self._name
         while True:

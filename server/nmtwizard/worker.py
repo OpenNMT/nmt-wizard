@@ -88,7 +88,7 @@ class Worker(object):
             return self._logger.error(override_msg, *args, **kwargs)
 
     def __init__(self, redis, services, ttl_policy, refresh_counter,
-                 quarantine_time, instance_id, taskfile_dir,
+                 quarantine_time, instance_id, taskfile_dir, work_cycle,
                  default_config_timestamp=None):
         service = next(iter(services))
         worker_id = os.getpid()
@@ -101,6 +101,7 @@ class Worker(object):
         self._refresh_counter = refresh_counter
         self._quarantine_time = quarantine_time
         self._taskfile_dir = taskfile_dir
+        self._work_cycle = work_cycle
         self._default_config_timestamp = default_config_timestamp
         task.set_ttl_policy(ttl_policy)
 
@@ -109,35 +110,9 @@ class Worker(object):
         signal.signal(signal.SIGINT, graceful_exit)
         self._logger.info('Starting...')
 
-        # Subscribe to beat expiration.
-        pubsub = self._redis.pubsub()
-        pubsub.psubscribe('__keyspace@0__:beat:*')
-        pubsub.psubscribe('__keyspace@0__:queue:*')
         counter = 0
 
         while True:
-            # process one message from the queue
-            message = pubsub.get_message()
-            if message:
-                channel = message['channel']
-                data = message['data']
-                if data == 'expired':
-                    # task expired, not beat was received
-                    if channel.startswith('__keyspace@0__:beat:'):
-                        task_id = channel[20:]
-                        service = self._redis.hget('task:'+task_id, 'service')
-                        if service in self._services:
-                            self._logger.info('%s: task expired', task_id)
-                            with self._redis.acquire_lock(task_id):
-                                task.terminate(self._redis, task_id, phase='expired')
-                    # expired in the queue - comes back in the work queue
-                    elif channel.startswith('__keyspace@0__:queue:'):
-                        task_id = channel[21:]
-                        service = self._redis.hget('task:'+task_id, 'service')
-                        if service in self._services:
-                            self._logger.info('%s: move to work queue', task_id)
-                            task.work_queue(self._redis, task_id, service)
-
             # process one element from work queue
             task_id = task.work_unqueue(self._redis, self._service)
             if task_id is not None:
@@ -162,7 +137,7 @@ class Worker(object):
                 counter = 0
 
             counter += 1
-            time.sleep(0.01)
+            time.sleep(self._work_cycle)
 
     def _advance_task(self, task_id):
         """Tries to advance the task to the next status. If it can, re-queue it immediately
