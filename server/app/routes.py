@@ -526,7 +526,7 @@ def patch_config_explicitname(content, explicitname):
 def launch_v2():
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
-    trainer_id = g.user.user_code
+    user_code = g.user.user_code
     request_data = parse_request_data(request)
 
     service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
@@ -541,7 +541,7 @@ def launch_v2():
 
     upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
     upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
-    tag_ids = process_tags(tags, entity_code, trainer_id)
+    tag_ids = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
     service_module = get_service(service)
@@ -550,7 +550,8 @@ def launch_v2():
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
 
-    content = get_training_config(service, request_data, trainer_id, service_module, entity_owner, upload_path, storage_id, tag_ids)
+    content = get_training_config(service, request_data, user_code, service_module, entity_owner, upload_path,
+                                  storage_id, tag_ids)
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -562,7 +563,6 @@ def launch_v2():
     files = {}
     ngpus = content.get("ngpus", 1)
     ncpus = content.get("ncpus")
-    exec_mode = False
 
     totranslate = content["totranslate"]
     toscore = content["toscore"]
@@ -585,18 +585,10 @@ def launch_v2():
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
     try:
-        # Note: If docker_version = 'latest', what we will do? Set all True? Get detail docker_version via ??? to
-        # calculate?
-        if docker_version == 'latest':
-            chain_prepr_train = True
-            can_trans_as_release = True
-            trans_as_release = True
-            content["support_statistics"] = True
-        else:
-            chain_prepr_train = semver.match(docker_version, ">=1.4.0")
-            can_trans_as_release = semver.match(docker_version, ">=1.8.0")
-            trans_as_release = semver.match(docker_version, ">=1.8.0")
-            content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
+        chain_prepr_train = semver.match(docker_version, ">=1.4.0")
+        can_trans_as_release = semver.match(docker_version, ">=1.8.0")
+        trans_as_release = semver.match(docker_version, ">=1.8.0")
+        content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
     except ValueError as err:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
@@ -932,7 +924,7 @@ def validate_tags(tags):
             if not is_valid_object_id(tag):
                 raise Exception(f"Invalid id: {tag}")
         for tag in new_tags:
-            print(tag)
+            print(f"Tag: {tag}")
             # TODO: Validate tag
     except Exception as e:
         raise Exception("Invalid tags json")
@@ -942,8 +934,9 @@ def validate_training_data(training_data):
     if not isinstance(training_data, list) or len(training_data) == 0:
         raise Exception("training data is required")
     for file in training_data:
-        logger.info(file.filename)
-        # TODO: Validate file
+        file_name = file.filename
+        if not is_valid_corpus_extension(file_name):
+            raise Exception(f"Invalid corpus extension: {file_name}")
 
 
 def validate_testing_data(testing_data):
@@ -952,9 +945,16 @@ def validate_testing_data(testing_data):
     if len(testing_data) == 0:
         return
     for file in testing_data:
-        logger.info(file.filename)
-        # TODO: Validate file
+        file_name = file.filename
+        if not is_valid_corpus_extension(file_name):
+            raise Exception(f"Invalid corpus extension: {file_name}")
 
+
+def is_valid_corpus_extension(file_name):
+    valid_extensions = [".tmx", ".txt"]
+    name, extension = os.path.splitext(file_name)
+    # return extension in valid_extensions
+    return True
 
 def validate_model_name(model_name):
     reg = r"(^[a-zA-Z0-9\.]+$)"
@@ -1107,7 +1107,6 @@ def get_docker_image_info(service_module, entity_owner, docker_image):
 def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
     registry = _get_registry(service_module, image)
-    # tag = "latest"
     tag = "v1.35.1"
 
     result = {
@@ -1128,12 +1127,14 @@ def get_latest_docker_image_tag(image):
     if len(docker_images) == 0:
         return None
     only_tag_docker_images = list(map(lambda docker_image: get_docker_image_tag(docker_image["image"]), docker_images))
-    only_tag_docker_images = list(filter(lambda tag: tag is not "latest", only_tag_docker_images))
+    only_tag_docker_images = list(filter(lambda tag: tag != "latest", only_tag_docker_images))
+    if len(only_tag_docker_images) == 0:
+        return None
     if len(only_tag_docker_images) == 1:
         return only_tag_docker_images[0]
-    sorted_docker_images = sorted(only_tag_docker_images, key=cmp_to_key(
+    sorted_docker_image_tags = sorted(only_tag_docker_images, key=cmp_to_key(
         lambda x, y: semver.compare(x, y)), reverse=True)
-    return get_docker_image_tag(sorted_docker_images[0])
+    return sorted_docker_image_tags[0]
 
 
 def get_docker_image_tag(image):
@@ -1141,8 +1142,6 @@ def get_docker_image_tag(image):
     if len(split_name) < 2:
         return None
     tag = split_name[-1]
-    if tag == "latest":
-        return "0.1.1"
     if not tag.startswith("v"):
         return tag
     return tag[1:]
@@ -1159,7 +1158,7 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
     return result
 
 
-def get_training_config(service, request_data, trainer_id, service_module, entity_owner, uploaded_data_path, storage_id, tag_ids):
+def get_training_config(service, request_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, tag_ids):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
     source = request_data["source"]
@@ -1243,7 +1242,7 @@ def get_training_config(service, request_data, trainer_id, service_module, entit
             "command": docker_commands
         }},
         "wait_after_launch": 2,
-        "trainer_id": trainer_id,
+        "trainer_id": f"{entity_owner}{user_code}",
         "options": {},
         "totranslate": to_translate_corpus,
         "toscore": to_score_corpus
@@ -1255,8 +1254,6 @@ def get_training_config(service, request_data, trainer_id, service_module, entit
         content["priority"] = priority
     if iterations:
         content["iterations"] = iterations
-    if tag_ids:
-        content["tags"] = list(map(lambda tag_id: str(tag_id),tag_ids))
     return json.loads(json.dumps(content))
 
 
@@ -1337,7 +1334,7 @@ def process_tags(tags, entity_code, trainer_id):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, tag_ids):
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, tag_ids, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1352,7 +1349,7 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
                                                 entity_owner=entity_owner,
-                                                lp=None, state=0)
+                                                lp=None, state=state)
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
