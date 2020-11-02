@@ -897,9 +897,12 @@ def validate_request_data(request):
     priority = request_data.get("priority")
     num_of_iteration = request_data.get("num_of_iteration")
 
+    base_config = config.get_base_config(mongo_client)
+    corpus_config = base_config.get("corpus")
+
     validate_tags(tags)
-    validate_training_data(training_data)
-    validate_testing_data(testing_data)
+    validate_training_data(training_data, corpus_config)
+    validate_testing_data(testing_data, corpus_config)
     validate_model_name(model_name)
     validate_docker_image(docker_image)
     validate_ncpus(ncpus)
@@ -928,31 +931,33 @@ def validate_tags(tags):
         raise Exception("Invalid tags json")
 
 
-def validate_training_data(training_data):
+def validate_training_data(training_data, corpus_config):
     if not isinstance(training_data, list) or len(training_data) == 0:
         raise Exception("training data is required")
     for file in training_data:
         file_name = file.filename
-        if not is_valid_corpus_extension(file_name):
+        if not is_valid_corpus_extension(file_name, corpus_config):
             raise Exception(f"Invalid corpus extension: {file_name}")
 
 
-def validate_testing_data(testing_data):
+def validate_testing_data(testing_data, corpus_config):
     if not isinstance(testing_data, list):
         raise Exception("testing data must be Array")
     if len(testing_data) == 0:
         return
     for file in testing_data:
         file_name = file.filename
-        if not is_valid_corpus_extension(file_name):
+        if not is_valid_corpus_extension(file_name, corpus_config):
             raise Exception(f"Invalid corpus extension: {file_name}")
 
 
-def is_valid_corpus_extension(file_name):
-    valid_extensions = [".tmx", ".txt"]
+def is_valid_corpus_extension(file_name, corpus_config):
+    valid_extensions = [".tmx", ".txt", ".ttt"]
+    if corpus_config:
+        valid_extensions = corpus_config.get("extensions") or valid_extensions
     name, extension = os.path.splitext(file_name)
-    # return extension in valid_extensions
-    return True
+    return extension in valid_extensions
+
 
 
 def validate_model_name(model_name):
