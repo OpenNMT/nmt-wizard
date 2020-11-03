@@ -127,25 +127,23 @@ def handle_error(e):
     if 'user' in flask.g:
         app.logger.error("User:'%s'" % flask.g.user.user_code)
     
-    accept = accept_for_error()
-    
     app.logger.error(traceback.format_exc())
 
     code = 500
     if isinstance(e, HTTPException):
         code = e.code
+
+    accept = accept_for_error()
         
     if accept == 'json':
         return jsonify(error=str(e)), code
     else:
-        return render_template("error.html", code=e.code, title=e.name, message=e.description)
+        return render_template("error.html", code=code, title=e.name, message=e.description)
 
 def accept_for_error():
     json = request.full_path.startswith('/api/')
     
-    if json:
-        return 'json'
-    return 'html'
+    return 'json' if json else 'html'
 
 
 def cust_jsonify(obj):
