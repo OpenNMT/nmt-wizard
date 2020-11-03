@@ -933,6 +933,7 @@ def validate_tags(tags):
 
 
 def validate_training_data(training_data, corpus_config):
+
     if not isinstance(training_data, list) or len(training_data) == 0:
         raise Exception("training data is required")
     for file in training_data:

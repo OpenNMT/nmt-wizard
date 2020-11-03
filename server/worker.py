@@ -25,7 +25,6 @@ def get_logger(logger_config):
     logging.config.dictConfig(logger_config)
     return logging.getLogger("worker")
 
-
 system_config = config.get_system_config()
 mongo_client = DatabaseUtils.get_mongo_client(system_config)
 redis_db = DatabaseUtils.get_redis_client(system_config)
@@ -60,6 +59,7 @@ if "worker" in service_config and "worker_butler_cycle" in service_config["worke
     assert isinstance(worker_butler_cycle_config,
                       float) and worker_butler_cycle_config > 0, "worker/worker_butler_cycle must be numeric and greater than 0"
     worker_butler_cycle = worker_butler_cycle_config
+
 
 retry = 0
 while retry < 10:
@@ -269,6 +269,7 @@ def start_all():
                                                             instance_id,
                                                             system_config_default["taskfile_dir"],
                                                             worker_cycle))
+
         worker_process.daemon = True
         worker_process.start()
         worker_processes.append(worker_process)
@@ -281,6 +282,7 @@ def start_worker(redis_db, mongodb_client, services,
                  instance_id,
                  taskfile_dir,
                  worker_cycle):
+
     worker = Worker(redis_db, mongodb_client, services,
                     ttl_policy,
                     refresh_counter,
