@@ -525,6 +525,7 @@ def launch_v2():
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     user_code = g.user.user_code
+    # TODO: Try-catch
     request_data = parse_request_data(request)
 
     service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
@@ -952,12 +953,11 @@ def validate_testing_data(testing_data, corpus_config):
 
 
 def is_valid_corpus_extension(file_name, corpus_config):
-    valid_extensions = [".tmx", ".txt", ".ttt"]
+    valid_extensions = [".tmx", ".txt"]
     if corpus_config:
         valid_extensions = corpus_config.get("extensions") or valid_extensions
     name, extension = os.path.splitext(file_name)
     return extension in valid_extensions
-
 
 
 def validate_model_name(model_name):
