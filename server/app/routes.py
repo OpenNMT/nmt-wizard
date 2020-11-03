@@ -14,7 +14,7 @@ import semver
 import six
 from werkzeug.exceptions import HTTPException
 import flask
-from flask import abort, make_response, jsonify, Response, request, g
+from flask import abort, make_response, jsonify, Response, request, g, render_template
 import tempfile
 import uuid
 from functools import cmp_to_key
@@ -126,13 +126,26 @@ def handle_error(e):
     # https://stackoverflow.com/questions/29332056/global-error-handler-for-any-exception
     if 'user' in flask.g:
         app.logger.error("User:'%s'" % flask.g.user.user_code)
-
+    
+    accept = accept_for_error()
+    
     app.logger.error(traceback.format_exc())
 
     code = 500
     if isinstance(e, HTTPException):
         code = e.code
-    return jsonify(error=str(e)), code
+        
+    if accept == 'json':
+        return jsonify(error=str(e)), code
+    else:
+        return render_template("error.html", code=e.code, title=e.name, message=e.description)
+
+def accept_for_error():
+    json = request.full_path.startswith('/api/')
+    
+    if json:
+        return 'json'
+    return 'html'
 
 
 def cust_jsonify(obj):
