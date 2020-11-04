@@ -1999,21 +1999,26 @@ def list_tasks(pattern):
 @filter_request("GET/task/terminate")
 @task_write_control
 def terminate(task_id):
+    msg = terminate_internal(task_id)
+    return flask.jsonify(message=msg)
+
+
+def terminate_internal(task_id):
     with redis_db.acquire_lock(task_id):
         current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
         elif current_status == "stopped":
-            return flask.jsonify(message="%s already stopped" % task_id)
+            return "%s already stopped" % task_id
         phase = flask.request.args.get('phase')
 
     res = post_function('GET/task/terminate', task_id, phase)
     if res:
         task.terminate(redis_db, task_id, phase="publish_error")
-        return flask.jsonify(message="problem while posting model: %s" % res)
+        return "problem while posting model: %s" % res
 
     task.terminate(redis_db, task_id, phase=phase)
-    return flask.jsonify(message="terminating %s" % task_id)
+    return "terminating %s" % task_id
 
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
