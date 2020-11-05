@@ -31,7 +31,6 @@ from systran_storages import StorageClient
 from nmtwizard.common import rmprivate
 from nmtwizard.helper import boolean_param
 
-
 GLOBAL_POOL_NAME = "sa_global_pool"
 
 logger = logging.getLogger(__name__)
@@ -524,7 +523,9 @@ def patch_config_explicitname(content, explicitname):
 def launch_v2():
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
-    user_code = g.user.user_code
+    user = g.user
+    user_id = user.id
+    user_code = user.user_code
     # TODO: Try-catch
     request_data = parse_request_data(request)
 
@@ -550,7 +551,7 @@ def launch_v2():
     assert trainer_entities  # Here: almost sure you are trainer
 
     content = get_training_config(service, request_data, user_code, service_module, entity_owner, upload_path,
-                                  storage_id, tag_ids)
+                                  storage_id)
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -860,7 +861,7 @@ def launch_v2():
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, tag_ids)
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tag_ids)
 
     return flask.jsonify(task_ids)
 
@@ -933,7 +934,6 @@ def validate_tags(tags):
 
 
 def validate_training_data(training_data, corpus_config):
-
     if not isinstance(training_data, list) or len(training_data) == 0:
         raise Exception("training data is required")
     for file in training_data:
@@ -1163,7 +1163,7 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
     return result
 
 
-def get_training_config(service, request_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, tag_ids):
+def get_training_config(service, request_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
     source = request_data["source"]
@@ -1338,7 +1338,7 @@ def process_tags(tags, entity_code, trainer_id):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, tag_ids, state="creating"):
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tag_ids, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1353,7 +1353,7 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
                                                 entity_owner=entity_owner,
-                                                lp=None, state=state)
+                                                lp=None, state=state, creator=creator)
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
@@ -1763,7 +1763,6 @@ def launch(service):
         if iterations > 0:
             parent_task_id = task_id
             change_parent_task(content["docker"]["command"], parent_task_id)
-
     (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
 
     for tc in task_create:
