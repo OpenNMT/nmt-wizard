@@ -42,6 +42,7 @@ if max_log_size is not None:
     max_log_size = int(max_log_size)
 
 TASK_RELEASE_TYPE = "relea"
+ACCEPT_FORMAT = {"text/html" : "html", "application/json" : "json"}
 
 
 class StorageId:
@@ -141,6 +142,10 @@ def handle_error(e):
         return render_template("error.html", code=code, title=e.name, message=e.description)
 
 def accept_for_error():
+    for mime_type,_ in request.accept_mimetypes:
+        if mime_type in ACCEPT_FORMAT:
+            return ACCEPT_FORMAT[mime_type]
+        
     json = request.full_path.startswith('/api/')
     
     return 'json' if json else 'html'
