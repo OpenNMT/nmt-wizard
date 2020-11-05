@@ -1423,9 +1423,7 @@ def get_content_of_release_task(model, user_code, entity_code, docker_image, ncp
                       model,
                       'release',
                       '--destination',
-                      destination,
-                      '-d',
-                      'rele:']
+                      destination]
     content = {
         'docker': {
             **docker_image, **{"command": docker_command}
