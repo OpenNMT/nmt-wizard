@@ -861,7 +861,8 @@ def launch_v2():
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tag_ids)
+    tasks = [prepr_task_id, task_id]
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks, tag_ids)
 
     return flask.jsonify(task_ids)
 
@@ -1338,7 +1339,7 @@ def process_tags(tags, entity_code, trainer_id):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tag_ids, state="creating"):
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tag_ids, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1348,7 +1349,8 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
         "target": target,
         "parent_model": parent_model,
         "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
-        "tags": tag_ids
+        "tags": tag_ids,
+        "tasks": tasks
     }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
@@ -1997,21 +1999,26 @@ def list_tasks(pattern):
 @filter_request("GET/task/terminate")
 @task_write_control
 def terminate(task_id):
+    msg = terminate_internal(task_id)
+    return flask.jsonify(message=msg)
+
+
+def terminate_internal(task_id):
     with redis_db.acquire_lock(task_id):
         current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
         elif current_status == "stopped":
-            return flask.jsonify(message="%s already stopped" % task_id)
+            return "%s already stopped" % task_id
         phase = flask.request.args.get('phase')
 
     res = post_function('GET/task/terminate', task_id, phase)
     if res:
         task.terminate(redis_db, task_id, phase="publish_error")
-        return flask.jsonify(message="problem while posting model: %s" % res)
+        return "problem while posting model: %s" % res
 
     task.terminate(redis_db, task_id, phase=phase)
-    return flask.jsonify(message="terminating %s" % task_id)
+    return "terminating %s" % task_id
 
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
