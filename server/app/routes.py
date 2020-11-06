@@ -1059,7 +1059,7 @@ def get_training_data_config(uploaded_data_path, parent_model):
         "sample": 50,
         "sample_dist": [{
             "path": "${GLOBAL_DATA}" + uploaded_data_path + "/train/",
-            "distribution": [["*", 1]]
+            "distribution": [["*", "*"]]
         }]
     }
     if not parent_model:
