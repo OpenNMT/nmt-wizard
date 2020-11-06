@@ -1054,6 +1054,7 @@ def get_test_folder_name(source, target):
 
 
 def get_training_data_config(uploaded_data_path, parent_model):
+    #TODO change the sample value from 50 to a value given by the CM
     training_data_config = {
         "sample": 50,
         "sample_dist": [{
