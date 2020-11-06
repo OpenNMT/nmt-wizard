@@ -1054,7 +1054,7 @@ def get_test_folder_name(source, target):
 
 
 def get_training_data_config(uploaded_data_path, parent_model):
-    #TODO change the sample value from 50 to a value given by the CM
+    # TODO change the sample value from 50 to a value given by the CM
     training_data_config = {
         "sample": 50,
         "sample_dist": [{
@@ -1065,7 +1065,8 @@ def get_training_data_config(uploaded_data_path, parent_model):
     if not parent_model:
         return training_data_config
 
-    ok, parent_data_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
+    ok, parent_data_config = builtins.pn9model_db.catalog_get_info(parent_model,
+                                                                   boolean_param(request.args.get('short')))
     if ok:
         return {
                    "sample": training_data_config["sample"] + parent_data_config["data"]["sample"],
