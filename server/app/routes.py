@@ -1053,7 +1053,7 @@ def get_test_folder_name(source, target):
     return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
-def get_training_data_config(uploaded_data_path, parent_model):
+def get_final_training_config(uploaded_data_path, parent_model):
     # TODO change the sample value from 50 to a value given by the CM
     training_data_config = {
         "sample": 50,
@@ -1065,13 +1065,13 @@ def get_training_data_config(uploaded_data_path, parent_model):
     if not parent_model:
         return training_data_config
 
-    ok, parent_data_config = builtins.pn9model_db.catalog_get_info(parent_model,
-                                                                   boolean_param(request.args.get('short')))
+    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
     if ok:
-        return parent_data_config, {
-                                       "sample": training_data_config["sample"] + parent_data_config["data"]["sample"],
-                                       "sample_dist": training_data_config["sample_dist"] + parent_data_config["data"]["sample_dist"]
-                                   }
+        parent_config["data"] = {
+                                    "sample": training_data_config["sample"] + parent_config["data"]["sample"],
+                                    "sample_dist": training_data_config["sample_dist"] + parent_config["data"]["sample_dist"]
+                                }
+        return parent_config
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model), 400))
 
@@ -1147,19 +1147,12 @@ def get_training_config(service, request_data, user_code, service_module, entity
     docker_image = request_data.get("docker_image", None)
     testing_data = request_data.get("testing_data", None)
 
-    parent_data_config, training_data_config = get_training_data_config(uploaded_data_path, parent_model)
+    final_training_config = get_final_training_config(uploaded_data_path, parent_model)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
     to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id)
     to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id)
 
-    docker_commands = ["-c", json.dumps({
-        "tokenization": parent_data_config["tokenization"],
-        "description": parent_data_config["description"],
-        "source": parent_data_config["source"],
-        "target": parent_data_config["target"],
-        "data": training_data_config,
-        "options": parent_data_config["options"]
-    }), "train"]
+    docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
     content = {
         "service": service,
