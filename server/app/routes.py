@@ -1053,7 +1053,71 @@ def get_test_folder_name(source, target):
     return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
-def get_final_training_config(uploaded_data_path, parent_model):
+# TODO define and build real configuration
+def get_from_scratch_config(source, target, data):
+    return {
+        "tokenization": {
+            "source": {
+                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
+                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab32k.en",
+                "preserve_placeholders": True,
+                "mode": "aggressive",
+                "preserve_segmented_tokens": True,
+                "segment_numbers": True,
+                "segment_case": True,
+                "joiner_annotate": True
+            },
+            "target": {
+                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
+                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab34k.fr",
+                "preserve_placeholders": True,
+                "mode": "aggressive",
+                "preserve_segmented_tokens": True,
+                "segment_numbers": True,
+                "segment_case": True,
+                "joiner_annotate": True
+            }
+        },
+        "description": "apostrophe test",
+        "source": source,
+        "target": target,
+        "data": data,
+        "options": {
+            "model_type": "Transformer",
+            "config": {
+                "train": {
+                    "maximum_labels_length": 100,
+                    "save_summary_steps": 100,
+                    "keep_checkpoint_max": 8,
+                    "bucket_width": 1,
+                    "maximum_features_length": 100,
+                    "batch_size": 9000,
+                    "batch_type": "tokens",
+                    "sample_buffer_size": 5000000,
+                    "save_checkpoints_steps": 5000,
+                    "single_pass": True
+                },
+                "params": {
+                    "optimizer": "LazyAdamOptimizer",
+                    "decay_steps": 8000,
+                    "length_penalty": 0.6,
+                    "decay_step_duration": 1,
+                    "learning_rate": 2,
+                    "average_loss_in_time": True,
+                    "decay_rate": 512,
+                    "decay_type": "noam_decay",
+                    "label_smoothing": 0.1,
+                    "beam_width": 5
+                },
+                "infer": {
+                    "batch_size": 32
+                }
+            }
+        }
+    }
+
+
+def get_final_training_config(source, target, uploaded_data_path, parent_model):
     # TODO change the sample value from 50 to a value given by the CM
     training_data_config = {
         "sample": 50,
@@ -1063,7 +1127,7 @@ def get_final_training_config(uploaded_data_path, parent_model):
         }]
     }
     if not parent_model:
-        return training_data_config
+        return get_from_scratch_config(source, target, training_data_config)
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
     if ok:
@@ -1147,7 +1211,7 @@ def get_training_config(service, request_data, user_code, service_module, entity
     docker_image = request_data.get("docker_image", None)
     testing_data = request_data.get("testing_data", None)
 
-    final_training_config = get_final_training_config(uploaded_data_path, parent_model)
+    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
     to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id)
     to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id)
