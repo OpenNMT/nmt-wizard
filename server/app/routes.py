@@ -1070,30 +1070,33 @@ def get_training_data_config(uploaded_data_path, parent_model):
 
 
 def get_parent_model_training_data_config(parent_model):
-    # TODO: Get config from api
-    return {
-        "sample": 100,
-        "sample_dist": [{
-            "distribution": ["..."],
-            "mode_strict": True,
-            "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train"
-        },
-            {
+    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
+    if ok:
+        return parent_config["data"]
+    else:
+        return {
+            "sample": 100,
+            "sample_dist": [{
                 "distribution": ["..."],
                 "mode_strict": True,
-                "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_restricted"
+                "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train"
             },
-            {
-                "distribution": ["..."],
-                "mode_strict": True,
-                "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_synthetic"
-            },
-            {
-                "distribution": ["..."],
-                "mode_strict": True,
-                "path": "${CLIENT_DATA_TRAIN_DIR}/xx_yy/train"
-            }]
-    }
+                {
+                    "distribution": ["..."],
+                    "mode_strict": True,
+                    "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_restricted"
+                },
+                {
+                    "distribution": ["..."],
+                    "mode_strict": True,
+                    "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_synthetic"
+                },
+                {
+                    "distribution": ["..."],
+                    "mode_strict": True,
+                    "path": "${CLIENT_DATA_TRAIN_DIR}/xx_yy/train"
+                }]
+        }
 
 
 def merge_training_data_config(training_data_config, parent_data_config):
