@@ -1031,7 +1031,7 @@ def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, st
         corpus_name = corpus.filename
         result.append([
             f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}',
-            f'pn9_testtrans:<MODEL>/{test_folder_name}/{corpus_name}.{target}'
+            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}.{target}'
         ])
 
     return result
@@ -1043,7 +1043,7 @@ def get_to_score_corpus(testing_data, uploaded_data_path, source, target, storag
     for corpus in testing_data:
         corpus_name = corpus.filename
         result.append([
-            f'pn9_testtrans:<MODEL>/{test_folder_name}/{corpus_name}.{target}',
+            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}.{target}',
             f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{target}'
         ])
 
