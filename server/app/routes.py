@@ -139,7 +139,12 @@ def handle_error(e):
     if accept == 'json':
         return jsonify(error=str(e)), code
     else:
-        return render_template("error.html",infos=g.session, user=g.session['currentUser'], code=code, title=e.name, message=e.description)
+        session = None
+        current_user = None
+        if g.is_authenticated:
+            session = g.session
+            current_user = g.session['currentUser']
+        return render_template("error.html",infos=session, user=current_user, code=code, title=e.name, message=e.description)
 
 def accept_for_error():
     for mime_type,_ in request.accept_mimetypes:
