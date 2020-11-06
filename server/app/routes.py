@@ -861,8 +861,7 @@ def launch_v2():
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    tasks = [prepr_task_id, task_id]
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks, tags)
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, task_ids, tags)
 
     return flask.jsonify(task_ids)
 
