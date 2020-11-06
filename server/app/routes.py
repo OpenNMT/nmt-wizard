@@ -1064,46 +1064,14 @@ def get_training_data_config(uploaded_data_path, parent_model):
     if not parent_model:
         return training_data_config
 
-    parent_data_config = get_parent_model_training_data_config(parent_model)
-
-    return merge_training_data_config(training_data_config, parent_data_config)
-
-
-def get_parent_model_training_data_config(parent_model):
-    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
+    ok, parent_data_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
     if ok:
-        return parent_config["data"]
-    else:
         return {
-            "sample": 100,
-            "sample_dist": [{
-                "distribution": ["..."],
-                "mode_strict": True,
-                "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train"
-            },
-                {
-                    "distribution": ["..."],
-                    "mode_strict": True,
-                    "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_restricted"
-                },
-                {
-                    "distribution": ["..."],
-                    "mode_strict": True,
-                    "path": "${SHARED_DATA_TRAIN_DIR}/xx_yy/train_synthetic"
-                },
-                {
-                    "distribution": ["..."],
-                    "mode_strict": True,
-                    "path": "${CLIENT_DATA_TRAIN_DIR}/xx_yy/train"
-                }]
-        }
-
-
-def merge_training_data_config(training_data_config, parent_data_config):
-    return {
-        "sample": training_data_config["sample"] + parent_data_config["sample"],
-        "sample_dist": training_data_config["sample_dist"] + parent_data_config["sample_dist"]
-    }
+                   "sample": training_data_config["sample"] + parent_data_config["data"]["sample"],
+                   "sample_dist": training_data_config["sample_dist"] + parent_data_config["data"]["sample_dist"]
+               }
+    else:
+        abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model), 400))
 
 
 def get_docker_image_info(service_module, entity_owner, docker_image):
