@@ -539,9 +539,9 @@ def launch_v2():
     testing_data = request_data.get("testing_data")
     tags = request_data.get("tags")
 
-    upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
-    upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
-    tag_ids = process_tags(tags, entity_code, user_code)
+    # upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
+    # upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+    tags = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
     service_module = get_service(service)
@@ -862,7 +862,7 @@ def launch_v2():
         task_ids = task_ids[0]
 
     tasks = [prepr_task_id, task_id]
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks, tag_ids)
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks, tags)
 
     return flask.jsonify(task_ids)
 
@@ -1308,14 +1308,14 @@ def is_valid_object_id(value):
     return ObjectId.is_valid(value)
 
 
-def process_tags(tags, entity_code, trainer_id):
+def process_tags(tags, entity_code, user_code):
     final_tags = []
     existed_tags = tags.get("existed", [])
-    new_tags = tags.get("new", [])
+    new_tags = list(set(tags.get("new", [])))  # ensure unique value
 
     tag_ids = list(map(lambda tag: ObjectId(tag), existed_tags))
     exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
-    exists_tags_by_value = list(mongo_client.get_tags_by_value(new_tags))
+    exists_tags_by_value = list(mongo_client.get_tags_by_value(new_tags, entity_code))
     not_exists_tags = list(
         filter(lambda tag: tag not in list(map(lambda exists_tag: str(exists_tag["tag"]), exists_tags_by_value)),
                new_tags))
@@ -1323,23 +1323,21 @@ def process_tags(tags, entity_code, trainer_id):
     if len(not_exists_tags) > 0:
         insert_tags = list(map(lambda tag: {
             "entity": entity_code,
-            "creator": trainer_id,
+            "creator": entity_code + user_code,
             "tag": tag
         }, not_exists_tags))
 
         mongo_client.tags_put(insert_tags)
+        inserted_tags = list(mongo_client.get_tags_by_value(not_exists_tags, entity_code))
+        final_tags.extend(inserted_tags)
 
-        inserted_tags = list(mongo_client.get_tags_by_value(not_exists_tags))
-
-        final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], inserted_tags)))
-
-    final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], exists_tags_by_id)))
-    final_tags.extend(list(map(lambda exists_tag: exists_tag["_id"], exists_tags_by_value)))
+    final_tags.extend(exists_tags_by_id)
+    final_tags.extend(exists_tags_by_value)
 
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tag_ids, state="creating"):
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tags, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1349,7 +1347,7 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
         "target": target,
         "parent_model": parent_model,
         "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
-        "tags": tag_ids,
+        "tags": tags,
         "tasks": tasks
     }
 

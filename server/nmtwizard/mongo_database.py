@@ -130,13 +130,15 @@ class MongoDatabase:
         tags = the_table.find(conditions)
         return tags
 
-    def get_tags_by_value(self, tags):
+    def get_tags_by_value(self, tags, entity_code):
         the_table = self.get("tags")
         conditions = {
             "tag": {
                 "$in": tags
             }
         }
+        if entity_code:
+            conditions["entity"] = entity_code
 
         tags = the_table.find(conditions)
         return tags
