@@ -539,8 +539,8 @@ def launch_v2():
     testing_data = request_data.get("testing_data")
     tags = request_data.get("tags")
 
-    # upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
-    # upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+    upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
+    upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
     tags = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
