@@ -1417,6 +1417,7 @@ def get_content_of_release_task(model, user_code, entity_code, docker_image, ncp
         'ncpus': ncpus,
         'iterations': 1,
         'service': service,
+        'options': {},
         'support_statistics': semver.match(docker_image["tag"][1:], ">=1.17.0")
     }
 
