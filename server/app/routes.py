@@ -1217,16 +1217,11 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
 def get_default_test_data(storage_client, source, target):
     result = []
     test_folder_name = get_test_folder_name(source, target)
-    listdir = storage_client.listdir(f'shared_testdata:{test_folder_name}/', recursive=True)
+    listdir = storage_client.listdir(f'shared_testdata:{test_folder_name}/')
     for corpus_name in listdir:
         if not listdir[corpus_name].get("is_dir", False):
-            corpus_to_compare = corpus_name
-            extra_gz = ''
-            if corpus_name.endswith(".gz"):
-                corpus_to_compare = corpus_to_compare[:-3]
-                extra_gz = ".gz"
-            if corpus_to_compare.endswith(f'.{source}'):
-                corresponding_corpus = corpus_to_compare[:-3] + "." + target + extra_gz
+            if corpus_name.endswith(f'.{source}'):
+                corresponding_corpus = corpus_name[:-3] + "." + target
             else:
                 continue
             if corresponding_corpus in listdir:
