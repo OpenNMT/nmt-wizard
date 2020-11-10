@@ -537,6 +537,7 @@ def launch_v2():
 
     training_data = request_data.get("training_data")
     testing_data = request_data.get("testing_data")
+    default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
     tags = request_data.get("tags")
 
     upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
@@ -550,8 +551,8 @@ def launch_v2():
     trainer_entities = get_entities_by_permission("train", flask.g)
     assert trainer_entities  # Here: almost sure you are trainer
 
-    content = get_training_config(service, request_data, user_code, service_module, entity_owner, upload_path,
-                                  storage_id)
+    content = get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
+                                  upload_path, storage_id)
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -1022,7 +1023,7 @@ def upload_user_files(storage_client, storage_id, parent_path, data_type, files)
         storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
 
 
-def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id):
+def get_to_translate_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
     result = []
     test_folder_name = get_test_folder_name(source, target)
 
@@ -1030,20 +1031,33 @@ def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, st
         corpus_name = corpus.filename
         result.append([
             f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}',
-            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}.{target}'
+            f'pn9_testtrans:<MODEL>/{storage_id}{uploaded_data_path}/test/{corpus_name}.{source}.{target}'
+        ])
+
+    for corpus_name in default_test_data:
+        result.append([
+            f'shared_testdata:{corpus_name}',
+            f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
         ])
 
     return result
 
 
-def get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id):
+def get_to_score_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
     result = []
     test_folder_name = get_test_folder_name(source, target)
     for corpus in testing_data:
         corpus_name = corpus.filename
         result.append([
-            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}.{target}',
+            f'pn9_testtrans:<MODEL>/{storage_id}{uploaded_data_path}/test/{corpus_name}.{source}.{target}',
             f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{target}'
+        ])
+
+    for corpus_name in default_test_data:
+        target_corpus = corpus_name[:-3] + "." + target
+        result.append([
+            f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
+            f'shared_testdata:{target_corpus}'
         ])
 
     return result
@@ -1200,7 +1214,21 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
     return result
 
 
-def get_training_config(service, request_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id):
+def get_default_test_data(storage_client, source, target):
+    result = []
+    test_folder_name = get_test_folder_name(source, target)
+    listdir = storage_client.listdir(f'shared_testdata:{test_folder_name}/')
+    for corpus_name in listdir:
+        if not listdir[corpus_name].get("is_dir", False):
+            if corpus_name.endswith(f'.{source}'):
+                corresponding_corpus = corpus_name[:-3] + "." + target
+            else:
+                continue
+            if corresponding_corpus in listdir:
+                result.append(corpus_name)
+    return result
+
+def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
     source = request_data["source"]
@@ -1213,8 +1241,10 @@ def get_training_config(service, request_data, user_code, service_module, entity
 
     final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
-    to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id)
-    to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id)
+    to_translate_corpus = get_to_translate_corpus(testing_data, default_test_data,
+                                                  uploaded_data_path, source, target, storage_id)
+    to_score_corpus = get_to_score_corpus(testing_data, default_test_data,
+                                          uploaded_data_path, source, target, storage_id)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
