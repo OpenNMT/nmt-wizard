@@ -2008,13 +2008,20 @@ def terminate(task_id):
     return flask.jsonify(message=msg)
 
 
-def terminate_internal(task_id):
+def get_task_status(task_id):
     with redis_db.acquire_lock(task_id):
         current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-        elif current_status == "stopped":
-            return "%s already stopped" % task_id
+    return current_status
+
+
+def terminate_internal(task_id):
+    current_status = get_task_status(task_id)
+    if current_status == "stopped":
+        return "%s already stopped" % task_id
+
+    with redis_db.acquire_lock(task_id):
         phase = flask.request.args.get('phase')
 
     res = post_function('GET/task/terminate', task_id, phase)
