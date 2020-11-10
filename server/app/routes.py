@@ -540,8 +540,8 @@ def launch_v2():
     default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
     tags = request_data.get("tags")
 
-    # upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data)
-    # upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
+    upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data)
+    upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
 
     tags = process_tags(tags, entity_code, user_code)
 
@@ -1023,7 +1023,7 @@ def upload_user_files(storage_client, storage_id, path, files):
         storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
 
 
-def get_to_translate_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
+def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data=[]):
     result = []
     for corpus in testing_data:
         corpus_name = corpus.filename
@@ -1041,7 +1041,7 @@ def get_to_translate_corpus(testing_data, default_test_data, uploaded_data_path,
     return result
 
 
-def get_to_score_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
+def get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data=[]):
     result = []
     for corpus in testing_data:
         corpus_name = corpus.filename
@@ -1225,6 +1225,7 @@ def get_default_test_data(storage_client, source, target):
                 result.append(corpus_name)
     return result
 
+
 def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
@@ -1238,10 +1239,8 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
 
     final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
-    to_translate_corpus = get_to_translate_corpus(testing_data, default_test_data,
-                                                  uploaded_data_path, source, target, storage_id)
-    to_score_corpus = get_to_score_corpus(testing_data, default_test_data,
-                                          uploaded_data_path, source, target, storage_id)
+    to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data)
+    to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
@@ -1320,8 +1319,8 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
                                                 lp=None, state=state, creator=creator)
 
 
-@app.route("/evaluations/add", methods=["POST"])
-# @filter_request("POST/evaluations/add", "train")
+@app.route("/evaluation/add", methods=["POST"])
+@filter_request("POST/evaluation/add", "train")
 def evaluation():
     # TODO: Create new function to get service and user info
     service = GLOBAL_POOL_NAME
@@ -1340,7 +1339,7 @@ def evaluation():
     entity_storages_config = get_entity_storages(service_config, entity_code)
     storage_client = get_storage_client(entity_storages_config)
     storage_id = next(iter(entity_storages_config))
-    upload_path = f"/{entity_code}/evaluations/{evaluation_id}"
+    upload_path = f"/{entity_code}/evaluation/{evaluation_id}"
 
     service_config = config.get_service_config(mongo_client, service)
     service_entities = config.get_entities(service_config)
