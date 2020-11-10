@@ -3,7 +3,8 @@ from pymongo import MongoClient
 tables = {
     "configs": "pn9-config",
     "tags": "pn9-tag",
-    "dockers": "pn9-docker"
+    "dockers": "pn9-docker",
+    "evaluations": "pn9-evaluation"
 }
 
 
@@ -152,3 +153,7 @@ class MongoDatabase:
         }
         images = the_table.find(conditions)
         return images
+
+    def create_evaluation_catalog(self, evaluation_catalog):
+        the_table = self.get("evaluations")
+        the_table.insert(evaluation_catalog)

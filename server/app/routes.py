@@ -540,8 +540,9 @@ def launch_v2():
     default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
     tags = request_data.get("tags")
 
-    upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
-    upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+    # upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data)
+    # upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
+
     tags = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
@@ -1015,8 +1016,7 @@ def get_storage_client(storage_config):
     return storage_client
 
 
-def upload_user_files(storage_client, storage_id, parent_path, data_type, files):
-    path = f"{parent_path}/{data_type}/"
+def upload_user_files(storage_client, storage_id, path, files):
     temp_files = tempfile.mkdtemp()
     for file in files:
         file.save(os.path.join(temp_files, file.filename))
@@ -1025,8 +1025,6 @@ def upload_user_files(storage_client, storage_id, parent_path, data_type, files)
 
 def get_to_translate_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
     result = []
-    test_folder_name = get_test_folder_name(source, target)
-
     for corpus in testing_data:
         corpus_name = corpus.filename
         result.append([
@@ -1045,7 +1043,6 @@ def get_to_translate_corpus(testing_data, default_test_data, uploaded_data_path,
 
 def get_to_score_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
     result = []
-    test_folder_name = get_test_folder_name(source, target)
     for corpus in testing_data:
         corpus_name = corpus.filename
         result.append([
@@ -1146,9 +1143,9 @@ def get_final_training_config(source, target, uploaded_data_path, parent_model):
     ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
     if ok:
         parent_config["data"] = {
-                                    "sample": training_data_config["sample"] + parent_config["data"]["sample"],
-                                    "sample_dist": training_data_config["sample_dist"] + parent_config["data"]["sample_dist"]
-                                }
+            "sample": training_data_config["sample"] + parent_config["data"]["sample"],
+            "sample_dist": training_data_config["sample_dist"] + parent_config["data"]["sample_dist"]
+        }
         return parent_config
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model), 400))
@@ -1270,47 +1267,6 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
     return json.loads(json.dumps(content))
 
 
-# def build_preprocess_task(content, ):
-#     prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
-#
-#     if explicitname:
-#         patch_config_explicitname(content, explicitname)
-#
-#     idx = 0
-#     prepr_command = []
-#     train_command = content["docker"]["command"]
-#     while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
-#         prepr_command.append(train_command[idx])
-#         idx += 1
-#
-#     # create preprocess command, don't push the model on the catalog,
-#     # and generate a pseudo model
-#     prepr_command.append("--no_push")
-#     prepr_command.append("preprocess")
-#     prepr_command.append("--build_model")
-#
-#     content["docker"]["command"] = prepr_command
-#
-#     content["ncpus"] = ncpus or get_cpu_count(service_config, 0, "preprocess")
-#     content["ngpus"] = 0
-#
-#     preprocess_resource = service_module.select_resource_from_capacity(
-#         resource, Capacity(content["ngpus"], content["ncpus"]))
-#
-#     # launch preprocess task on cpus only
-#     task_create.append(
-#         (redis_db, taskfile_dir,
-#          prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
-#          _duplicate_adapt(service_module, content),
-#          files, priority, 0, content["ncpus"], other_task_info))
-#     task_ids.append(
-#         "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
-#     remove_config_option(train_command)
-#     change_parent_task(train_command, prepr_task_id)
-#     parent_task_id = prepr_task_id
-#     content["docker"]["command"] = train_command
-
-
 def is_valid_object_id(value):
     return ObjectId.is_valid(value)
 
@@ -1344,7 +1300,8 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tags, state="creating"):
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tags,
+                         state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1363,30 +1320,265 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
                                                 lp=None, state=state, creator=creator)
 
 
-# Note: Before use this function, you can validate data: Get model catalog and validate status, state
-# check model training is completed
-# You can use function get_docker_image_info(service_module, entity_owner, docker_image) to get docker image
-# You can get ncpus, ngpus from user's request or service config
-def create_release_task(model, user_code, entity_code, docker_image, ncpus, ngpus, entity_owner, trainer_entities,
-                        destination="pn9_release:", service=GLOBAL_POOL_NAME):
-    content = get_content_of_release_task(model, user_code, entity_code, docker_image, ncpus, ngpus, destination,
-                                          service)
-    priority = 12
-    parent_task_id = model
-    task_suffix = TASK_RELEASE_TYPE
-    task_type = TASK_RELEASE_TYPE
-    resource = "auto"
+@app.route("/evaluations/add", methods=["POST"])
+# @filter_request("POST/evaluations/add", "train")
+def evaluation():
+    # TODO: Create new function to get service and user info
+    service = GLOBAL_POOL_NAME
+    entity_code = g.user.entity.entity_code
+    user = g.user
+    user_id = user.id
+    user_code = user.user_code
+
+    evaluation_id = ObjectId()
+
+    # TODO: Try-catch
+    request_data = parse_request_data_of_evaluation(request)
+
+    # TODO: Create new function to get storage_client, storage_id, service_entities, entity_owner, trainer_entities
+    service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
+    entity_storages_config = get_entity_storages(service_config, entity_code)
+    storage_client = get_storage_client(entity_storages_config)
+    storage_id = next(iter(entity_storages_config))
+    upload_path = f"/{entity_code}/evaluations/{evaluation_id}"
+
+    service_config = config.get_service_config(mongo_client, service)
+    service_entities = config.get_entities(service_config)
+    entity_owner = get_entity_owner(service_entities, service)
+    trainer_entities = get_entities_by_permission("train", flask.g)
+    assert trainer_entities  # Here: almost sure you are trainer
+
+    models = request_data.get("models")
+    corpus = request_data.get("corpus")
+    evaluation_name = request_data.get("evaluation_name")
+    source_language = request_data.get("source_language")
+    target_language = request_data.get("target_language")
+
+    upload_user_files(storage_client, storage_id, f"{upload_path}/test/", corpus)
+
+    to_translate_corpus = get_to_translate_corpus(corpus, upload_path, source_language, target_language, storage_id)
+    to_score_corpus = get_to_score_corpus(corpus, upload_path, source_language, target_language, storage_id)
+
+    model_task_map = {}
+
+    for model in models:
+        other_task_infos = {
+            "evaluation_id": str(evaluation_id)
+        }
+        # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
+        translation_docker_image = {
+            "image": "systran/pn9_tf",
+            "tag": "v1.45.3",
+            "registry": "dockersystran"
+        }
+        translation_task_infos = combine_common_task_infos(model, user_code, entity_code, translation_docker_image, 4,
+                                                           0, entity_owner, trainer_entities, "auto")
+        translation_task_id = create_translation_task(translation_task_infos, to_translate_corpus, other_task_infos)
+
+        # TODO: Create new function to get scoring docker image
+        scoring_docker_image = {
+            "image": "nmtwizard/score",
+            "registry": "dockerhub",
+            "tag": "v1.1.1"
+        }
+        scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
+                                                       scoring_docker_image, 1,
+                                                       0, entity_owner, trainer_entities, "auto")
+        scoring_task_id = create_scoring_task(scoring_task_infos, to_score_corpus, other_task_infos)
+
+        model_task_map[model] = {
+            "trans": {
+                "id": translation_task_id,
+            },
+            "score": {
+                "id": scoring_task_id
+            }
+        }
+
+    create_evaluation_catalog(evaluation_id, evaluation_name, user_id, models, to_translate_corpus, model_task_map)
+
+    return flask.jsonify(model_task_map)
+
+
+def parse_request_data_of_evaluation(request):
+    validate_request_data_of_evaluation(request)
+    request_files = request.files
+    request_data = request.form
+
+    models = request_data.getlist("models")
+    evaluation_corpus = request_files.getlist("corpus")
+
+    language_pair = "en_fr"  # NOTE: Get language_pair from model catalog
+    source_language = language_pair.split("_")[0]
+    target_language = language_pair.split("_")[1]
+
+    return {
+        **request_data,
+        **{"source_language": source_language, "target_language": target_language},
+        **{"models": models},
+        **{"corpus": evaluation_corpus}
+    }
+
+
+def validate_request_data_of_evaluation(request):
+    # TODO: Validate request data
+    # models: exists? training completed? same lp? num of models?
+    # corpus: use is_valid_corpus_extension(file_name, corpus_config)
+    return
+
+
+def create_translation_task(task_infos, to_translate_corpus, other_infos=None):
+    content = get_content_of_translation_task(task_infos, to_translate_corpus)
+
+    priority = 1
+    task_suffix = "trans"
+    task_type = "trans"
     task_files = {}
 
-    trainer_id = f'{entity_code}{user_code}'
-    language_pair = model.split("_")[1]
-    service_module = get_service(service)
+    task_infos_extent = {**task_infos, **{
+        "content": content,
+        "priority": priority,
+        "task_type": task_type,
+        "task_suffix": task_suffix,
+        "task_files": task_files
+    }}
 
+    task_id = create_task(task_infos_extent, other_infos)
+
+    return task_id
+
+
+def get_content_of_translation_task(task_infos, to_translate_corpus):
+    input_corpus = []
+    output_corpus = []
+    model = task_infos.get("parent_task_id")
+    for corpus in to_translate_corpus:
+        input_corpus.append(corpus[0])
+        output_corpus.append(corpus[1])
+    docker_command = ['--model', model, 'trans', '--as_release']
+    docker_command.extend(["-i"])
+    docker_command.extend(input_corpus)
+    docker_command.extend(["-o"])
+    docker_command.extend(output_corpus)
+
+    content = get_content_of_task(docker_command, task_infos)
+
+    return content
+
+
+def create_scoring_task(task_infos, to_score_corpus, other_infos=None):
+    content = get_content_of_scoring_task(task_infos, to_score_corpus)
+
+    priority = 1
+    task_suffix = "score"
+    task_type = "exec"
+    task_files = {}
+
+    task_infos_extent = {**task_infos, **{
+        "content": content,
+        "priority": priority,
+        "task_type": task_type,
+        "task_suffix": task_suffix,
+        "task_files": task_files
+    }}
+
+    task_id = create_task(task_infos_extent, other_infos)
+
+    return task_id
+
+
+def get_content_of_scoring_task(task_infos, to_score_corpus):
+    input_corpus = []
+    references_corpus = []
+    for corpus in to_score_corpus:
+        input_corpus.append(corpus[0])
+        references_corpus.append(corpus[1])
+    docker_command = ['score']
+    docker_command.extend(["-"])
+    docker_command.extend(input_corpus)
+    docker_command.extend(["-r"])
+    docker_command.extend(references_corpus)
+    docker_command.extend(["-f", "launcher:scores"])
+
+    content = get_content_of_task(docker_command, task_infos)
+
+    return content
+
+
+def create_release_task(task_infos, destination="pn9_release:", other_infos=None):
+    content = get_content_of_release_task(task_infos, destination)
+    priority = 12
+    task_type = "trans"
+    task_suffix = "trans"
+    task_files = {}
+
+    task_infos_extent = {**task_infos, **{
+        "content": content,
+        "priority": priority,
+        "task_type": task_type,
+        "task_suffix": task_suffix,
+        "task_files": task_files
+    }}
+
+    model = task_infos.get("parent_task_id")
+    trainer_id = task_infos.get("trainer_id")
+
+    task_id = create_task(task_infos_extent, other_infos)
+
+    builtins.pn9model_db.model_set_release_state(model,
+                                                 trainer_id,
+                                                 task_id,
+                                                 "in progress")
+
+    return task_id
+
+
+def get_content_of_release_task(task_infos, destination):
+    parent_task_id = task_infos.get("parent_task_id")
+    docker_command = ['--model',
+                      parent_task_id,
+                      'release',
+                      '--destination',
+                      destination]
+    content = get_content_of_task(docker_command, task_infos)
+
+    return content
+
+
+def get_content_of_task(docker_command, task_infos):
+    docker_image = task_infos.get("docker_image")
+    trainer_id = task_infos.get("trainer_id")
+    ncpus = task_infos.get("ncpus")
+    ngpus = task_infos.get("ngpus")
+    service = task_infos.get("service")
+    iterations = task_infos.get("iterations", 1)
+    content = {
+        'docker': {
+            **docker_image, **{"command": docker_command}
+        },
+        'wait_after_launch': 2,
+        'trainer_id': trainer_id,
+        'ngpus': ngpus,
+        'ncpus': ncpus,
+        'iterations': iterations,
+        'service': service,
+        'support_statistics': semver.match(docker_image["tag"][1:], ">=1.17.0")
+    }
+
+    return content
+
+
+def create_task(common_task_infos, other_infos=None):
+    parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair, task_type, task_suffix, task_files, priority, content = break_task_infos(
+        common_task_infos)
     task_create = []
     task_ids = []
 
+    service_module = get_service(service)
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
+    if other_infos:
+        other_task_info.update(other_infos)
 
     if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
         abort(flask.make_response(
@@ -1410,11 +1602,6 @@ def create_release_task(model, user_code, entity_code, docker_image, ncpus, ngpu
         ngpus, ncpus))
     remove_config_option(content["docker"]["command"])
 
-    builtins.pn9model_db.model_set_release_state(model,
-                                                 trainer_id,
-                                                 task_id,
-                                                 "in progress")
-
     (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
 
     for tc in task_create:
@@ -1423,28 +1610,73 @@ def create_release_task(model, user_code, entity_code, docker_image, ncpus, ngpu
     return task_id
 
 
-def get_content_of_release_task(model, user_code, entity_code, docker_image, ncpus, ngpus, destination="pn9_release:",
-                                service=GLOBAL_POOL_NAME):
-    trainer_id = f"{entity_code}{user_code}"
-    docker_command = ['--model',
-                      model,
-                      'release',
-                      '--destination',
-                      destination]
-    content = {
-        'docker': {
-            **docker_image, **{"command": docker_command}
-        },
-        'wait_after_launch': 2,
-        'trainer_id': trainer_id,
-        'ngpus': ngpus,
-        'ncpus': ncpus,
-        'iterations': 1,
-        'service': service,
-        'support_statistics': semver.match(docker_image["tag"][1:], ">=1.17.0")
+def break_task_infos(task_infos):
+    parent_task_id = task_infos.get("parent_task_id")
+    trainer_id = task_infos.get("trainer_id")
+    ncpus = task_infos.get("ncpus")
+    ngpus = task_infos.get("ngpus")
+    entity_owner = task_infos.get("entity_owner")
+    trainer_entities = task_infos.get("trainer_entities")
+    service = task_infos.get("service")
+    resource = task_infos.get("resource")
+    language_pair = task_infos.get("language_pair")
+    task_type = task_infos.get("task_type")
+    task_suffix = task_infos.get("task_suffix")
+    task_files = task_infos.get("task_files")
+    priority = task_infos.get("priority")
+    content = task_infos.get("content")
+
+    return parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair, task_type, task_suffix, task_files, priority, content
+
+
+def combine_common_task_infos(parent_task_id, user_code, entity_code, docker_image, ncpus, ngpus, entity_owner,
+                              trainer_entities, resource, service=GLOBAL_POOL_NAME):
+    trainer_id = f'{entity_code}{user_code}'
+    language_pair = parent_task_id.split("_")[1]
+    result = {
+        "parent_task_id": parent_task_id,
+        "trainer_id": trainer_id,
+        "ncpus": ncpus,
+        "ngpus": ngpus,
+        "entity_owner": entity_owner,
+        "trainer_entities": trainer_entities,
+        "service": service,
+        "resource": resource,
+        "language_pair": language_pair,
+        "user_code": user_code,
+        "entity_code": entity_code,
+        "docker_image": docker_image,
     }
 
-    return content
+    return result
+
+
+def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, to_translate_corpus, model_task_map):
+    result = {
+        "_id": evaluation_id,
+        "name": evaluation_name,
+        "creator": creator,
+        "models": []
+    }
+
+    for model in models:
+        model_evaluation_info = {
+            "name": model,
+            "tests": {},
+            "tasks": model_task_map[model]
+        }
+
+        for corpus in to_translate_corpus:
+            source_corpus = corpus[0]
+            result_corpus = corpus[1]
+            model_evaluation_info["tests"][source_corpus.replace(".", "%")] = {
+                "score": {},
+                "output": result_corpus
+            }
+
+        result["models"].append(model_evaluation_info)
+
+    mongo_client.create_evaluation_catalog(result)
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
