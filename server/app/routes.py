@@ -1319,9 +1319,9 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
                                                 lp=None, state=state, creator=creator)
 
 
-@app.route("/evaluation/add", methods=["POST"])
-@filter_request("POST/evaluation/add", "train")
-def evaluation():
+@app.route("/evaluations", methods=["POST"])
+@filter_request("POST/evaluations", "train")
+def create_evaluation():
     # TODO: Create new function to get service and user info
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
