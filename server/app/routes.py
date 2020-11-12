@@ -856,15 +856,26 @@ def launch_v2():
 
     (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
 
+    other_task_info["model"] = task_id
     for tc in task_create:
         task.create(*tc)
 
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, task_ids, tags)
+    tasks_for_model = create_tasks_for_model(task_ids)
+
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks_for_model, tags)
 
     return flask.jsonify(task_ids)
+
+
+def create_tasks_for_model(task_ids):
+    tasks = []
+    for task in task_ids:
+        task_id = task.split('\t')[1]
+        tasks.append(task_id)
+    return tasks
 
 
 def parse_request_data(request):
