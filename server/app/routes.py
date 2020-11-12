@@ -2027,6 +2027,15 @@ def get_task_status(task_id):
     return current_status
 
 
+def check_task_exists(task_id):
+    with redis_db.acquire_lock(task_id):
+        current_status = task.info(redis_db, taskfile_dir, task_id, "status")
+        if current_status is None:
+            return False
+        else:
+            return True
+
+
 def terminate_internal(task_id):
     current_status = get_task_status(task_id)
     if current_status == "stopped":
