@@ -156,11 +156,14 @@ class MongoDatabase:
 
     def create_evaluation_catalog(self, evaluation_catalog):
         the_table = self.get("evaluations")
-        the_table.insert(evaluation_catalog)
+        the_table.insert(evaluation_catalog, check_keys=False)
 
-    def get_evaluation_catalogs(self):
+    def get_evaluation_catalogs(self, visible_entities):
+        query = {}
+        if visible_entities:
+            query = {"creator.entity_code": {"$in": visible_entities}}
         the_table = self.get("evaluations")
-        evaluation_catalogs = the_table.find()
+        evaluation_catalogs = the_table.find(query)
         return evaluation_catalogs
 
     def get_evaluation_catalog(self, evaluation_id):

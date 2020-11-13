@@ -1327,8 +1327,14 @@ def create_evaluation():
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     user = g.user
-    user_id = user.id
     user_code = user.user_code
+    creator = {
+        'user_id': user.id,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'entity_id': user.entity.id,
+        'entity_code': user.entity.entity_code
+    }
 
     evaluation_id = ObjectId()
 
@@ -1369,12 +1375,13 @@ def create_evaluation():
         # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
         translation_docker_image = {
             "image": "systran/pn9_tf",
-            "tag": "v1.35.1",
+            "tag": "v1.35.2-beta9",
             "registry": "dockersystran"
         }
+        translate_output = list(map(lambda ele: [ele[0], ele[1].replace('<MODEL>', model)], to_translate_corpus))
         translation_task_infos = combine_common_task_infos(model, user_code, entity_code, translation_docker_image, 4,
                                                            0, entity_owner, trainer_entities, "auto")
-        translation_task_id = create_translation_task(translation_task_infos, to_translate_corpus, other_task_infos)
+        translation_task_id = create_translation_task(translation_task_infos, translate_output, other_task_infos)
 
         # TODO: Create new function to get scoring docker image
         scoring_docker_image = {
@@ -1382,10 +1389,11 @@ def create_evaluation():
             "registry": "dockerhub",
             "tag": "latest"
         }
+        score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
         scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
                                                        scoring_docker_image, 1,
                                                        0, entity_owner, trainer_entities, "auto")
-        scoring_task_id = create_scoring_task(scoring_task_infos, to_score_corpus, other_task_infos)
+        scoring_task_id = create_scoring_task(scoring_task_infos, score_output, other_task_infos)
 
         model_task_map[model] = {
             "trans": {
@@ -1398,7 +1406,7 @@ def create_evaluation():
             }
         }
 
-    create_evaluation_catalog(evaluation_id, evaluation_name, user_id, models, to_translate_corpus, model_task_map,
+    create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, to_translate_corpus, model_task_map,
                               source_language, target_language)
 
     return flask.jsonify(model_task_map)
@@ -1685,7 +1693,7 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
         for corpus in to_translate_corpus:
             source_corpus = corpus[0]
             result_corpus = corpus[1]
-            model_evaluation_info["tests"][source_corpus.replace(".", "\uFF0E")] = {
+            model_evaluation_info["tests"][source_corpus] = {
                 "score": {},
                 "output": result_corpus.replace("<MODEL>", model)
             }
@@ -1698,7 +1706,8 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
 @app.route("/evaluations", methods=["GET"])
 @filter_request("GET/evaluations", "train")
 def get_evaluations():
-    evaluation_catalogs = list(mongo_client.get_evaluation_catalogs())
+    visible_entities = [g.user.entity.entity_code]
+    evaluation_catalogs = list(mongo_client.get_evaluation_catalogs(visible_entities))
     return cust_jsonify(evaluation_catalogs)
 
 
