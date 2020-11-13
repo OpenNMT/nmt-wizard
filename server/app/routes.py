@@ -856,15 +856,26 @@ def launch_v2():
 
     (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
 
+    other_task_info["model"] = task_id
     for tc in task_create:
         task.create(*tc)
 
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, task_ids, tags)
+    tasks_for_model = create_tasks_for_model(task_ids)
+
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks_for_model, tags)
 
     return flask.jsonify(task_ids)
+
+
+def create_tasks_for_model(task_ids):
+    tasks = []
+    for task in task_ids:
+        task_id = task.split('\t')[1]
+        tasks.append(task_id)
+    return tasks
 
 
 def parse_request_data(request):
@@ -2008,13 +2019,29 @@ def terminate(task_id):
     return flask.jsonify(message=msg)
 
 
-def terminate_internal(task_id):
+def get_task_status(task_id):
     with redis_db.acquire_lock(task_id):
         current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
             abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-        elif current_status == "stopped":
-            return "%s already stopped" % task_id
+    return current_status
+
+
+def check_task_exists(task_id):
+    with redis_db.acquire_lock(task_id):
+        current_status = task.info(redis_db, taskfile_dir, task_id, "status")
+        if current_status is None:
+            return False
+        else:
+            return True
+
+
+def terminate_internal(task_id):
+    current_status = get_task_status(task_id)
+    if current_status == "stopped":
+        return "%s already stopped" % task_id
+
+    with redis_db.acquire_lock(task_id):
         phase = flask.request.args.get('phase')
 
     res = post_function('GET/task/terminate', task_id, phase)
