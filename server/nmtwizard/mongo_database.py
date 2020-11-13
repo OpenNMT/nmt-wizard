@@ -157,3 +157,13 @@ class MongoDatabase:
     def create_evaluation_catalog(self, evaluation_catalog):
         the_table = self.get("evaluations")
         the_table.insert(evaluation_catalog)
+
+    def get_evaluation_catalogs(self):
+        the_table = self.get("evaluations")
+        evaluation_catalogs = the_table.find()
+        return evaluation_catalogs
+
+    def get_evaluation_catalog(self, evaluation_id):
+        the_table = self.get("evaluations")
+        evaluation_catalog = the_table.find_one({"_id": evaluation_id})
+        return evaluation_catalog

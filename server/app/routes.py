@@ -1691,6 +1691,13 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
     mongo_client.create_evaluation_catalog(result)
 
 
+@app.route("/evaluations", methods=["GET"])
+@filter_request("GET/evaluations", "train")
+def get_evaluations():
+    evaluation_catalogs = list(mongo_client.get_evaluation_catalogs())
+    return cust_jsonify(evaluation_catalogs)
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
