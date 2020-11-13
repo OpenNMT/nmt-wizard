@@ -31,6 +31,7 @@ from systran_storages import StorageClient
 from nmtwizard.common import rmprivate
 from nmtwizard.helper import boolean_param
 
+
 GLOBAL_POOL_NAME = "sa_global_pool"
 
 logger = logging.getLogger(__name__)
@@ -1172,7 +1173,7 @@ def get_docker_image_from_db(service_module):
 
     if not latest_docker_image_tag:
         return result
-    return {**result, **{"tag": latest_docker_image_tag}}
+    return {**result, **{"tag": f'v{latest_docker_image_tag}'}}
 
 
 def get_latest_docker_image_tag(image):
@@ -1362,12 +1363,13 @@ def create_evaluation():
 
     for model in models:
         other_task_infos = {
-            "evaluation_id": str(evaluation_id)
+            "evaluation_id": str(evaluation_id),
+            "_model": model
         }
         # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
         translation_docker_image = {
             "image": "systran/pn9_tf",
-            "tag": "v1.45.3",
+            "tag": "v1.35.1",
             "registry": "dockersystran"
         }
         translation_task_infos = combine_common_task_infos(model, user_code, entity_code, translation_docker_image, 4,
@@ -1378,7 +1380,7 @@ def create_evaluation():
         scoring_docker_image = {
             "image": "nmtwizard/score",
             "registry": "dockerhub",
-            "tag": "v1.1.1"
+            "tag": "latest"
         }
         scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
                                                        scoring_docker_image, 1,
@@ -1394,7 +1396,8 @@ def create_evaluation():
             }
         }
 
-    create_evaluation_catalog(evaluation_id, evaluation_name, user_id, models, to_translate_corpus, model_task_map)
+    create_evaluation_catalog(evaluation_id, evaluation_name, user_id, models, to_translate_corpus, model_task_map,
+                              source_language, target_language)
 
     return flask.jsonify(model_task_map)
 
@@ -1493,7 +1496,7 @@ def get_content_of_scoring_task(task_infos, to_score_corpus):
         input_corpus.append(corpus[0])
         references_corpus.append(corpus[1])
     docker_command = ['score']
-    docker_command.extend(["-"])
+    docker_command.extend(["-o"])
     docker_command.extend(input_corpus)
     docker_command.extend(["-r"])
     docker_command.extend(references_corpus)
@@ -1551,6 +1554,12 @@ def get_content_of_task(docker_command, task_infos):
     ngpus = task_infos.get("ngpus")
     service = task_infos.get("service")
     iterations = task_infos.get("iterations", 1)
+    options = task_infos.get("options", {})
+    try:
+        support_statistics = semver.match(docker_image["tag"][1:], ">=1.17.0")
+    except ValueError:
+        support_statistics = False
+
     content = {
         'docker': {
             **docker_image, **{"command": docker_command}
@@ -1561,7 +1570,8 @@ def get_content_of_task(docker_command, task_infos):
         'ncpus': ncpus,
         'iterations': iterations,
         'service': service,
-        'support_statistics': semver.match(docker_image["tag"][1:], ">=1.17.0")
+        "options": options,
+        'support_statistics': support_statistics
     }
 
     return content
@@ -1650,11 +1660,14 @@ def combine_common_task_infos(parent_task_id, user_code, entity_code, docker_ima
     return result
 
 
-def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, to_translate_corpus, model_task_map):
+def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, to_translate_corpus, model_task_map,
+                              source_language, target_language):
     result = {
         "_id": evaluation_id,
         "name": evaluation_name,
         "creator": creator,
+        "source_language": source_language,
+        "target_language": target_language,
         "models": []
     }
 
@@ -1668,7 +1681,7 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
         for corpus in to_translate_corpus:
             source_corpus = corpus[0]
             result_corpus = corpus[1]
-            model_evaluation_info["tests"][source_corpus.replace(".", "%")] = {
+            model_evaluation_info["tests"][source_corpus.replace(".", "\uFF0E")] = {
                 "score": {},
                 "output": result_corpus
             }
