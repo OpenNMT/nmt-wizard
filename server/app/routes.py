@@ -2015,42 +2015,28 @@ def list_tasks(pattern):
 @filter_request("GET/task/terminate")
 @task_write_control
 def terminate(task_id):
-    msg = terminate_internal(task_id)
+    msg, task_status = terminate_internal(task_id)
+    if task_status is None:
+        abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     return flask.jsonify(message=msg)
 
 
-def get_task_status(task_id):
-    with redis_db.acquire_lock(task_id):
-        current_status = task.info(redis_db, taskfile_dir, task_id, "status")
-        if current_status is None:
-            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-    return current_status
-
-
-def check_task_exists(task_id):
-    with redis_db.acquire_lock(task_id):
-        current_status = task.info(redis_db, taskfile_dir, task_id, "status")
-        if current_status is None:
-            return False
-        else:
-            return True
-
-
 def terminate_internal(task_id):
-    current_status = get_task_status(task_id)
-    if current_status == "stopped":
-        return "%s already stopped" % task_id
-
     with redis_db.acquire_lock(task_id):
-        phase = flask.request.args.get('phase')
+        current_status = task.info(redis_db, taskfile_dir, task_id, "status")
+        if current_status is None:
+            return "task %s unknown" % task_id, current_status
+        elif current_status == "stopped":
+            return "%s already stopped" % task_id, current_status
 
+    phase = flask.request.args.get('phase')
     res = post_function('GET/task/terminate', task_id, phase)
     if res:
         task.terminate(redis_db, task_id, phase="publish_error")
-        return "problem while posting model: %s" % res
+        return "problem while posting model: %s" % res, current_status
 
     task.terminate(redis_db, task_id, phase=phase)
-    return "terminating %s" % task_id
+    return "terminating %s" % task_id, current_status
 
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])
