@@ -1390,9 +1390,11 @@ def create_evaluation():
         model_task_map[model] = {
             "trans": {
                 "id": translation_task_id,
+                "status": "running"
             },
             "score": {
-                "id": scoring_task_id
+                "id": scoring_task_id,
+                "status": "running"
             }
         }
 
@@ -1668,7 +1670,9 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
         "creator": creator,
         "source_language": source_language,
         "target_language": target_language,
-        "models": []
+        "lp": f"{source_language}_{target_language}",
+        "models": [],
+        "created_at": int(time.time())
     }
 
     for model in models:
@@ -1683,7 +1687,7 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
             result_corpus = corpus[1]
             model_evaluation_info["tests"][source_corpus.replace(".", "\uFF0E")] = {
                 "score": {},
-                "output": result_corpus
+                "output": result_corpus.replace("<MODEL>", model)
             }
 
         result["models"].append(model_evaluation_info)
