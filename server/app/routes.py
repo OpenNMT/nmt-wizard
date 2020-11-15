@@ -1378,8 +1378,14 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
 # check model training is completed
 # You can use function get_docker_image_info(service_module, entity_owner, docker_image) to get docker image
 # You can get ncpus, ngpus from user's request or service config
-def create_release_task(model, user_code, entity_code, docker_image, ncpus, ngpus, entity_owner, trainer_entities,
-                        destination="pn9_release:", service=GLOBAL_POOL_NAME):
+def create_release_task(model, user_code, entity_code, docker_image, entity_owner, trainer_entities, ncpus=None,
+                        ngpus=None, destination="pn9_release:", service=GLOBAL_POOL_NAME):        
+    if ngpus is None:
+        ngpus = 0
+    if ncpus is None:
+        service_config = config.get_service_config(mongo_client, service)
+        ncpus = get_cpu_count(service_config, ngpus, "release")
+
     content = get_content_of_release_task(model, user_code, entity_code, docker_image, ncpus, ngpus, destination,
                                           service)
     priority = 12
@@ -1452,6 +1458,7 @@ def get_content_of_release_task(model, user_code, entity_code, docker_image, ncp
         'ncpus': ncpus,
         'iterations': 1,
         'service': service,
+        'options': {},
         'support_statistics': semver.match(docker_image["tag"][1:], ">=1.17.0")
     }
 
