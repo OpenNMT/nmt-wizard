@@ -1340,10 +1340,10 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
 def create_release_task(model, user_code, entity_code, docker_image, entity_owner, trainer_entities, ncpus=None,
                         ngpus=None, destination="pn9_release:", service=GLOBAL_POOL_NAME):        
     if ngpus is None:
-        ngpus = 1
+        ngpus = 0
     if ncpus is None:
         service_config = config.get_service_config(mongo_client, service)
-        ncpus = get_cpu_count(service_config, ngpus, "relea")
+        ncpus = get_cpu_count(service_config, ngpus, "release")
 
     content = get_content_of_release_task(model, user_code, entity_code, docker_image, ncpus, ngpus, destination,
                                           service)
