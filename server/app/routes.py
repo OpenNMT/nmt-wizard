@@ -521,6 +521,7 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
+    # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from default.json + other pool accessible (see /resource/list API)
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     user = g.user
@@ -1035,10 +1036,8 @@ def upload_user_files(storage_client, storage_id, parent_path, data_type, files)
     for file in files:
         file.save(os.path.join(temp_files, file.filename))
         push_infos = storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
-        if push_infos is not None:
-            push_infos_list.append(push_infos)
-    if not push_infos_list:
-        push_infos_list = None
+        assert push_infos and push_infos['nbSegments']
+        push_infos_list.append(push_infos)
     return push_infos_list
 
 
@@ -1151,14 +1150,9 @@ def get_from_scratch_config(source, target, data):
 
 
 def get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos):
-    # TODO change the sample value from 50 to a value given by the CM
     sample = 0
-    if training_corpus_infos is not None:
-        for corpus_infos in training_corpus_infos:
-            if corpus_infos["nbSegments"]:
-                sample += int(corpus_infos["nbSegments"])
-    if sample is 0:
-        sample = 50
+    for corpus_infos in training_corpus_infos:
+        sample += int(corpus_infos["nbSegments"])
     training_data_config = {
         "sample": sample,
         "sample_dist": [{
@@ -1189,7 +1183,7 @@ def get_docker_image_info(service_module, entity_owner, docker_image):
 def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
     registry = _get_registry(service_module, image)
-    tag = "v1.35.1"
+    tag = "v1.35.2-beta9"
 
     result = {
         "image": image,
@@ -1253,6 +1247,7 @@ def get_default_test_data(storage_client, source, target):
             if corresponding_corpus in listdir:
                 result.append(corpus_name)
     return result
+
 
 def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, training_corpus_infos):
     model_name = request_data["model_name"]
