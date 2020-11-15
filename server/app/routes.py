@@ -521,6 +521,7 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
+    # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from default.json + other pool accessible (see /resource/list API)
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     user = g.user
@@ -540,8 +541,10 @@ def launch_v2():
     default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
     tags = request_data.get("tags")
 
-    upload_user_files(storage_client, storage_id, upload_path, "train", training_data)
-    upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+    data_file_info = {
+        "training": upload_user_files(storage_client, storage_id, upload_path, "train", training_data),
+        "testing": upload_user_files(storage_client, storage_id, upload_path, "test", testing_data)
+    }
     tags = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
@@ -552,7 +555,7 @@ def launch_v2():
     assert trainer_entities  # Here: almost sure you are trainer
 
     content = get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
-                                  upload_path, storage_id)
+                                  upload_path, storage_id, data_file_info["training"])
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -1029,9 +1032,13 @@ def get_storage_client(storage_config):
 def upload_user_files(storage_client, storage_id, parent_path, data_type, files):
     path = f"{parent_path}/{data_type}/"
     temp_files = tempfile.mkdtemp()
+    push_infos_list = []
     for file in files:
         file.save(os.path.join(temp_files, file.filename))
-        storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
+        push_infos = storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
+        assert push_infos and push_infos['nbSegments']
+        push_infos_list.append(push_infos)
+    return push_infos_list
 
 
 def get_to_translate_corpus(testing_data, default_test_data, uploaded_data_path, source, target, storage_id):
@@ -1142,10 +1149,12 @@ def get_from_scratch_config(source, target, data):
     }
 
 
-def get_final_training_config(source, target, uploaded_data_path, parent_model):
-    # TODO change the sample value from 50 to a value given by the CM
+def get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos):
+    sample = 0
+    for corpus_infos in training_corpus_infos:
+        sample += int(corpus_infos["nbSegments"])
     training_data_config = {
-        "sample": 50,
+        "sample": sample,
         "sample_dist": [{
             "path": "${GLOBAL_DATA}" + uploaded_data_path + "/train/",
             "distribution": [["*", "*"]]
@@ -1174,7 +1183,7 @@ def get_docker_image_info(service_module, entity_owner, docker_image):
 def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
     registry = _get_registry(service_module, image)
-    tag = "v1.35.1"
+    tag = "v1.35.2-beta9"
 
     result = {
         "image": image,
@@ -1239,7 +1248,8 @@ def get_default_test_data(storage_client, source, target):
                 result.append(corpus_name)
     return result
 
-def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id):
+
+def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, training_corpus_infos):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model", None)
     source = request_data["source"]
@@ -1250,7 +1260,7 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
     docker_image = request_data.get("docker_image", None)
     testing_data = request_data.get("testing_data", None)
 
-    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model)
+    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
     to_translate_corpus = get_to_translate_corpus(testing_data, default_test_data,
                                                   uploaded_data_path, source, target, storage_id)
