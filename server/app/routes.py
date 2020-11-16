@@ -766,7 +766,7 @@ def launch_v2():
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
-                        "tag": "latest",
+                        "tag": "2.0.0",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
@@ -859,6 +859,8 @@ def launch_v2():
 
     (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
 
+    # TODO: if iterations > 1 what models to be displayed?
+    #  Now keep "last" training task_id as "principal" model name, and save this information to all generated tasks
     other_task_info["model"] = task_id
     for tc in task_create:
         task.create(*tc)
@@ -1246,6 +1248,7 @@ def get_default_test_data(storage_client, source, target):
                 continue
             if corresponding_corpus in listdir:
                 result.append(corpus_name)
+                break
     return result
 
 
