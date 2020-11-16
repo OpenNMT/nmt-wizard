@@ -31,7 +31,6 @@ from systran_storages import StorageClient
 from nmtwizard.common import rmprivate
 from nmtwizard.helper import boolean_param
 
-
 GLOBAL_POOL_NAME = "sa_global_pool"
 
 logger = logging.getLogger(__name__)
@@ -522,6 +521,7 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
+    # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from default.json + other pool accessible (see /resource/list API)
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     user = g.user
@@ -541,9 +541,10 @@ def launch_v2():
     default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
     tags = request_data.get("tags")
 
-    upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data)
-    upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
-
+    data_file_info = {
+        "training": upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data),
+        "testing": upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
+    }
     tags = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
@@ -554,7 +555,7 @@ def launch_v2():
     assert trainer_entities  # Here: almost sure you are trainer
 
     content = get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
-                                  upload_path, storage_id)
+                                  upload_path, storage_id, data_file_info["training"])
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -765,7 +766,7 @@ def launch_v2():
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
-                        "tag": "latest",
+                        "tag": "2.0.0",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
@@ -858,15 +859,28 @@ def launch_v2():
 
     (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
 
+    # TODO: if iterations > 1 what models to be displayed?
+    #  Now keep "last" training task_id as "principal" model name, and save this information to all generated tasks
+    other_task_info["model"] = task_id
     for tc in task_create:
         task.create(*tc)
 
     if len(task_ids) == 1:
         task_ids = task_ids[0]
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, task_ids, tags)
+    tasks_for_model = create_tasks_for_model(task_ids)
+
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks_for_model, tags)
 
     return flask.jsonify(task_ids)
+
+
+def create_tasks_for_model(task_ids):
+    tasks = []
+    for task in task_ids:
+        task_id = task.split('\t')[1]
+        tasks.append(task_id)
+    return tasks
 
 
 def parse_request_data(request):
@@ -1019,9 +1033,13 @@ def get_storage_client(storage_config):
 
 def upload_user_files(storage_client, storage_id, path, files):
     temp_files = tempfile.mkdtemp()
+    push_infos_list = []
     for file in files:
         file.save(os.path.join(temp_files, file.filename))
-        storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
+        push_infos = storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
+        assert push_infos and push_infos['nbSegments']
+        push_infos_list.append(push_infos)
+    return push_infos_list
 
 
 def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data=[]):
@@ -1129,10 +1147,12 @@ def get_from_scratch_config(source, target, data):
     }
 
 
-def get_final_training_config(source, target, uploaded_data_path, parent_model):
-    # TODO change the sample value from 50 to a value given by the CM
+def get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos):
+    sample = 0
+    for corpus_infos in training_corpus_infos:
+        sample += int(corpus_infos["nbSegments"])
     training_data_config = {
-        "sample": 50,
+        "sample": sample,
         "sample_dist": [{
             "path": "${GLOBAL_DATA}" + uploaded_data_path + "/train/",
             "distribution": [["*", "*"]]
@@ -1161,7 +1181,7 @@ def get_docker_image_info(service_module, entity_owner, docker_image):
 def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
     registry = _get_registry(service_module, image)
-    tag = "v1.35.1"
+    tag = "v1.35.2-beta9"
 
     result = {
         "image": image,
@@ -1227,18 +1247,18 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id):
+def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, training_corpus_infos):
     model_name = request_data["model_name"]
-    parent_model = request_data.get("parent_model", None)
+    parent_model = request_data.get("parent_model")
     source = request_data["source"]
     target = request_data["target"]
-    ncpus = request_data.get("ncpus", None)
-    priority = request_data.get("priority", None)
-    iterations = request_data.get("iterations", None)
-    docker_image = request_data.get("docker_image", None)
-    testing_data = request_data.get("testing_data", None)
+    ncpus = request_data.get("ncpus")
+    priority = request_data.get("priority")
+    iterations = request_data.get("iterations")
+    docker_image = request_data.get("docker_image")
+    testing_data = request_data.get("testing_data")
 
-    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model)
+    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
     to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data)
     to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data)
@@ -1300,8 +1320,7 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tags,
-                         state="creating"):
+def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tags, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -2268,7 +2287,9 @@ def list_tasks(pattern):
 @filter_request("GET/task/terminate")
 @task_write_control
 def terminate(task_id):
-    msg = terminate_internal(task_id)
+    msg, task_status = terminate_internal(task_id)
+    if task_status is None:
+        abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     return flask.jsonify(message=msg)
 
 
@@ -2276,18 +2297,18 @@ def terminate_internal(task_id):
     with redis_db.acquire_lock(task_id):
         current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
-            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
+            return "task %s unknown" % task_id, current_status
         elif current_status == "stopped":
-            return "%s already stopped" % task_id
-        phase = flask.request.args.get('phase')
+            return "%s already stopped" % task_id, current_status
 
+    phase = flask.request.args.get('phase')
     res = post_function('GET/task/terminate', task_id, phase)
     if res:
         task.terminate(redis_db, task_id, phase="publish_error")
-        return "problem while posting model: %s" % res
+        return "problem while posting model: %s" % res, current_status
 
     task.terminate(redis_db, task_id, phase=phase)
-    return "terminating %s" % task_id
+    return "terminating %s" % task_id, current_status
 
 
 @app.route("/task/beat/<string:task_id>", methods=["PUT", "GET"])

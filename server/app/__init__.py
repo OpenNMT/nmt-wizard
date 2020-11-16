@@ -67,4 +67,11 @@ assert system_config["default"]["taskfile_dir"], "missing taskfile_dir from sett
 taskfile_dir = system_config["default"]["taskfile_dir"]
 assert os.path.isdir(taskfile_dir), "taskfile_dir (%s) must be a directory" % taskfile_dir
 
+input_dir = app.get_other_config(["push_model", "inputDir"], fallback=None)
+if input_dir is not None:
+    if not os.path.isabs(input_dir):
+        input_dir = os.path.join(os.path.dirname(config.system_config_file), input_dir)
+        app.other_config['push_model']['inputDir'] = input_dir
+    assert os.path.isdir(input_dir), "Invalid input directory used for deploying model: %s" % input_dir
+
 from app import routes
