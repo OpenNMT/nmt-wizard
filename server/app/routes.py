@@ -1248,20 +1248,19 @@ def get_default_test_data(storage_client, source, target):
                 continue
             if corresponding_corpus in listdir:
                 result.append(corpus_name)
-                break
     return result
 
 
 def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, training_corpus_infos):
     model_name = request_data["model_name"]
-    parent_model = request_data.get("parent_model", None)
+    parent_model = request_data.get("parent_model")
     source = request_data["source"]
     target = request_data["target"]
-    ncpus = request_data.get("ncpus", None)
-    priority = request_data.get("priority", None)
-    iterations = request_data.get("iterations", None)
-    docker_image = request_data.get("docker_image", None)
-    testing_data = request_data.get("testing_data", None)
+    ncpus = request_data.get("ncpus")
+    priority = request_data.get("priority")
+    iterations = request_data.get("iterations")
+    docker_image = request_data.get("docker_image")
+    testing_data = request_data.get("testing_data")
 
     final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
