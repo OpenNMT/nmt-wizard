@@ -3,7 +3,8 @@ from pymongo import MongoClient
 tables = {
     "configs": "pn9-config",
     "tags": "pn9-tag",
-    "dockers": "pn9-docker"
+    "dockers": "pn9-docker",
+    "evaluations": "pn9-evaluation"
 }
 
 
@@ -152,3 +153,20 @@ class MongoDatabase:
         }
         images = the_table.find(conditions)
         return images
+
+    def create_evaluation_catalog(self, evaluation_catalog):
+        the_table = self.get("evaluations")
+        the_table.insert(evaluation_catalog, check_keys=False)
+
+    def get_evaluation_catalogs(self, visible_entities):
+        query = {}
+        if visible_entities:
+            query = {"creator.entity_code": {"$in": visible_entities}}
+        the_table = self.get("evaluations")
+        evaluation_catalogs = the_table.find(query)
+        return evaluation_catalogs
+
+    def get_evaluation_catalog(self, evaluation_id):
+        the_table = self.get("evaluations")
+        evaluation_catalog = the_table.find_one({"_id": evaluation_id})
+        return evaluation_catalog
