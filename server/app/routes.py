@@ -766,7 +766,7 @@ def launch_v2():
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
-                        "tag": "2.0.0",
+                        "tag": "2.0.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
@@ -1389,7 +1389,7 @@ def create_evaluation():
     for model in models:
         other_task_infos = {
             "evaluation_id": str(evaluation_id),
-            "_model": model
+            "eval_model": model
         }
         # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
         translation_docker_image = {
@@ -1406,7 +1406,7 @@ def create_evaluation():
         scoring_docker_image = {
             "image": "nmtwizard/score",
             "registry": "dockerhub",
-            "tag": "latest"
+            "tag": "2.0.0-beta1"
         }
         score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
         scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
@@ -1538,9 +1538,9 @@ def get_content_of_scoring_task(task_infos, to_score_corpus):
 
 def create_release_task(task_infos, destination="pn9_release:", other_infos=None):
     content = get_content_of_release_task(task_infos, destination)
-    priority = 12
-    task_type = "trans"
-    task_suffix = "trans"
+    priority = 10
+    task_type = TASK_RELEASE_TYPE
+    task_suffix = TASK_RELEASE_TYPE
     task_files = {}
 
     task_infos_extent = {**task_infos, **{
@@ -2047,7 +2047,7 @@ def launch(service):
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
-                        "tag": "latest",
+                        "tag": "2.0.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
