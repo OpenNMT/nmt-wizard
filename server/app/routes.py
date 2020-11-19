@@ -571,7 +571,6 @@ def launch_v2():
 
     totranslate = content["totranslate"]
     toscore = content["toscore"]
-    totuminer = None
 
     del content["totranslate"]
     del content["toscore"]
@@ -785,61 +784,6 @@ def launch_v2():
                         "score", score_task_id,
                         0, 1))
 
-            if totuminer:
-                # tuminer can run in CPU only mode, but it will be very slow for large data
-                ngpus_recommend = ngpus
-                ncpus_recommend = ncpus or get_cpu_count(service_config, 0, "tuminer")
-
-                totuminer_parent = {}
-                for (ifile, ofile) in totuminer:
-                    # ofile = ofile.replace('<MODEL>', task_id)
-                    parent_task_id = file_to_transtaskid.get(ofile)
-                    if parent_task_id:
-                        if parent_task_id not in totuminer_parent:
-                            totuminer_parent[parent_task_id] = {"infile": [], "outfile": [],
-                                                                "scorefile": []}
-                        ofile_split = ofile.split(':')
-                        if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
-                            ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
-                        totuminer_parent[parent_task_id]["infile"].append(ifile)
-                        totuminer_parent[parent_task_id]["outfile"].append(ofile)
-                        scorefile = ofile
-                        if scorefile.endswith(".gz"):
-                            scorefile = scorefile[:-3]
-                        totuminer_parent[parent_task_id]["scorefile"].append(scorefile[:-3])
-                for parent_task_id, in_out in six.iteritems(totuminer_parent):
-                    content_tuminer = deepcopy(content)
-                    content_tuminer["priority"] = priority + 1
-                    content_tuminer["ngpus"] = ngpus_recommend
-                    content_tuminer["ncpus"] = ncpus_recommend
-
-                    tuminer_resource = service_module.select_resource_from_capacity(resource,
-                                                                                    Capacity(
-                                                                                        ngpus_recommend,
-                                                                                        ncpus_recommend))
-
-                    image_score = "nmtwizard/tuminer"
-
-                    content_tuminer["docker"] = {
-                        "image": image_score,
-                        "registry": _get_registry(service_module, image_score),
-                        "tag": "latest",
-                        "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
-                    }
-
-                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
-                    task_create.append(
-                        (redis_db, taskfile_dir,
-                         tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
-                         content_tuminer,
-                         (), priority + 2,
-                         ngpus_recommend, ncpus_recommend,
-                         other_task_info))
-                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                        "tuminer", tuminer_task_id,
-                        ngpus_recommend, ncpus_recommend))
-
             if task_type == TASK_RELEASE_TYPE:
                 j = 0
                 while j < len(content["docker"]["command"]) - 1:
@@ -913,11 +857,8 @@ def validate_request_data(request):
     training_data = request_files.getlist("training_data")
     testing_data = request_files.getlist("testing_data")
 
-    # source = request_data.get("source")
-    # target = request_data.get("target")
     tags = request_data.get("tags")
     model_name = request_data.get("model_name")
-    # parent_model = request_data.get("parent_model")
     docker_image = request_data.get("docker_image")
     ncpus = request_data.get("ncpus")
     priority = request_data.get("priority")
@@ -1006,8 +947,6 @@ def validate_ncpus(ncpus):
     if not ncpus.isnumeric():
         raise Exception('ncpus must be numeric')
 
-    # TODO: Validate ncpus
-
 
 def validate_priority(priority):
     if priority is None:
@@ -1015,16 +954,12 @@ def validate_priority(priority):
     if not priority.isnumeric():
         raise Exception('priority must be numeric')
 
-    # TODO: Validate priority
-
 
 def validate_iteration(num_of_iteration):
     if num_of_iteration is None:
         return
     if not num_of_iteration.isnumeric():
         raise Exception('num_of_iteration must be numeric')
-
-    # TODO: Validate num_of_iteration
 
 
 def validate_file(corpus_type, corpus_config, training_data, testing_data, dataset):
