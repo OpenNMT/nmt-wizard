@@ -26,9 +26,7 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, \
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import get_task_entity, TaskInfo
-
-from systran_storages import StorageClient
-from nmtwizard.common import rmprivate
+from utils.storage_utils import StorageUtils
 from nmtwizard.helper import boolean_param
 
 GLOBAL_POOL_NAME = "sa_global_pool"
@@ -530,10 +528,7 @@ def launch_v2():
     # TODO: Try-catch
     request_data = parse_request_data(request)
 
-    service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
-    entity_storages_config = get_entity_storages(service_config, entity_code)
-    storage_client = get_storage_client(entity_storages_config)
-    storage_id = next(iter(entity_storages_config))
+    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
     upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
 
     training_data = request_data.get("training_data")
@@ -542,8 +537,8 @@ def launch_v2():
     tags = request_data.get("tags")
 
     data_file_info = {
-        "training": upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data),
-        "testing": upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
+        "training": upload_user_files(storage_client, global_storage_name, f"{upload_path}/train/", training_data),
+        "testing": upload_user_files(storage_client, global_storage_name, f"{upload_path}/test/", testing_data)
     }
     tags = process_tags(tags, entity_code, user_code)
 
@@ -555,7 +550,7 @@ def launch_v2():
     assert trainer_entities  # Here: almost sure you are trainer
 
     content = get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
-                                  upload_path, storage_id, data_file_info["training"])
+                                  upload_path, global_storage_name, data_file_info["training"])
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -1019,18 +1014,6 @@ def validate_iteration(num_of_iteration):
     # TODO: Validate num_of_iteration
 
 
-def get_entity_storages(service_config, entity_code):
-    if config.is_polyentity_config(service_config):
-        entity_config = service_config["entities"][entity_code]
-        return entity_config["storages"]
-    return service_config["storages"]
-
-
-def get_storage_client(storage_config):
-    storage_client = StorageClient(rmprivate(storage_config))
-    return storage_client
-
-
 def upload_user_files(storage_client, storage_id, path, files):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
@@ -1361,10 +1344,8 @@ def create_evaluation():
     request_data = parse_request_data_of_evaluation(request)
 
     # TODO: Create new function to get storage_client, storage_id, service_entities, entity_owner, trainer_entities
-    service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
-    entity_storages_config = get_entity_storages(service_config, entity_code)
-    storage_client = get_storage_client(entity_storages_config)
-    storage_id = next(iter(entity_storages_config))
+    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db,
+                                                                    has_ability, g)
     upload_path = f"/{entity_code}/evaluation/{evaluation_id}"
 
     service_config = config.get_service_config(mongo_client, service)
@@ -1379,10 +1360,10 @@ def create_evaluation():
     source_language = request_data.get("source_language")
     target_language = request_data.get("target_language")
 
-    upload_user_files(storage_client, storage_id, f"{upload_path}/test/", corpus)
+    upload_user_files(storage_client, global_storage_name, f"{upload_path}/test/", corpus)
 
-    to_translate_corpus = get_to_translate_corpus(corpus, upload_path, source_language, target_language, storage_id)
-    to_score_corpus = get_to_score_corpus(corpus, upload_path, source_language, target_language, storage_id)
+    to_translate_corpus = get_to_translate_corpus(corpus, upload_path, source_language, target_language, global_storage_name)
+    to_score_corpus = get_to_score_corpus(corpus, upload_path, source_language, target_language, global_storage_name)
 
     model_task_map = {}
 
