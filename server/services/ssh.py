@@ -46,6 +46,7 @@ def _get_params(config, options):
     params['login_cmd'] = server_cfg.get('login_cmd')
     params['port'] = server_cfg['port']
     params['host'] = server_cfg['host']
+    params['with_nvidia_docker'] = server_cfg.get('with_nvidia_docker')
 
     return params
 
@@ -125,6 +126,7 @@ class SSHService(Service):
                 params['log_dir'],
                 docker_registries,
                 self._config.get('requirements'),
+                params.get('with_nvidia_docker'),
                 False)
         finally:
             client.close()
@@ -156,7 +158,7 @@ class SSHService(Service):
                 task_id,
                 client,
                 xpulist,
-                params['log_dir'],
+                params,
                 docker_config,
                 docker_registry,
                 docker_image,

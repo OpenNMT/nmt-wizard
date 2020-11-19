@@ -32,7 +32,7 @@ class Worker(object):
             self._service = service
 
         def __str__(self):
-            return "(%s:available:%s, inital: %s)" % (self._name, self._available_cap, self._init_capacity)
+            return "(%s:available:%s, initial: %s)" % (self._name, self._available_cap, self._init_capacity)
 
         def add_task(self, task_id, redis):
             if task not in self._tasks:
@@ -235,7 +235,7 @@ class Worker(object):
         except Exception as e:
             self._logger.info('cannot get status for [%s] - %s', task_id, str(e))
             self._redis.hincrby(keyt, 'status_fail', 1)
-            if self._redis.hget(keyt, 'status_fail') > 4:
+            if int(self._redis.hget(keyt, 'status_fail')) > 4:
                 return task.terminate(self._redis, task_id, phase='lost_connection')
             self._redis.hdel(keyt, 'status_fail')
 
