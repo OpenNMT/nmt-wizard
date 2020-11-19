@@ -190,20 +190,20 @@ def fuse_s3_bucket(client, corpus):
     status, _, stderr = run_command(client, "mkdir -p %s && chmod -R 775 %s" % (
         corpus["mount"], corpus["mount"]))
     if status != 0:
-        return RuntimeError('failed to created mount directory: %s' % stderr.read())
+        return RuntimeError('failed to created mount directory: %s' % six.ensure_str(stderr.read()))
     status, _, stderr = run_command(client, "echo %s:%s > s3_passwd && chmod 600 s3_passwd" % (
         corpus["credentials"]["AWS_ACCESS_KEY_ID"],
         corpus["credentials"]["AWS_SECRET_ACCESS_KEY"]))
     if status != 0:
-        raise RuntimeError('failed to store S3 credentials: %s' % stderr.read())
+        raise RuntimeError('failed to store S3 credentials: %s' % six.ensure_str(stderr.read()))
     status, _, stderr = run_command(
         client, "s3fs %s %s -o allow_other -o passwd_file=s3_passwd" % (
             corpus["bucket"], corpus["mount"]))
     if status != 0:
-        raise RuntimeError('failed to fuse S3 bucket: %s' % stderr.read())
+        raise RuntimeError('failed to fuse S3 bucket: %s' % six.ensure_str(stderr.read()))
 
 
-def check_environment(client, lgpu, log_dir, docker_registries, requirements, check=True):
+def check_environment(client, lgpu, log_dir, docker_registries, requirements, with_nvidia_docker=False, check=True):
     """Check that the environment contains all the tools necessary to launch a task
        and meets requirement
     """
@@ -217,7 +217,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
 
         if not program_exists(client, "docker"):
             raise EnvironmentError("docker not available")
-        if len(lgpu) != 0:
+        if len(lgpu) != 0 and with_nvidia_docker:
             if not program_exists(client, "nvidia-docker"):
                 raise EnvironmentError("nvidia-docker not available")
 
@@ -228,7 +228,7 @@ def check_environment(client, lgpu, log_dir, docker_registries, requirements, ch
                 client, 'nvidia-smi -q -i %d -d UTILIZATION,MEMORY' % (gpu_id - 1))
             if exit_status != 0:
                 raise EnvironmentError("gpu check failed (nvidia-smi error %d: %s)" % (
-                    exit_status, stderr.read()))
+                    exit_status, six.ensure_str(stderr.read())))
 
             out = stdout.read()
             gpu = '?'
@@ -284,11 +284,10 @@ def cmd_docker_pull(image_ref, docker_path=None):
 
 def cmd_docker_run(lxpu, docker_options, task_id,
                    docker_image, image_ref, callback_url, callback_interval,
-                   storages, docker_command, log_dir=None, support_statistics=False):
+                   storages, docker_command, server_params=None, support_statistics=False):
     (lgpu, lcpu) = lxpu
     env = {}
     nbgpu = len(lgpu)
-    nv_gpu = ''
     if nbgpu == 0 or (nbgpu == 1 and lgpu[0] == 0):
         gpu_id = '0'
     else:
@@ -297,7 +296,10 @@ def cmd_docker_run(lxpu, docker_options, task_id,
 
     if docker_options.get('dev') == 1:
         return "sleep 35"
-    docker_cmd = 'docker' if gpu_id == '0' else 'nvidia-docker'
+
+    docker_cmd = 'docker'
+    if gpu_id != '0' and server_params and server_params.get('with_nvidia_docker'):
+        docker_cmd = 'nvidia-docker'
     docker_path = docker_options.get('path')
     if docker_path:
         docker_cmd = docker_path + '/' + docker_cmd
@@ -381,7 +383,7 @@ def update_log(task_id,
 def launch_task(task_id,
                 client,
                 lxpu,
-                log_dir,
+                server_params,
                 docker_options,
                 the_docker_registry,
                 docker_image,
@@ -398,7 +400,7 @@ def launch_task(task_id,
         * `task_id`: assigned id for the task and used for logging
         * `client`: ssh client
         * `gpu_id`: if > 0, the id (eventually ids) of the GPU to use on the host
-        * `log_dir`: host docker log
+        * `server_params`: host parameters
         * `docker_options`: environment and mounting points
         * `docker_image`: image name of the docker
         * `docker_tag`: tag - by default latest
@@ -412,18 +414,19 @@ def launch_task(task_id,
     gpu_id = ",".join(lgpu)
     logger.info("launching task - %s / %s", task_id, gpu_id)
     logger.debug("check environment for task %s", task_id)
+    log_dir = server_params["log_dir"]
     check_environment(
         client, lgpu, log_dir,
         {the_docker_registry: docker_options['registries'][the_docker_registry]},
-        requirements)
+        requirements, server_params.get('with_nvidia_docker'))
 
-    if callback_url is not None:
+    if callback_url is not None and False:
         exit_status, stdout, stderr = run_command(
             client,
             "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
             "--data-ascii 'Initialization complete...'" % (callback_url, task_id))
         if exit_status != 0:
-            raise EnvironmentError("cannot send beat back (%s) - aborting" % stderr.read())
+            raise EnvironmentError("cannot send beat back (%s) - aborting" % six.ensure_str(stderr.read()))
 
     image_ref = ""
     if docker_options.get('dev') != 1:
@@ -438,7 +441,7 @@ def launch_task(task_id,
                 cmd_connect_private_registry(docker_registry)
             )
             if exit_status != 0:
-                raise EnvironmentError("cannot connect to private registry: %s" % stderr.read())
+                raise EnvironmentError("cannot connect to private registry: %s" % six.ensure_str(stderr.read()))
 
         # pull the docker image
         registry_urip = '' if registry_uri == '' else registry_uri + '/'
@@ -447,7 +450,7 @@ def launch_task(task_id,
         docker_cmd = cmd_docker_pull(image_ref, docker_path=docker_options.get('path'))
         exit_status, stdout, stderr = run_command(client, docker_cmd)
         if exit_status != 0:
-            raise RuntimeError("error pulling the image %s: %s" % (image_ref, stderr.read()))
+            raise RuntimeError("error pulling the image %s: %s" % (image_ref, six.ensure_str(stderr.read())))
 
     if len(docker_files):
         # we have files to synchronize locally
@@ -462,7 +465,7 @@ def launch_task(task_id,
         cmd_mkdir = "mkdir -p %s/%s" % (mount_tmpdir, task_id)
         exit_status, stdout, stderr = run_command(client, cmd_mkdir)
         if exit_status != 0:
-            raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, stderr.read()))
+            raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, six.ensure_str(stderr.read())))
         logger.info("transfer task files in dockers [%s]", ", ".join(docker_files))
         for f in docker_files:
             p = f.rfind("/")
@@ -471,9 +474,8 @@ def launch_task(task_id,
                 cmd_mkdir = "mkdir -p %s/%s/%s" % (mount_tmpdir, task_id, fdir)
                 exit_status, stdout, stderr = run_command(client, cmd_mkdir)
                 if exit_status != 0:
-                    s = stderr.read()
                     raise RuntimeError("error build task tmp sub-dir: %s, %s" %
-                                       (cmd_mkdir, stderr.read()))
+                                       (cmd_mkdir, six.ensure_str(stderr.read())))
             logger.info("retrieve file %s -> %s/%s", f, mount_tmpdir, task_id)
             cmd_get_files = 'curl "%s/task/file/%s/%s" > %s/%s/%s' % (
                 callback_url,
@@ -485,11 +487,11 @@ def launch_task(task_id,
             exit_status, stdout, stderr = run_command(client, cmd_get_files)
             if exit_status != 0:
                 raise RuntimeError("error retrieving files: %s, %s" %
-                                   (cmd_get_files, stderr.read()))
+                                   (cmd_get_files, six.ensure_str(stderr.read())))
 
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
-                              storages, docker_command, log_dir, support_statistics)
+                              storages, docker_command, server_params, support_statistics)
     env_txt = json.dumps(json.dumps(json.loads(env if env else "{}")))
 
     cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
@@ -501,7 +503,7 @@ def launch_task(task_id,
 
     exit_status, stdout, stderr = run_command(client, cmd, handle_private=False)
     if exit_status != 0:
-        raise RuntimeError("%s run failed: %s" % (cmd, stderr.read()))
+        raise RuntimeError("%s run failed: %s" % (cmd, six.ensure_str(stderr.read())))
 
     # read ps header
     outpgid = stdout.readline()

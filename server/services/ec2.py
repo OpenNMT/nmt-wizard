@@ -202,7 +202,7 @@ class EC2Service(Service):
                 task_id,
                 client,
                 (xpulist[0], None),
-                params['log_dir'],
+                params,
                 docker_config,
                 [docker_registry],
                 docker_image,
