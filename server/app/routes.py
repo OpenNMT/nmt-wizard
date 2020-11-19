@@ -766,7 +766,7 @@ def launch_v2():
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
-                        "tag": "2.0.0-beta1",
+                        "tag": "2.1.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
@@ -1113,36 +1113,8 @@ def get_from_scratch_config(source, target, data):
         "target": target,
         "data": data,
         "options": {
-            "model_type": "Transformer",
-            "config": {
-                "train": {
-                    "maximum_labels_length": 100,
-                    "save_summary_steps": 100,
-                    "keep_checkpoint_max": 8,
-                    "bucket_width": 1,
-                    "maximum_features_length": 100,
-                    "batch_size": 9000,
-                    "batch_type": "tokens",
-                    "sample_buffer_size": 5000000,
-                    "save_checkpoints_steps": 5000,
-                    "single_pass": True
-                },
-                "params": {
-                    "optimizer": "LazyAdamOptimizer",
-                    "decay_steps": 8000,
-                    "length_penalty": 0.6,
-                    "decay_step_duration": 1,
-                    "learning_rate": 2,
-                    "average_loss_in_time": True,
-                    "decay_rate": 512,
-                    "decay_type": "noam_decay",
-                    "label_smoothing": 0.1,
-                    "beam_width": 5
-                },
-                "infer": {
-                    "batch_size": 32
-                }
-            }
+            "auto_config": True,
+            "model": "${SHARED_DATA_DIR}/xx/transformer_mini.py"
         }
     }
 
@@ -1181,7 +1153,7 @@ def get_docker_image_info(service_module, entity_owner, docker_image):
 def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
     registry = _get_registry(service_module, image)
-    tag = "v1.35.2-beta9"
+    tag = "v1.46.0-beta1"
 
     result = {
         "image": image,
@@ -1394,7 +1366,7 @@ def create_evaluation():
         # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
         translation_docker_image = {
             "image": "systran/pn9_tf",
-            "tag": "v1.35.2-beta9",
+            "tag": "v1.46.0-beta1",
             "registry": "dockersystran"
         }
         translate_output = list(map(lambda ele: [ele[0], ele[1].replace('<MODEL>', model)], to_translate_corpus))
@@ -1406,7 +1378,7 @@ def create_evaluation():
         scoring_docker_image = {
             "image": "nmtwizard/score",
             "registry": "dockerhub",
-            "tag": "2.0.0-beta1"
+            "tag": "2.1.0-beta1"
         }
         score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
         scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
@@ -2047,7 +2019,7 @@ def launch(service):
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
-                        "tag": "2.0.0-beta1",
+                        "tag": "2.1.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
