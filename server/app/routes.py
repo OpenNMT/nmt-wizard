@@ -192,6 +192,8 @@ class TaskTranslate(TaskBase):
 
         self._post_init()
 
+    def set_docker_command(self, docker_command):
+        self._content["docker"]["content"] = docker_command
 
 class TaskScore(TaskBase):
     def __init__(self, task_infos, parent_task_id):
