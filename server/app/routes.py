@@ -846,7 +846,7 @@ def launch_v2():
 
         iterations -= 1
         if iterations > 0:
-            parent_task_id = task_train.task_id
+            parent_task_id = task_preprocess.task_id
             change_parent_task(content["docker"]["command"], parent_task_id)
 
     (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
