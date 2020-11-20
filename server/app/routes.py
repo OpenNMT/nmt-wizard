@@ -818,19 +818,20 @@ def launch_v2():
                     subset_idx += 1
 
             if toscore:
-                toscore_parent = {}
+                to_score_parent = {}
                 for (ofile, rfile) in toscore:
                     ofile = ofile.replace('<MODEL>', task_train.task_id)
                     parent_task_id = file_to_trans_task_id.get(ofile)
                     if parent_task_id:
-                        if parent_task_id not in toscore_parent:
-                            toscore_parent[parent_task_id] = {"output": [], "ref": []}
+                        if parent_task_id not in to_score_parent:
+                            to_score_parent[parent_task_id] = {"output": [], "ref": []}
                         ofile_split = ofile.split(':')
                         if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
                             ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
-                        toscore_parent[parent_task_id]["output"].append(ofile)
-                        toscore_parent[parent_task_id]["ref"].append(rfile)
-                for parent_task_id, oref in six.iteritems(toscore_parent):
+                        to_score_parent[parent_task_id]["output"].append(ofile)
+                        to_score_parent[parent_task_id]["ref"].append(rfile)
+
+                for parent_task_id, oref in six.iteritems(to_score_parent):
                     content_score = deepcopy(content)
                     content_score["priority"] = priority + 1
                     content_score["ngpus"] = 0
