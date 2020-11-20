@@ -81,10 +81,13 @@ class RoutesConfiguration:
         self.storage_id = next(iter(self.entity_storages_config))
         self.upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
 
-        self.service_config = config.get_service_config(mongo_client, service)
+        if service is not GLOBAL_POOL_NAME:
+            self.service_config = config.get_service_config(mongo_client, service)
         self.service_module = get_service(service)
         self.service_entities = config.get_entities(self.service_config)
         self.entity_owner = get_entity_owner(self.service_entities, service)
+        self.trainer_entities = get_entities_by_permission("train", flask.g)
+        assert self.trainer_entities  # Here: almost sure you are trainer
 
 
 class TaskBase:
