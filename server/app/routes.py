@@ -723,8 +723,8 @@ def launch_v2():
     parent_struct = None
     parent_task_type = None
 
-    task_ids = []
-    task_create = []
+    task_names = []
+    task_to_create = []
 
     docker_version = content['docker']['tag']
     if docker_version.startswith('v'):
@@ -739,47 +739,27 @@ def launch_v2():
         chain_prepr_train = False
         trans_as_release = False
 
+    task_infos = {
+        "service": service,
+        "request_data": request_data,
+        "content": content,
+        "files": files,
+        "trainer_entities": routes_config.trainer_entities,
+        "routes_configuration": routes_config
+    }
+
     while iterations > 0:
-        if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
+        # PreprocessTask
+        if chain_prepr_train and parent_task_type != "prepr":
+            task_preprocess = TaskPreprocess(task_infos)
+            parent_task_id = task_preprocess.task_id
+            task_to_create.append(task_preprocess)
+            task_names.append(task_preprocess.task_name)
 
-            if explicitname:
-                patch_config_explicitname(content, explicitname)
+            remove_config_option(content["docker"]["command"])
+            change_parent_task(content["docker"]["command"], task_preprocess.task_id)
 
-            idx = 0
-            prepr_command = []
-            train_command = content["docker"]["command"]
-            while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
-                prepr_command.append(train_command[idx])
-                idx += 1
-
-            # create preprocess command, don't push the model on the catalog,
-            # and generate a pseudo model
-            prepr_command.append("--no_push")
-            prepr_command.append("preprocess")
-            prepr_command.append("--build_model")
-
-            content["docker"]["command"] = prepr_command
-
-            content["ncpus"] = ncpus or get_cpu_count(service_config, 0, "preprocess")
-            content["ngpus"] = 0
-
-            preprocess_resource = service_module.select_resource_from_capacity(
-                resource, Capacity(content["ngpus"], content["ncpus"]))
-
-            # launch preprocess task on cpus only
-            task_create.append(
-                (redis_db, taskfile_dir,
-                 prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
-                 _duplicate_adapt(service_module, content),
-                 files, priority, 0, content["ncpus"], other_task_info))
-            task_ids.append(
-                "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
-            remove_config_option(train_command)
-            change_parent_task(train_command, prepr_task_id)
-            parent_task_id = prepr_task_id
-            content["docker"]["command"] = train_command
-
+        # TaskTrain
         if task_type != "prepr":
             task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
@@ -796,8 +776,7 @@ def launch_v2():
                 except Exception:
                     pass
 
-            content["ncpus"] = ncpus or \
-                               get_cpu_count(service_config, ngpus, task_type)
+            content["ncpus"] = ncpus or get_cpu_count(routes_config.service_config, ngpus, task_type)
             content["ngpus"] = ngpus
 
             if task_type == "trans" and can_trans_as_release:
@@ -805,18 +784,18 @@ def launch_v2():
                     content["docker"]["command"].append("--as_release")
                     content["ngpus"] = ngpus = 0
 
-            task_resource = service_module.select_resource_from_capacity(
+            task_resource = routes_config.service_module.select_resource_from_capacity(
                 resource, Capacity(content["ngpus"],
                                    content["ncpus"]))
 
-            task_create.append(
+            task_to_create.append(
                 (redis_db, taskfile_dir,
                  task_id, task_type, parent_task_id, task_resource, service,
-                 _duplicate_adapt(service_module, content),
+                 _duplicate_adapt(routes_config.service_module, content),
                  files, priority,
                  content["ngpus"], content["ncpus"],
                  other_task_info))
-            task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+            task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                 task_type, task_id,
                 content["ngpus"], content["ncpus"]))
             parent_task_type = task_type[:5]
@@ -830,11 +809,11 @@ def launch_v2():
                 else:
                     content_translate["ngpus"] = min(ngpus, 1)
 
-                content_translate["ncpus"] = ncpus or get_cpu_count(service_config,
+                content_translate["ncpus"] = ncpus or get_cpu_count(routes_config.service_config,
                                                                     content_translate["ngpus"],
                                                                     "trans")
 
-                translate_resource = service_module.select_resource_from_capacity(
+                translate_resource = routes_config.service_module.select_resource_from_capacity(
                     resource, Capacity(content_translate["ngpus"],
                                        content_translate["ncpus"]))
 
@@ -863,14 +842,14 @@ def launch_v2():
                         file_to_transtaskid[ofile] = trans_task_id
                         content_translate["docker"]["command"].append(ofile)
 
-                    task_create.append(
+                    task_to_create.append(
                         (redis_db, taskfile_dir,
                          trans_task_id, "trans", task_id, translate_resource, service,
-                         _duplicate_adapt(service_module, content_translate),
+                         _duplicate_adapt(routes_config.service_module, content_translate),
                          (), content_translate["priority"],
                          content_translate["ngpus"], content_translate["ncpus"],
                          other_task_info))
-                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                    task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "trans", trans_task_id,
                         content_translate["ngpus"], content_translate["ncpus"]))
                     subset_idx += 1
@@ -894,7 +873,7 @@ def launch_v2():
                     content_score["ngpus"] = 0
                     content_score["ncpus"] = 1
 
-                    score_resource = service_module.select_resource_from_capacity(resource,
+                    score_resource = routes_config.service_module.select_resource_from_capacity(resource,
                                                                                   Capacity(0, 1))
 
                     image_score = "nmtwizard/score"
@@ -906,22 +885,21 @@ def launch_v2():
 
                     content_score["docker"] = {
                         "image": image_score,
-                        "registry": _get_registry(service_module, image_score),
+                        "registry": _get_registry(routes_config.service_module, image_score),
                         "tag": "2.1.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
                                                                                                             "launcher:scores"]
                     }
 
-                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
-                                                                parent_task_id)
-                    task_create.append(
+                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score", parent_task_id)
+                    task_to_create.append(
                         (redis_db, taskfile_dir,
                          score_task_id, "exec", parent_task_id, score_resource, service,
                          content_score,
                          files, priority + 2,
                          0, 1,
                          other_task_info))
-                    task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
+                    task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "score", score_task_id,
                         0, 1))
 
@@ -943,24 +921,24 @@ def launch_v2():
             parent_task_id = task_id
             change_parent_task(content["docker"]["command"], parent_task_id)
 
-    (task_ids, task_create) = post_function('POST/task/launch', task_ids, task_create)
+    (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
 
     # TODO: if iterations > 1 what models to be displayed?
     #  Now keep "last" training task_id as "principal" model name, and save this information to all generated tasks
     other_task_info["model"] = task_id
-    for tc in task_create:
-        task.create(*tc)
+    for tc in task_to_create:
+        tc.create()
 
-    if len(task_ids) == 1:
-        task_ids = task_ids[0]
+    if len(task_names) == 1:
+        task_names = task_names[0]
 
-    tasks_for_model = create_tasks_for_model(task_ids)
+    tasks_for_model = create_tasks_for_model(task_names)
     domain = request_data.get('domain')
 
     input_name = content["name"] if "name" in content else None
     create_model_catalog(task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
 
-    return flask.jsonify(task_ids)
+    return flask.jsonify(task_names)
 
 
 def create_tasks_for_model(task_ids):
