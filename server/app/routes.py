@@ -774,7 +774,6 @@ def launch_v2():
             remove_config_option(content["docker"]["command"])
 
             file_to_transtaskid = {}
-            task_id = task_train.task_id
             if totranslate:
                 content_translate = deepcopy(content)
                 content_translate["priority"] = priority + 1
@@ -795,43 +794,37 @@ def launch_v2():
                     file_per_gpu = len(totranslate)
                 else:
                     file_per_gpu = int((len(totranslate) + ngpus - 1) / ngpus)
+
+                content_translate["docker"]["command"] = ["trans"]
+                if trans_as_release:
+                    content_translate["docker"]["command"].append("--as_release")
+                content_translate["docker"]["command"].append('-i')
+
                 subset_idx = 0
+                trans_task_infos = task_infos
+                trans_task_infos["content"] = content_translate
                 while subset_idx * file_per_gpu < len(totranslate):
-                    content_translate["docker"]["command"] = ["trans"]
-                    if trans_as_release:
-                        content_translate["docker"]["command"].append("--as_release")
-                    content_translate["docker"]["command"].append('-i')
-                    subset_totranslate = totranslate[subset_idx * file_per_gpu:
-                                                     (subset_idx + 1) * file_per_gpu]
-                    for f in subset_totranslate:
-                        content_translate["docker"]["command"].append(f[0])
+                    task_translate = TaskTranslate(trans_task_infos, task_train.task_id)
 
-                    change_parent_task(content_translate["docker"]["command"], task_id)
-                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans",
-                                                                task_id)
+                    docker_command = content_translate["docker"]["command"]
+                    subset_to_translate = totranslate[subset_idx * file_per_gpu:(subset_idx + 1) * file_per_gpu]
+                    change_parent_task(docker_command, task_train.task_id)
+                    docker_command.append('-o')
+                    for f in subset_to_translate:
+                        docker_command.append(f[0])
+                        sub_file = f[1].replace('<MODEL>', task_train.task_id)
+                        file_to_transtaskid[sub_file] = task_translate.task_id
+                        docker_command.append(sub_file)
 
-                    content_translate["docker"]["command"].append('-o')
-                    for f in subset_totranslate:
-                        ofile = f[1].replace('<MODEL>', task_id)
-                        file_to_transtaskid[ofile] = trans_task_id
-                        content_translate["docker"]["command"].append(ofile)
-
-                    task_to_create.append(
-                        (redis_db, taskfile_dir,
-                         trans_task_id, "trans", task_id, translate_resource, service,
-                         _duplicate_adapt(routes_config.service_module, content_translate),
-                         (), content_translate["priority"],
-                         content_translate["ngpus"], content_translate["ncpus"],
-                         other_task_info))
-                    task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                        "trans", trans_task_id,
-                        content_translate["ngpus"], content_translate["ncpus"]))
+                    task_translate.set_docker_command(docker_command)
+                    task_to_create.append(task_translate)
+                    task_names.append(task_translate.task_name)
                     subset_idx += 1
 
             if toscore:
                 toscore_parent = {}
                 for (ofile, rfile) in toscore:
-                    ofile = ofile.replace('<MODEL>', task_id)
+                    ofile = ofile.replace('<MODEL>', task_train.task_id)
                     parent_task_id = file_to_transtaskid.get(ofile)
                     if parent_task_id:
                         if parent_task_id not in toscore_parent:
@@ -885,21 +878,21 @@ def launch_v2():
                         model_name = content["docker"]["command"][j + 1]
                         builtins.pn9model_db.model_set_release_state(model_name,
                                                                      content.get("trainer_id"),
-                                                                     task_id,
+                                                                     task_train.task_id,
                                                                      "in progress")
                         break
                     j = j + 1
 
         iterations -= 1
         if iterations > 0:
-            parent_task_id = task_id
+            parent_task_id = task_train.task_id
             change_parent_task(content["docker"]["command"], parent_task_id)
 
     (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
 
     # TODO: if iterations > 1 what models to be displayed?
     #  Now keep "last" training task_id as "principal" model name, and save this information to all generated tasks
-    other_task_info["model"] = task_id
+    other_task_info["model"] = task_train.task_id
     for tc in task_to_create:
         tc.create()
 
@@ -910,7 +903,7 @@ def launch_v2():
     domain = request_data.get('domain')
 
     input_name = content["name"] if "name" in content else None
-    create_model_catalog(task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
+    create_model_catalog(task_train.task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
 
     return flask.jsonify(task_names)
 
