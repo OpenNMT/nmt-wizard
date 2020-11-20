@@ -195,6 +195,7 @@ class TaskTranslate(TaskBase):
     def set_docker_command(self, docker_command):
         self._content["docker"]["content"] = docker_command
 
+
 class TaskScore(TaskBase):
     def __init__(self, task_infos, parent_task_id):
         TaskBase.__init__(self, task_infos)
@@ -202,17 +203,8 @@ class TaskScore(TaskBase):
         self._task_type = "exec"
         self._parent_task_id = parent_task_id
 
-        self._post_init()
+        self._post_init(must_patch_config_name=False)
 
-
-class TaskTuminer(TaskBase):
-    def __init__(self, task_infos, parent_task_id):
-        TaskBase.__init__(self, task_infos)
-        self._task_suffix = "tuminer"
-        self._task_type = "exec"
-        self._parent_task_id = parent_task_id
-
-        self._post_init()
 
 def get_entity_owner(service_entities, service_name):
     trainer_of_entities = get_entities_by_permission("train", flask.g)
@@ -831,41 +823,26 @@ def launch_v2():
                         to_score_parent[parent_task_id]["output"].append(ofile)
                         to_score_parent[parent_task_id]["ref"].append(rfile)
 
+                content_score = deepcopy(content)
+                content_score["priority"] = priority + 2
+                content_score["ngpus"] = 0
+                content_score["ncpus"] = 1
+                image_score = "nmtwizard/score"
+                content_score["docker"] = {
+                    "image": image_score,
+                    "registry": _get_registry(routes_config.service_module, image_score),
+                    "tag": "2.0.0",
+                    "command": []
+                }
+
                 for parent_task_id, oref in six.iteritems(to_score_parent):
-                    content_score = deepcopy(content)
-                    content_score["priority"] = priority + 1
-                    content_score["ngpus"] = 0
-                    content_score["ncpus"] = 1
-
-                    score_resource = routes_config.service_module.select_resource_from_capacity(resource,
-                                                                                  Capacity(0, 1))
-
-                    image_score = "nmtwizard/score"
-
-                    option_lang = []
-                    if parent_struct is not None:
-                        option_lang.append('-l')
-                        option_lang.append(parent_struct['xxyy'][-2:])
-
-                    content_score["docker"] = {
-                        "image": image_score,
-                        "registry": _get_registry(routes_config.service_module, image_score),
-                        "tag": "2.1.0-beta1",
-                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
-                                                                                                            "launcher:scores"]
-                    }
-
-                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score", parent_task_id)
-                    task_to_create.append(
-                        (redis_db, taskfile_dir,
-                         score_task_id, "exec", parent_task_id, score_resource, service,
-                         content_score,
-                         files, priority + 2,
-                         0, 1,
-                         other_task_info))
-                    task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                        "score", score_task_id,
-                        0, 1))
+                    content_score["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] \
+                                                         + ['-f', "launcher:scores"]
+                    task_score_infos = task_infos
+                    task_score_infos["content"] = content_score
+                    task_score = TaskScore(task_score_infos, parent_task_id)
+                    task_to_create.append(task_score)
+                    task_names.append(task_score.task_name)
 
         iterations -= 1
         if iterations > 0:
