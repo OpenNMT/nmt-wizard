@@ -676,30 +676,35 @@ def launch_v2():
     # TODO: Try-catch
     request_data = parse_request_data(request)
 
+    routes_config = RoutesConfiguration(entity_code, service)
     storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
 
-    data_file_info = get_data_file_info(entity_code, request_data, storage_client, global_storage_name)
-    default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
-
+    training_data = request_data.get("training_data")
+    testing_data = request_data.get("testing_data")
+    default_test_data = get_default_test_data(routes_config.storage_client
+                                              , request_data["source"], request_data["target"])
     tags = request_data.get("tags")
+
+    # TODO: change the signature to use RoutesConfiguration and not each part separately
+    data_file_info = {
+        "training": upload_user_files(routes_config.storage_client, routes_config.storage_id
+                                      , f"{routes_config.upload_path}/train/", training_data),
+        "testing": upload_user_files(routes_config.storage_client, routes_config.storage_id
+                                     , f"{routes_config.upload_path}/test/", testing_data)
+    }
     tags = process_tags(tags, entity_code, user_code)
 
-    service_config = config.get_service_config(mongo_client, service)
-    service_module = get_service(service)
-    service_entities = config.get_entities(service_config)
-    entity_owner = get_entity_owner(service_entities, service)
-    trainer_entities = get_entities_by_permission("train", flask.g)
-    assert trainer_entities  # Here: almost sure you are trainer
+    # TODO: change the signature to use RoutesConfiguration and not each part separately
+    content = get_training_config(service, request_data, default_test_data, user_code, routes_config.service_module
+                                  , routes_config.entity_owner, routes_config.upload_path
+                                  , routes_config.storage_id, data_file_info["training"])
 
-    content = get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
-                                  global_storage_name, data_file_info)
-
-    other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
-                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
+    other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_config.entity_owner,
+                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_config.trainer_entities)}
 
     task_type = "train"
     task_suffix = task_type
-    resource = service_module.get_resource_from_options(content["options"])
+    resource = routes_config.service_module.get_resource_from_options(content["options"])
     iterations = content.get("iterations", 1)
     files = {}
     ngpus = content.get("ngpus", 1)
@@ -1469,15 +1474,7 @@ def create_evaluation():
     request_data = parse_request_data_of_evaluation(request)
 
     # TODO: Create new function to get storage_client, storage_id, service_entities, entity_owner, trainer_entities
-    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db,
-                                                                    has_ability, g)
-    upload_path = f"/{entity_code}/evaluation/{evaluation_id}"
-
-    service_config = config.get_service_config(mongo_client, service)
-    service_entities = config.get_entities(service_config)
-    entity_owner = get_entity_owner(service_entities, service)
-    trainer_entities = get_entities_by_permission("train", flask.g)
-    assert trainer_entities  # Here: almost sure you are trainer
+    routes_config = RoutesConfiguration(entity_code, service)
 
     models = request_data.get("models")
     corpus = request_data.get("corpus")
@@ -1485,10 +1482,14 @@ def create_evaluation():
     source_language = request_data.get("source_language")
     target_language = request_data.get("target_language")
 
-    uploaded_info = upload_user_files(storage_client, global_storage_name, f"{upload_path}/test/", corpus)
+    # TODO: change function signature to take routes_config instead of each components
+    upload_user_files(routes_config.storage_client, routes_config.storage_id
+                      , f"{routes_config.upload_path}/test/", corpus)
 
-    to_translate_corpus = get_to_translate_corpus(uploaded_info, source_language, target_language, global_storage_name)
-    to_score_corpus = get_to_score_corpus(uploaded_info, source_language, target_language, global_storage_name)
+    to_translate_corpus = get_to_translate_corpus(corpus, routes_config.upload_path, source_language
+                                                  , target_language, routes_config.storage_id)
+    to_score_corpus = get_to_score_corpus(corpus, routes_config.upload_path
+                                          , source_language, target_language, routes_config.storage_id)
 
     model_task_map = {}
     models_info = []
@@ -1510,7 +1511,8 @@ def create_evaluation():
         }
         translate_output = list(map(lambda ele: [ele[0], ele[1].replace('<MODEL>', model)], to_translate_corpus))
         translation_task_infos = combine_common_task_infos(model, user_code, entity_code, translation_docker_image, 4,
-                                                           0, entity_owner, trainer_entities, "auto")
+                                                           0, routes_config.entity_owner,
+                                                           routes_config.trainer_entities, "auto")
         translation_task_id = create_translation_task(translation_task_infos, translate_output, other_task_infos)
 
         # TODO: Create new function to get scoring docker image
@@ -1522,7 +1524,8 @@ def create_evaluation():
         score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
         scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
                                                        scoring_docker_image, 1,
-                                                       0, entity_owner, trainer_entities, "auto")
+                                                       0, routes_config.entity_owner,
+                                                       routes_config.trainer_entities, "auto")
         scoring_task_id = create_scoring_task(scoring_task_infos, score_output, other_task_infos)
 
         model_task_map[model] = {
