@@ -177,6 +177,9 @@ class TaskTrain(TaskBase):
         self._task_type = "train"
         self._parent_task_id = parent_task_id
 
+        self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config
+                                                                         , self._content["ngpus"], "train")
+
         self._post_init()
 
 
@@ -760,47 +763,16 @@ def launch_v2():
             change_parent_task(content["docker"]["command"], task_preprocess.task_id)
 
         # TaskTrain
+        # task_type is "train" and never changes
         if task_type != "prepr":
-            task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
-
-            if explicitname:
-                patch_config_explicitname(content, explicitname)
-
-            file_to_transtaskid = {}
-            if task_type == "trans":
-                try:
-                    idx = content["docker"]["command"].index("trans")
-                    output_files = get_params(("-o", "--output"), content["docker"]["command"][idx + 1:])
-                    for ofile in output_files:
-                        file_to_transtaskid[ofile] = task_id
-                except Exception:
-                    pass
-
-            content["ncpus"] = ncpus or get_cpu_count(routes_config.service_config, ngpus, task_type)
-            content["ngpus"] = ngpus
-
-            if task_type == "trans" and can_trans_as_release:
-                if "--as_release" not in content["docker"]["command"] and trans_as_release:
-                    content["docker"]["command"].append("--as_release")
-                    content["ngpus"] = ngpus = 0
-
-            task_resource = routes_config.service_module.select_resource_from_capacity(
-                resource, Capacity(content["ngpus"],
-                                   content["ncpus"]))
-
-            task_to_create.append(
-                (redis_db, taskfile_dir,
-                 task_id, task_type, parent_task_id, task_resource, service,
-                 _duplicate_adapt(routes_config.service_module, content),
-                 files, priority,
-                 content["ngpus"], content["ncpus"],
-                 other_task_info))
-            task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
-                task_type, task_id,
-                content["ngpus"], content["ncpus"]))
-            parent_task_type = task_type[:5]
+            task_train = TaskTrain(task_infos, parent_task_id)
+            task_to_create.append(task_train)
+            task_names.append(task_train.task_name)
+            parent_task_type = "train"
             remove_config_option(content["docker"]["command"])
 
+            file_to_transtaskid = {}
+            task_id = task_train.task_id
             if totranslate:
                 content_translate = deepcopy(content)
                 content_translate["priority"] = priority + 1
