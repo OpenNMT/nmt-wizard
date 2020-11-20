@@ -73,6 +73,139 @@ class StorageId:
         return entities
 
 
+class RoutesConfiguration:
+    def __init__(self, entity_code, service):
+        self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
+        self.entity_storages_config = get_entity_storages(self.service_config, entity_code)
+        self.storage_client = get_storage_client(self.entity_storages_config)
+        self.storage_id = next(iter(self.entity_storages_config))
+        self.upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
+
+        self.service_config = config.get_service_config(mongo_client, service)
+        self.service_module = get_service(service)
+        self.service_entities = config.get_entities(self.service_config)
+        self.entity_owner = get_entity_owner(self.service_entities, service)
+
+
+class TaskBase:
+    def __init__(self, task_infos):
+        self._init(
+            task_infos["service"],
+            task_infos["request_data"],
+            task_infos["content"],
+            task_infos["files"],
+            task_infos["trainer_entities"],
+            task_infos["routes_configuration"]
+        )
+        self.task_name = None
+
+    def _init(self, service, request_data, content, files, trainer_entities, routes_configuration):
+        self._content = deepcopy(content)
+        self._lang_pair = f'{request_data["source"]}{request_data["target"]}'
+        self._service = service
+        self._service_config = routes_configuration.service_config
+        self._service_module = routes_configuration.service_module
+        self._files = files
+        self._other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_configuration.entity_owner,
+                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
+
+    def _post_init(self, must_patch_config_name=True):
+        self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
+                                                    self._parent_task_id)
+
+        if explicit_name and must_patch_config_name:
+            patch_config_explicitname(self._content, explicit_name)
+
+        self._resource = self._service_module.select_resource_from_capacity(
+                    self._service_module.get_resource_from_options(self._content["options"])
+                    , Capacity(self._content["ngpus"], self._content["ncpus"])
+        )
+        self._priority = self._content.get("priority", 0)
+        self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self._task_id
+                                                           , self._content["ngpus"], self._content["ncpus"])
+
+    def create(self):
+        task.create(redis_db
+                    , taskfile_dir
+                    , self._task_id
+                    , self._task_type
+                    , self._parent_task_id
+                    , self._resource
+                    , self._service
+                    , self._content
+                    , self._files
+                    , self._priority
+                    , self._content["ngpus"]
+                    , self._content["ncpus"]
+                    , self._other_infos)
+
+
+class TaskPreprocess(TaskBase):
+    def __init__(self, task_infos):
+        TaskBase.__init__(self, task_infos)
+        self._task_suffix = "prepr"
+        self._task_type = "prepr"
+        self._parent_task_id = None
+        # launch preprocess task on cpus only
+        self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config, 0, "preprocess")
+        self._content["ngpus"] = 0
+
+        idx = 0
+        prepr_command = []
+        train_command = self._content["docker"]["command"]
+        while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
+            prepr_command.append(train_command[idx])
+            idx += 1
+
+        # create preprocess command, don't push the model on the catalog,
+        # and generate a pseudo model
+        prepr_command.append("--no_push")
+        prepr_command.append("preprocess")
+        prepr_command.append("--build_model")
+        self._content["docker"]["command"] = prepr_command
+
+        self._post_init()
+
+
+class TaskTrain(TaskBase):
+    def __init__(self, task_infos, parent_task_id):
+        TaskBase.__init__(self, task_infos)
+        self._task_suffix = "train"
+        self._task_type = "train"
+        self._parent_task_id = parent_task_id
+
+        self._post_init()
+
+
+class TaskTranslate(TaskBase):
+    def __init__(self, task_infos, parent_task_id):
+        TaskBase.__init__(self, task_infos)
+        self._task_suffix = "trans"
+        self._task_type = "trans"
+        self._parent_task_id = parent_task_id
+
+        self._post_init()
+
+
+class TaskScore(TaskBase):
+    def __init__(self, task_infos, parent_task_id):
+        TaskBase.__init__(self, task_infos)
+        self._task_suffix = "score"
+        self._task_type = "exec"
+        self._parent_task_id = parent_task_id
+
+        self._post_init()
+
+
+class TaskTuminer(TaskBase):
+    def __init__(self, task_infos, parent_task_id):
+        TaskBase.__init__(self, task_infos)
+        self._task_suffix = "tuminer"
+        self._task_type = "exec"
+        self._parent_task_id = parent_task_id
+
+        self._post_init()
+
 def get_entity_owner(service_entities, service_name):
     trainer_of_entities = get_entities_by_permission("train", flask.g)
 
