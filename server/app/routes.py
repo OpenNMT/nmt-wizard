@@ -773,7 +773,7 @@ def launch_v2():
             parent_task_type = "train"
             remove_config_option(content["docker"]["command"])
 
-            file_to_transtaskid = {}
+            file_to_trans_task_id = {}
             if totranslate:
                 content_translate = deepcopy(content)
                 content_translate["priority"] = priority + 1
@@ -809,7 +809,7 @@ def launch_v2():
                     for f in subset_to_translate:
                         docker_command.append(f[0])
                         sub_file = f[1].replace('<MODEL>', task_train.task_id)
-                        file_to_transtaskid[sub_file] = task_translate.task_id
+                        file_to_trans_task_id[sub_file] = task_translate.task_id
                         docker_command.append(sub_file)
 
                     task_translate.set_docker_command(docker_command)
@@ -821,7 +821,7 @@ def launch_v2():
                 toscore_parent = {}
                 for (ofile, rfile) in toscore:
                     ofile = ofile.replace('<MODEL>', task_train.task_id)
-                    parent_task_id = file_to_transtaskid.get(ofile)
+                    parent_task_id = file_to_trans_task_id.get(ofile)
                     if parent_task_id:
                         if parent_task_id not in toscore_parent:
                             toscore_parent[parent_task_id] = {"output": [], "ref": []}
