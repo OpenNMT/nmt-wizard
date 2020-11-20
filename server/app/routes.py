@@ -124,13 +124,13 @@ class TaskBase:
                     , Capacity(self._content["ngpus"], self._content["ncpus"])
         )
         self._priority = self._content.get("priority", 0)
-        self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self._task_id
+        self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id
                                                            , self._content["ngpus"], self._content["ncpus"])
 
     def create(self):
         task.create(redis_db
                     , taskfile_dir
-                    , self._task_id
+                    , self.task_id
                     , self._task_type
                     , self._parent_task_id
                     , self._resource
