@@ -786,10 +786,6 @@ def launch_v2():
                                                                     content_translate["ngpus"],
                                                                     "trans")
 
-                translate_resource = routes_config.service_module.select_resource_from_capacity(
-                    resource, Capacity(content_translate["ngpus"],
-                                       content_translate["ncpus"]))
-
                 if ngpus == 0 or trans_as_release:
                     file_per_gpu = len(totranslate)
                 else:
@@ -869,19 +865,6 @@ def launch_v2():
                     task_names.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "score", score_task_id,
                         0, 1))
-
-            if task_type == TASK_RELEASE_TYPE:
-                j = 0
-                while j < len(content["docker"]["command"]) - 1:
-                    if content["docker"]["command"][j] == "-m" \
-                            or content["docker"]["command"][j] == "--model":
-                        model_name = content["docker"]["command"][j + 1]
-                        builtins.pn9model_db.model_set_release_state(model_name,
-                                                                     content.get("trainer_id"),
-                                                                     task_train.task_id,
-                                                                     "in progress")
-                        break
-                    j = j + 1
 
         iterations -= 1
         if iterations > 0:
