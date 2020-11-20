@@ -190,7 +190,7 @@ class TaskTranslate(TaskBase):
         self._task_type = "trans"
         self._parent_task_id = parent_task_id
 
-        self._post_init()
+        self._post_init(must_patch_config_name=False)
 
     def set_docker_command(self, docker_command):
         self._content["docker"]["content"] = docker_command
