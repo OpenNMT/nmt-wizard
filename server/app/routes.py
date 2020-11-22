@@ -29,7 +29,7 @@ from nmtwizard.task import get_task_entity, TaskInfo
 from utils.storage_utils import StorageUtils
 from nmtwizard.helper import boolean_param
 
-GLOBAL_POOL_NAME = "sa_global_pool"
+GLOBAL_POOL_NAME = "global_pool"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
