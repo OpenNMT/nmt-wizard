@@ -1,4 +1,5 @@
 from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 tables = {
     "configs": "pn9-config",
@@ -167,6 +168,8 @@ class MongoDatabase:
         return evaluation_catalogs
 
     def get_evaluation_catalog(self, evaluation_id):
+        if isinstance(evaluation_id, str):
+            evaluation_id = ObjectId(evaluation_id)
         the_table = self.get("evaluations")
         evaluation_catalog = the_table.find_one({"_id": evaluation_id})
         return evaluation_catalog
