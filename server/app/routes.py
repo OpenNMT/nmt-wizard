@@ -814,21 +814,23 @@ def launch_v2():
         "routes_configuration": routes_config
     }
 
+    preprocess_task_id = None
+    iterations = content.get("iterations", 1)
     while iterations > 0:
         # PreprocessTask
-        if chain_prepr_train and parent_task_type != "prepr":
+        if chain_prepr_train and iterations == 0:
             task_preprocess = TaskPreprocess(task_infos)
-            parent_task_id = task_preprocess.task_id
+            preprocess_task_id = task_preprocess.task_id
             task_to_create.append(task_preprocess)
             task_names.append(task_preprocess.task_name)
 
             remove_config_option(content["docker"]["command"])
-            change_parent_task(content["docker"]["command"], task_preprocess.task_id)
+            change_parent_task(content["docker"]["command"], preprocess_task_id)
 
         # TaskTrain
         # task_type is "train" and never changes
         if task_type != "prepr":
-            task_train = TaskTrain(task_infos, parent_task_id)
+            task_train = TaskTrain(task_infos, preprocess_task_id)
             task_to_create.append(task_train)
             task_names.append(task_train.task_name)
             parent_task_type = "train"
