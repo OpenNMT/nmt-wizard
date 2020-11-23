@@ -750,7 +750,7 @@ def launch_v2():
     ngpus = content.get("ngpus", 1)
     ncpus = content.get("ncpus")
 
-    totranslate = content["totranslate"]
+    to_translate = content["totranslate"]
     toscore = content["toscore"]
 
     del content["totranslate"]
@@ -809,44 +809,20 @@ def launch_v2():
             remove_config_option(content["docker"]["command"])
 
             file_to_trans_task_id = {}
-            if totranslate:
-                content_translate = deepcopy(content)
-                content_translate["priority"] = priority + 1
-                if trans_as_release:
-                    content_translate["ngpus"] = 0
-                else:
-                    content_translate["ngpus"] = min(ngpus, 1)
-
-                content_translate["ncpus"] = ncpus or get_cpu_count(routes_config.service_config,
-                                                                    content_translate["ngpus"],
-                                                                    "trans")
-
-                if ngpus == 0 or trans_as_release:
-                    file_per_gpu = len(totranslate)
-                else:
-                    file_per_gpu = int((len(totranslate) + ngpus - 1) / ngpus)
-
-                content_translate["docker"]["command"] = ["trans"]
-                if trans_as_release:
-                    content_translate["docker"]["command"].append("--as_release")
-                content_translate["docker"]["command"].append('-i')
+            if to_translate:
+                translate_task_infos = TaskTranslate.compute_content_translate(task_infos
+                                                                               , trans_as_release
+                                                                               , to_translate)
 
                 subset_idx = 0
-                trans_task_infos = task_infos
-                trans_task_infos["content"] = content_translate
-                while subset_idx * file_per_gpu < len(totranslate):
-                    task_translate = TaskTranslate(trans_task_infos, task_train.task_id)
+                while subset_idx * translate_task_infos["file_per_gpu"] < len(to_translate):
+                    task_translate = TaskTranslate(translate_task_infos, task_train.task_id)
 
-                    docker_command = content_translate["docker"]["command"]
-                    subset_to_translate = totranslate[subset_idx * file_per_gpu:(subset_idx + 1) * file_per_gpu]
-                    change_parent_task(docker_command, task_train.task_id)
-                    docker_command.append('-o')
-                    for f in subset_to_translate:
-                        docker_command.append(f[0])
-                        sub_file = f[1].replace('<MODEL>', task_train.task_id)
-                        file_to_trans_task_id[sub_file] = task_translate.task_id
-                        docker_command.append(sub_file)
-
+                    docker_command, file_to_trans_task_id = TaskTranslate.compute_docker_command(translate_task_infos
+                                                                                                 , task_train.task_id
+                                                                                                 , subset_idx
+                                                                                                 , file_to_trans_task_id
+                                                                                                 )
                     task_translate.set_docker_command(docker_command)
                     task_to_create.append(task_translate)
                     task_names.append(task_translate.task_name)
