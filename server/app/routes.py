@@ -188,11 +188,10 @@ class TaskTranslate(TaskBase):
         self._task_suffix = "trans"
         self._task_type = "trans"
         self._parent_task_id = parent_task_id
+        self._file_per_gpu = task_infos["file_per_gpu"]
+        self._to_translate = task_infos["to_translate"]
 
         self._post_init(must_patch_config_name=False)
-
-    def set_docker_command(self, docker_command):
-        self._content["docker"]["content"] = docker_command
 
     @staticmethod
     def compute_task_infos(task_infos, trans_as_release, to_translate):
@@ -224,12 +223,11 @@ class TaskTranslate(TaskBase):
         translate_task_infos["to_translate"] = to_translate
         return translate_task_infos
 
-    @staticmethod
-    def compute_docker_command(translate_task_infos, parent_task_id, subset_idx, file_to_trans_task_id):
-        docker_command = translate_task_infos["content"]["docker"]["command"]
-        begin_subset_to_translate = subset_idx * translate_task_infos["file_per_gpu"]
-        end_subset_to_translate = (subset_idx + 1) * translate_task_infos["file_per_gpu"]
-        subset_to_translate = translate_task_infos["to_translate"][begin_subset_to_translate:end_subset_to_translate]
+    def compute_docker_command(self, parent_task_id, subset_idx, file_to_trans_task_id):
+        docker_command = self._content["docker"]["command"]
+        begin_subset_to_translate = subset_idx * self._file_per_gpu
+        end_subset_to_translate = (subset_idx + 1) * self._file_per_gpu
+        subset_to_translate = self._to_translate[begin_subset_to_translate:end_subset_to_translate]
         change_parent_task(docker_command, parent_task_id)
         docker_command.append('-o')
         for f in subset_to_translate:
@@ -237,7 +235,8 @@ class TaskTranslate(TaskBase):
             sub_file = f[1].replace('<MODEL>', parent_task_id)
             file_to_trans_task_id[sub_file] = parent_task_id
             docker_command.append(sub_file)
-        return docker_command, file_to_trans_task_id
+        self._content["docker"]["content"] = docker_command
+        return file_to_trans_task_id
 
 
 class TaskScore(TaskBase):
@@ -834,11 +833,8 @@ def launch_v2():
             while subset_idx * translate_task_infos["file_per_gpu"] < len(to_translate):
                 task_translate = TaskTranslate(translate_task_infos, task_train.task_id)
 
-                docker_command, file_to_trans_task_id = TaskTranslate.compute_docker_command(translate_task_infos
-                                                                                             , task_train.task_id
-                                                                                             , subset_idx
-                                                                                             , file_to_trans_task_id)
-                task_translate.set_docker_command(docker_command)
+                file_to_trans_task_id = task_translate.compute_docker_command(task_train.task_id, subset_idx
+                                                                              , file_to_trans_task_id)
                 task_to_create.append(task_translate)
                 task_names.append(task_translate.task_name)
                 subset_idx += 1
