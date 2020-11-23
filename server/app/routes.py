@@ -743,12 +743,8 @@ def launch_v2():
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_config.trainer_entities)}
 
     task_type = "train"
-    task_suffix = task_type
-    resource = routes_config.service_module.get_resource_from_options(content["options"])
     iterations = content.get("iterations", 1)
     files = {}
-    ngpus = content.get("ngpus", 1)
-    ncpus = content.get("ncpus")
 
     to_translate = content["to_translate"]
     to_score = content["to_score"]
@@ -758,9 +754,7 @@ def launch_v2():
 
     priority = content.get("priority", 0)
 
-    xxyy = f'{request_data["source"]}{request_data["target"]}'
     parent_task_id = None
-    parent_struct = None
     parent_task_type = None
 
     task_names = []
