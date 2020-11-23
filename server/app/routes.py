@@ -1609,12 +1609,6 @@ def get_content_of_release_task(task_infos, destination):
 
 def get_content_of_task(docker_command, task_infos):
     docker_image = task_infos.get("docker_image")
-    trainer_id = task_infos.get("trainer_id")
-    ncpus = task_infos.get("ncpus")
-    ngpus = task_infos.get("ngpus")
-    service = task_infos.get("service")
-    iterations = task_infos.get("iterations", 1)
-    options = task_infos.get("options", {})
     try:
         support_statistics = semver.match(docker_image["tag"][1:], ">=1.17.0")
     except ValueError:
@@ -1625,15 +1619,14 @@ def get_content_of_task(docker_command, task_infos):
             **docker_image, **{"command": docker_command}
         },
         'wait_after_launch': 2,
-        'trainer_id': trainer_id,
-        'ngpus': ngpus,
-        'ncpus': ncpus,
-        'iterations': iterations,
-        'service': service,
-        "options": options,
+        'trainer_id': task_infos.get("trainer_id"),
+        'ngpus': task_infos.get("ngpus"),
+        'ncpus': task_infos.get("ncpus"),
+        'iterations': task_infos.get("iterations", 1),
+        'service': task_infos.get("service"),
+        "options": task_infos.get("options", {}),
         'support_statistics': support_statistics
     }
-
     return content
 
 
