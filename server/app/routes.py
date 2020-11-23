@@ -195,7 +195,7 @@ class TaskTranslate(TaskBase):
         self._content["docker"]["content"] = docker_command
 
     @staticmethod
-    def compute_content_translate(task_infos, trans_as_release, to_translate):
+    def compute_task_infos(task_infos, trans_as_release, to_translate):
         content_translate = deepcopy(task_infos["content"])
         content_translate["priority"] = content_translate.get("priority", 0) + 1
         if trans_as_release:
@@ -238,6 +238,7 @@ class TaskTranslate(TaskBase):
             file_to_trans_task_id[sub_file] = parent_task_id
             docker_command.append(sub_file)
         return docker_command, file_to_trans_task_id
+
 
 class TaskScore(TaskBase):
     def __init__(self, task_infos, parent_task_id):
@@ -804,9 +805,7 @@ def launch_v2():
 
             file_to_trans_task_id = {}
             if to_translate:
-                translate_task_infos = TaskTranslate.compute_content_translate(task_infos
-                                                                               , trans_as_release
-                                                                               , to_translate)
+                translate_task_infos = TaskTranslate.compute_task_infos(task_infos, trans_as_release, to_translate)
 
                 subset_idx = 0
                 while subset_idx * translate_task_infos["file_per_gpu"] < len(to_translate):
