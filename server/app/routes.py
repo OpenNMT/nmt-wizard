@@ -808,9 +808,10 @@ def launch_v2():
 
     preprocess_task_id = None
     iterations = content.get("iterations", 1)
+    is_first_iteration = True
     while iterations > 0:
         # PreprocessTask
-        if chain_prepr_train and iterations == 0:
+        if chain_prepr_train and is_first_iteration:
             task_preprocess = TaskPreprocess(task_infos)
             preprocess_task_id = task_preprocess.task_id
             task_to_create.append(task_preprocess)
@@ -851,6 +852,7 @@ def launch_v2():
                 task_names.append(task_score.task_name)
 
         iterations -= 1
+        is_first_iteration = False
         if iterations > 0:
             change_parent_task(content["docker"]["command"], preprocess_task_id)
 
