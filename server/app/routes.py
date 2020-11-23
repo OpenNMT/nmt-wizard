@@ -97,12 +97,11 @@ class TaskBase:
             task_infos["request_data"],
             task_infos["content"],
             task_infos["files"],
-            task_infos["trainer_entities"],
             task_infos["routes_configuration"]
         )
         self.task_name = None
 
-    def _init(self, service, request_data, content, files, trainer_entities, routes_configuration):
+    def _init(self, service, request_data, content, files, routes_configuration):
         self._content = deepcopy(content)
         self._lang_pair = f'{request_data["source"]}{request_data["target"]}'
         self._service = service
@@ -110,7 +109,7 @@ class TaskBase:
         self._service_module = routes_configuration.service_module
         self._files = files
         self._other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_configuration.entity_owner,
-                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
+                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_configuration.trainer_entities)}
         self._priority = self._content.get("priority", 0)
 
     def _post_init(self, must_patch_config_name=True):
@@ -802,7 +801,6 @@ def launch_v2():
         "request_data": request_data,
         "content": content,
         "files": files,
-        "trainer_entities": routes_config.trainer_entities,
         "routes_configuration": routes_config
     }
 
