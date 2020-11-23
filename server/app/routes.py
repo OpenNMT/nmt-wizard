@@ -242,7 +242,7 @@ class TaskTranslate(TaskBase):
         return file_to_trans_task_id
 
 
-class TaskScore(TaskBase):
+class TaskScoring(TaskBase):
     def __init__(self, task_infos, parent_task_id):
         TaskBase.__init__(self, task_infos, parent_task_id)
         self._task_suffix = "score"
@@ -843,15 +843,15 @@ def launch_v2():
                 subset_idx += 1
 
         if to_score:
-            score_task_infos = TaskScore.compute_task_infos(task_infos, to_score, task_train.task_id
+            scoring_task_infos = TaskScoring.compute_task_infos(task_infos, to_score, task_train.task_id
                                                             , file_to_trans_task_id)
 
-            for parent_task_id, oref in six.iteritems(score_task_infos["to_score_parent"]):
-                score_task_infos["content"]["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] \
+            for parent_task_id, oref in six.iteritems(scoring_task_infos["to_score_parent"]):
+                scoring_task_infos["content"]["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] \
                                                                    + oref["ref"] + ['-f', "launcher:scores"]
-                task_score = TaskScore(score_task_infos, parent_task_id)
-                task_to_create.append(task_score)
-                task_names.append(task_score.task_name)
+                task_scoring = TaskScoring(scoring_task_infos, parent_task_id)
+                task_to_create.append(task_scoring)
+                task_names.append(task_scoring.task_name)
 
         iterations -= 1
         is_first_iteration = False
