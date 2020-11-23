@@ -821,43 +821,38 @@ def launch_v2():
             change_parent_task(content["docker"]["command"], preprocess_task_id)
 
         # TaskTrain
-        # task_type is "train" and never changes
-        if task_type != "prepr":
-            task_train = TaskTrain(task_infos, preprocess_task_id)
-            task_to_create.append(task_train)
-            task_names.append(task_train.task_name)
-            remove_config_option(content["docker"]["command"])
+        task_train = TaskTrain(task_infos, preprocess_task_id)
+        task_to_create.append(task_train)
+        task_names.append(task_train.task_name)
+        remove_config_option(content["docker"]["command"])
 
-            file_to_trans_task_id = {}
-            if to_translate:
-                translate_task_infos = TaskTranslate.compute_task_infos(task_infos, trans_as_release, to_translate)
+        file_to_trans_task_id = {}
+        if to_translate:
+            translate_task_infos = TaskTranslate.compute_task_infos(task_infos, trans_as_release, to_translate)
 
-                subset_idx = 0
-                while subset_idx * translate_task_infos["file_per_gpu"] < len(to_translate):
-                    task_translate = TaskTranslate(translate_task_infos, task_train.task_id)
+            subset_idx = 0
+            while subset_idx * translate_task_infos["file_per_gpu"] < len(to_translate):
+                task_translate = TaskTranslate(translate_task_infos, task_train.task_id)
 
-                    docker_command, file_to_trans_task_id = TaskTranslate.compute_docker_command(translate_task_infos
-                                                                                                 , task_train.task_id
-                                                                                                 , subset_idx
-                                                                                                 , file_to_trans_task_id
-                                                                                                 )
-                    task_translate.set_docker_command(docker_command)
-                    task_to_create.append(task_translate)
-                    task_names.append(task_translate.task_name)
-                    subset_idx += 1
+                docker_command, file_to_trans_task_id = TaskTranslate.compute_docker_command(translate_task_infos
+                                                                                             , task_train.task_id
+                                                                                             , subset_idx
+                                                                                             , file_to_trans_task_id)
+                task_translate.set_docker_command(docker_command)
+                task_to_create.append(task_translate)
+                task_names.append(task_translate.task_name)
+                subset_idx += 1
 
-            if to_score:
-                score_task_infos = TaskScore.compute_task_infos(task_infos
-                                                                , to_score
-                                                                , task_train.task_id
-                                                                , file_to_trans_task_id)
+        if to_score:
+            score_task_infos = TaskScore.compute_task_infos(task_infos, to_score, task_train.task_id
+                                                            , file_to_trans_task_id)
 
-                for parent_task_id, oref in six.iteritems(score_task_infos["to_score_parent"]):
-                    score_task_infos["content"]["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] \
-                                                         + ['-f', "launcher:scores"]
-                    task_score = TaskScore(score_task_infos, parent_task_id)
-                    task_to_create.append(task_score)
-                    task_names.append(task_score.task_name)
+            for parent_task_id, oref in six.iteritems(score_task_infos["to_score_parent"]):
+                score_task_infos["content"]["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] \
+                                                                   + oref["ref"] + ['-f', "launcher:scores"]
+                task_score = TaskScore(score_task_infos, parent_task_id)
+                task_to_create.append(task_score)
+                task_names.append(task_score.task_name)
 
         iterations -= 1
         if iterations > 0:
