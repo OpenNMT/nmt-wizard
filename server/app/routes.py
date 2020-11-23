@@ -775,7 +775,6 @@ def launch_v2():
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_config.trainer_entities)}
 
     task_type = "train"
-    iterations = content.get("iterations", 1)
     files = {}
 
     to_translate = content["to_translate"]
@@ -783,11 +782,6 @@ def launch_v2():
 
     del content["to_translate"]
     del content["to_score"]
-
-    priority = content.get("priority", 0)
-
-    parent_task_id = None
-    parent_task_type = None
 
     task_names = []
     task_to_create = []
@@ -797,7 +791,6 @@ def launch_v2():
         docker_version = docker_version[1:]
     try:
         chain_prepr_train = semver.match(docker_version, ">=1.4.0")
-        can_trans_as_release = semver.match(docker_version, ">=1.8.0")
         trans_as_release = semver.match(docker_version, ">=1.8.0")
         content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
     except ValueError as err:
@@ -833,7 +826,6 @@ def launch_v2():
             task_train = TaskTrain(task_infos, preprocess_task_id)
             task_to_create.append(task_train)
             task_names.append(task_train.task_name)
-            parent_task_type = "train"
             remove_config_option(content["docker"]["command"])
 
             file_to_trans_task_id = {}
