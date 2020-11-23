@@ -853,44 +853,21 @@ def launch_v2():
                     subset_idx += 1
 
             if to_score:
-                to_score_parent = {}
-                for (ofile, rfile) in to_score:
-                    ofile = ofile.replace('<MODEL>', task_train.task_id)
-                    parent_task_id = file_to_trans_task_id.get(ofile)
-                    if parent_task_id:
-                        if parent_task_id not in to_score_parent:
-                            to_score_parent[parent_task_id] = {"output": [], "ref": []}
-                        ofile_split = ofile.split(':')
-                        if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
-                            ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
-                        to_score_parent[parent_task_id]["output"].append(ofile)
-                        to_score_parent[parent_task_id]["ref"].append(rfile)
+                score_task_infos = TaskScore.compute_task_infos(task_infos
+                                                                , to_score
+                                                                , task_train.task_id
+                                                                , file_to_trans_task_id)
 
-                content_score = deepcopy(content)
-                content_score["priority"] = priority + 2
-                content_score["ngpus"] = 0
-                content_score["ncpus"] = 1
-                image_score = "nmtwizard/score"
-                content_score["docker"] = {
-                    "image": image_score,
-                    "registry": _get_registry(routes_config.service_module, image_score),
-                    "tag": "2.0.0",
-                    "command": []
-                }
-
-                for parent_task_id, oref in six.iteritems(to_score_parent):
-                    content_score["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] \
+                for parent_task_id, oref in six.iteritems(score_task_infos["to_score_parent"]):
+                    score_task_infos["content"]["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] \
                                                          + ['-f', "launcher:scores"]
-                    task_score_infos = task_infos
-                    task_score_infos["content"] = content_score
-                    task_score = TaskScore(task_score_infos, parent_task_id)
+                    task_score = TaskScore(score_task_infos, parent_task_id)
                     task_to_create.append(task_score)
                     task_names.append(task_score.task_name)
 
         iterations -= 1
         if iterations > 0:
-            parent_task_id = task_preprocess.task_id
-            change_parent_task(content["docker"]["command"], parent_task_id)
+            change_parent_task(content["docker"]["command"], preprocess_task_id)
 
     (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
 
