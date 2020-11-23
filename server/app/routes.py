@@ -194,6 +194,50 @@ class TaskTranslate(TaskBase):
     def set_docker_command(self, docker_command):
         self._content["docker"]["content"] = docker_command
 
+    @staticmethod
+    def compute_content_translate(task_infos, trans_as_release, to_translate):
+        content_translate = deepcopy(task_infos["content"])
+        content_translate["priority"] = content_translate.get("priority", 0) + 1
+        if trans_as_release:
+            content_translate["ngpus"] = 0
+        else:
+            content_translate["ngpus"] = min(content_translate.get("ngpus", 1), 1)
+
+        content_translate["ncpus"] = content_translate.get("ncpus") or \
+                                     get_cpu_count(task_infos["routes-routes_configuration"].service_config
+                                                   , content_translate["ngpus"]
+                                                   , "trans")
+
+        if content_translate["ngpus"] == 0:
+            file_per_gpu = len(to_translate)
+        else:
+            file_per_gpu = int((len(to_translate) + content_translate["ngpus"] - 1) / content_translate["ngpus"])
+
+        content_translate["docker"]["command"] = ["trans"]
+        if trans_as_release:
+            content_translate["docker"]["command"].append("--as_release")
+        content_translate["docker"]["command"].append('-i')
+
+        translate_task_infos = task_infos
+        translate_task_infos["content"] = content_translate
+        translate_task_infos["file_per_gpu"] = file_per_gpu
+        translate_task_infos["to_translate"] = to_translate
+        return translate_task_infos
+
+    @staticmethod
+    def compute_docker_command(translate_task_infos, parent_task_id, subset_idx, file_to_trans_task_id):
+        docker_command = translate_task_infos["content"]["docker"]["command"]
+        begin_subset_to_translate = subset_idx * translate_task_infos["file_per_gpu"]
+        end_subset_to_translate = (subset_idx + 1) * translate_task_infos["file_per_gpu"]
+        subset_to_translate = translate_task_infos["to_translate"][begin_subset_to_translate:end_subset_to_translate]
+        change_parent_task(docker_command, parent_task_id)
+        docker_command.append('-o')
+        for f in subset_to_translate:
+            docker_command.append(f[0])
+            sub_file = f[1].replace('<MODEL>', parent_task_id)
+            file_to_trans_task_id[sub_file] = parent_task_id
+            docker_command.append(sub_file)
+        return docker_command, file_to_trans_task_id
 
 class TaskScore(TaskBase):
     def __init__(self, task_infos, parent_task_id):
