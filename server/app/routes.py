@@ -249,6 +249,37 @@ class TaskScore(TaskBase):
 
         self._post_init(must_patch_config_name=False)
 
+    @staticmethod
+    def compute_task_infos(task_infos, to_score, train_task_id, file_to_trans_task_id):
+        to_score_parent = {}
+        for (ofile, rfile) in to_score:
+            ofile = ofile.replace('<MODEL>', train_task_id)
+            parent_task_id = file_to_trans_task_id.get(ofile)
+            if parent_task_id:
+                if parent_task_id not in to_score_parent:
+                    to_score_parent[parent_task_id] = {"output": [], "ref": []}
+                ofile_split = ofile.split(':')
+                if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
+                    ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
+                to_score_parent[parent_task_id]["output"].append(ofile)
+                to_score_parent[parent_task_id]["ref"].append(rfile)
+
+        content_score = deepcopy(task_infos["content"])
+        content_score["priority"] = content_score.get("priority", 0) + 2
+        content_score["ngpus"] = 0
+        content_score["ncpus"] = 1
+        image_score = "nmtwizard/score"
+        content_score["docker"] = {
+            "image": image_score,
+            "registry": _get_registry(task_infos["routes-routes_configuration"].service_module, image_score),
+            "tag": "2.0.0",
+            "command": []
+        }
+        translate_task_infos = task_infos
+        translate_task_infos["content"] = content_score
+        translate_task_infos["to_score_parent"] = to_score_parent
+        return translate_task_infos
+
 
 def get_entity_owner(service_entities, service_name):
     trainer_of_entities = get_entities_by_permission("train", flask.g)
