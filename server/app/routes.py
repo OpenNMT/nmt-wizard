@@ -121,8 +121,8 @@ class TaskBase:
             patch_config_explicitname(self._content, explicit_name)
 
         self._resource = self._service_module.select_resource_from_capacity(
-                    self._service_module.get_resource_from_options(self._content["options"])
-                    , Capacity(self._content["ngpus"], self._content["ncpus"])
+            self._service_module.get_resource_from_options(self._content["options"])
+            , Capacity(self._content["ngpus"], self._content["ncpus"])
         )
         self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id
                                                            , self._content["ngpus"], self._content["ncpus"])
@@ -1275,7 +1275,8 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, storage_id, data_file_info):
+def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
+                        uploaded_data_path, storage_id, training_corpus_infos):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model")
     source = request_data["source"]
@@ -1285,7 +1286,8 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
     iterations = request_data.get("iterations")
     docker_image = request_data.get("docker_image")
 
-    final_training_config = get_final_training_config(source, target, parent_model, data_file_info["training"])
+    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model,
+                                                      training_corpus_infos)
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
     to_translate_corpus = get_to_translate_corpus(data_file_info["testing"], source, target, storage_id, default_test_data)
     to_score_corpus = get_to_score_corpus(data_file_info["testing"], source, target, storage_id, default_test_data)
@@ -1636,8 +1638,8 @@ def get_content_of_task(docker_command, task_infos):
 
 
 def create_task(common_task_infos, other_infos=None):
-    parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair, task_type, task_suffix, task_files, priority, content = break_task_infos(
-        common_task_infos)
+    parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair \
+        , task_type, task_suffix, task_files, priority, content = break_task_infos(common_task_infos)
     task_create = []
     task_ids = []
 
@@ -2019,7 +2021,7 @@ def launch(service):
                         content_translate["docker"]["command"].append("--as_release")
                     content_translate["docker"]["command"].append('-i')
                     subset_to_translate = to_translate[subset_idx * file_per_gpu:
-                                                     (subset_idx + 1) * file_per_gpu]
+                                                       (subset_idx + 1) * file_per_gpu]
                     for f in subset_to_translate:
                         content_translate["docker"]["command"].append(f[0])
 
