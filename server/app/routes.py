@@ -750,11 +750,11 @@ def launch_v2():
     ngpus = content.get("ngpus", 1)
     ncpus = content.get("ncpus")
 
-    to_translate = content["totranslate"]
-    toscore = content["toscore"]
+    to_translate = content["to_translate"]
+    to_score = content["to_score"]
 
-    del content["totranslate"]
-    del content["toscore"]
+    del content["to_translate"]
+    del content["to_score"]
 
     priority = content.get("priority", 0)
 
@@ -828,9 +828,9 @@ def launch_v2():
                     task_names.append(task_translate.task_name)
                     subset_idx += 1
 
-            if toscore:
+            if to_score:
                 to_score_parent = {}
-                for (ofile, rfile) in toscore:
+                for (ofile, rfile) in to_score:
                     ofile = ofile.replace('<MODEL>', task_train.task_id)
                     parent_task_id = file_to_trans_task_id.get(ofile)
                     if parent_task_id:
@@ -1311,8 +1311,8 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
         "wait_after_launch": 2,
         "trainer_id": f"{entity_owner}{user_code}",
         "options": {},
-        "totranslate": to_translate_corpus,
-        "toscore": to_score_corpus
+        "to_translate": to_translate_corpus,
+        "to_score": to_score_corpus
     }
 
     if ncpus:
@@ -1860,22 +1860,22 @@ def launch(service):
             flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
                 service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
-    if "totranslate" in content:
+    if "to_translate" in content:
         if exec_mode:
             abort(flask.make_response(
                 flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
-        totranslate = content["totranslate"]
-        del content["totranslate"]
+        to_translate = content["to_translate"]
+        del content["to_translate"]
     else:
-        totranslate = None
-    if "toscore" in content:
+        to_translate = None
+    if "to_score" in content:
         if exec_mode:
             abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"),
                                       400))
-        toscore = content["toscore"]
-        del content["toscore"]
+        to_score = content["to_score"]
+        del content["to_score"]
     else:
-        toscore = None
+        to_score = None
     if "totuminer" in content:
         if exec_mode:
             abort(flask.make_response(
@@ -2002,7 +2002,7 @@ def launch(service):
             parent_task_type = task_type[:5]
             remove_config_option(content["docker"]["command"])
 
-            if totranslate:
+            if to_translate:
                 content_translate = deepcopy(content)
                 content_translate["priority"] = priority + 1
                 if trans_as_release:
@@ -2019,18 +2019,18 @@ def launch(service):
                                        content_translate["ncpus"]))
 
                 if ngpus == 0 or trans_as_release:
-                    file_per_gpu = len(totranslate)
+                    file_per_gpu = len(to_translate)
                 else:
-                    file_per_gpu = int((len(totranslate) + ngpus - 1) / ngpus)
+                    file_per_gpu = int((len(to_translate) + ngpus - 1) / ngpus)
                 subset_idx = 0
-                while subset_idx * file_per_gpu < len(totranslate):
+                while subset_idx * file_per_gpu < len(to_translate):
                     content_translate["docker"]["command"] = ["trans"]
                     if trans_as_release:
                         content_translate["docker"]["command"].append("--as_release")
                     content_translate["docker"]["command"].append('-i')
-                    subset_totranslate = totranslate[subset_idx * file_per_gpu:
+                    subset_to_translate = to_translate[subset_idx * file_per_gpu:
                                                      (subset_idx + 1) * file_per_gpu]
-                    for f in subset_totranslate:
+                    for f in subset_to_translate:
                         content_translate["docker"]["command"].append(f[0])
 
                     change_parent_task(content_translate["docker"]["command"], task_id)
@@ -2038,7 +2038,7 @@ def launch(service):
                                                                 task_id)
 
                     content_translate["docker"]["command"].append('-o')
-                    for f in subset_totranslate:
+                    for f in subset_to_translate:
                         ofile = f[1].replace('<MODEL>', task_id)
                         file_to_transtaskid[ofile] = trans_task_id
                         content_translate["docker"]["command"].append(ofile)
@@ -2055,9 +2055,9 @@ def launch(service):
                         content_translate["ngpus"], content_translate["ncpus"]))
                     subset_idx += 1
 
-            if toscore:
+            if to_score:
                 toscore_parent = {}
-                for (ofile, rfile) in toscore:
+                for (ofile, rfile) in to_score:
                     ofile = ofile.replace('<MODEL>', task_id)
                     parent_task_id = file_to_transtaskid.get(ofile)
                     if parent_task_id:
