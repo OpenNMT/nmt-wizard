@@ -91,26 +91,22 @@ class RoutesConfiguration:
 
 
 class TaskBase:
-    def __init__(self, task_infos):
-        self._init(
-            task_infos["service"],
-            task_infos["request_data"],
-            task_infos["content"],
-            task_infos["files"],
-            task_infos["routes_configuration"]
-        )
-        self.task_name = None
-
-    def _init(self, service, request_data, content, files, routes_configuration):
-        self._content = deepcopy(content)
-        self._lang_pair = f'{request_data["source"]}{request_data["target"]}'
-        self._service = service
-        self._service_config = routes_configuration.service_config
-        self._service_module = routes_configuration.service_module
-        self._files = files
-        self._other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_configuration.entity_owner,
-                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_configuration.trainer_entities)}
+    def __init__(self, task_infos, parent_task_id = None):
+        self._content = deepcopy(task_infos["content"])
+        self._lang_pair = f'{task_infos["request_data"]["source"]}{task_infos["request_data"]["target"]}'
+        if not self._lang_pair:
+            parent_task_id.split("_")[1]
+        self._service = task_infos["service"]
+        self._service_config = task_infos["routes_configuration"].service_config
+        self._service_module = task_infos["routes_configuration"].service_module
+        self._files = task_infos["files"]
+        self._other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos["routes_configuration"].entity_owner,
+                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(
+                                     task_infos["routes_configuration"].trainer_entities)}
         self._priority = self._content.get("priority", 0)
+        if "resource" in task_infos:
+            self._resource = task_infos["resource"]
+        self.task_name = None
 
     def _post_init(self, must_patch_config_name=True):
         self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
@@ -119,12 +115,20 @@ class TaskBase:
         if explicit_name and must_patch_config_name:
             patch_config_explicitname(self._content, explicit_name)
 
-        self._resource = self._service_module.select_resource_from_capacity(
-            self._service_module.get_resource_from_options(self._content["options"])
-            , Capacity(self._content["ngpus"], self._content["ncpus"])
-        )
+        if self._resource is None:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._service_module.get_resource_from_options(self._content["options"])
+                , Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
+        else:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._resource, Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
         self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id
                                                            , self._content["ngpus"], self._content["ncpus"])
+
+    def update_other_infos(self, other_infos):
+        self._other_task_info.update(other_infos)
 
     def create(self):
         task.create(redis_db
@@ -171,7 +175,7 @@ class TaskPreprocess(TaskBase):
 
 class TaskTrain(TaskBase):
     def __init__(self, task_infos, parent_task_id):
-        TaskBase.__init__(self, task_infos)
+        TaskBase.__init__(self, task_infos, parent_task_id)
         self._task_suffix = "train"
         self._task_type = "train"
         self._parent_task_id = parent_task_id
@@ -183,7 +187,7 @@ class TaskTrain(TaskBase):
 
 class TaskTranslate(TaskBase):
     def __init__(self, task_infos, parent_task_id):
-        TaskBase.__init__(self, task_infos)
+        TaskBase.__init__(self, task_infos, parent_task_id)
         self._task_suffix = "trans"
         self._task_type = "trans"
         self._parent_task_id = parent_task_id
@@ -240,7 +244,7 @@ class TaskTranslate(TaskBase):
 
 class TaskScore(TaskBase):
     def __init__(self, task_infos, parent_task_id):
-        TaskBase.__init__(self, task_infos)
+        TaskBase.__init__(self, task_infos, parent_task_id)
         self._task_suffix = "score"
         self._task_type = "exec"
         self._parent_task_id = parent_task_id
