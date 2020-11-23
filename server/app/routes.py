@@ -111,6 +111,7 @@ class TaskBase:
         self._files = files
         self._other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_configuration.entity_owner,
                                  TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
+        self._priority = self._content.get("priority", 0)
 
     def _post_init(self, must_patch_config_name=True):
         self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
@@ -123,7 +124,6 @@ class TaskBase:
                     self._service_module.get_resource_from_options(self._content["options"])
                     , Capacity(self._content["ngpus"], self._content["ncpus"])
         )
-        self._priority = self._content.get("priority", 0)
         self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id
                                                            , self._content["ngpus"], self._content["ncpus"])
 
@@ -176,7 +176,6 @@ class TaskTrain(TaskBase):
         self._task_suffix = "train"
         self._task_type = "train"
         self._parent_task_id = parent_task_id
-
         self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config
                                                                          , self._content["ngpus"], "train")
 
