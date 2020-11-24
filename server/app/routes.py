@@ -90,12 +90,17 @@ class RoutesConfiguration:
         assert self.trainer_entities  # Here: almost sure you are trainer
 
 
+class TaskInfos:
+    def __init__(self, content, request_data, routes_configuration, service):
+        self._content = content
+
+
 class TaskBase:
     def __init__(self, task_infos, parent_task_id = None):
         self._content = deepcopy(task_infos["content"])
         self._lang_pair = f'{task_infos["request_data"]["source"]}{task_infos["request_data"]["target"]}'
         if not self._lang_pair:
-            parent_task_id.split("_")[1]
+            self._lang_pair = parent_task_id.split("_")[1]
         self._service = task_infos["service"]
         self._service_config = task_infos["routes_configuration"].service_config
         self._service_module = task_infos["routes_configuration"].service_module
@@ -243,11 +248,14 @@ class TaskTranslate(TaskBase):
 
 
 class TaskScoring(TaskBase):
-    def __init__(self, task_infos, parent_task_id):
+    def __init__(self, task_infos, parent_task_id, other_infos = None):
         TaskBase.__init__(self, task_infos, parent_task_id)
         self._task_suffix = "score"
         self._task_type = "exec"
         self._parent_task_id = parent_task_id
+
+        if other_infos:
+            self.update_other_infos(other_infos)
 
         self._post_init(must_patch_config_name=False)
 
@@ -281,6 +289,19 @@ class TaskScoring(TaskBase):
         translate_task_infos["content"] = content_score
         translate_task_infos["to_score_parent"] = to_score_parent
         return translate_task_infos
+
+    @staticmethod
+    def compute_scoring_content(model, to_score_corpus, common_task_infos, translation_task_id, scoring_docker_image
+                                , priority, ncpus, ngpus, resource):
+        score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
+        common_task_infos["parent_task_id"] = translation_task_id
+        common_task_infos["ncpus"] = ncpus
+        common_task_infos["ngpus"] = ngpus
+        common_task_infos["resource"] = resource
+        common_task_infos["docker_image"] = scoring_docker_image
+        content = get_content_of_scoring_task(common_task_infos, score_output)
+        content["priority"] = priority
+        return content
 
 
 def get_entity_owner(service_entities, service_name):
@@ -1367,6 +1388,38 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
                                                 entity_owner=entity_owner,
                                                 lp=None, state=state, creator=creator, input_name=input_name)
+
+
+def get_content_for_evaluation(service, routes_config, request_data):
+    def get_content_of_task(docker_command, task_infos):
+        docker_image = task_infos.get("docker_image")
+        try:
+            support_statistics = semver.match(docker_image["tag"][1:], ">=1.17.0")
+        except ValueError:
+            support_statistics = False
+
+        content = {
+            'docker': {
+                **docker_image, **{"command": docker_command}
+            },
+            'wait_after_launch': 2,
+            'support_statistics': support_statistics
+        }
+
+    trainer_id = f'{g.userid.entity_code}{g.user_code}'
+    content = {
+        "trainer_id": trainer_id
+        "service": service,
+        "name": model_name,
+        "wait_after_launch": 2,
+        "trainer_id": f"{entity_owner}{user_code}",
+        "options": {},
+        "to_translate": to_translate_corpus,
+        "to_score": to_score_corpus,
+        "ngpus": 0,
+        "priority": 1,
+        "iterations": 1
+    }
 
 
 @app.route("/evaluations", methods=["POST"])
