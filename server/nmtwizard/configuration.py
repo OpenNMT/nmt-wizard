@@ -103,6 +103,11 @@ def get_service_config(mongo_client, service_name):
     return service_config
 
 
+def get_service_configs(mongo_client, service_names):
+    service_configs = mongo_client.get_service_configs(service_names)
+    return service_configs
+
+
 def get_base_config(mongo_client):
     base_config = mongo_client.get_base_config()
     return base_config
