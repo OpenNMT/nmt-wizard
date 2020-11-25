@@ -96,7 +96,7 @@ class TaskInfos:
 
 
 class TaskBase:
-    def __init__(self, task_infos, parent_task_id = None):
+    def __init__(self, task_infos, parent_task_id=None):
         self._content = deepcopy(task_infos["content"])
         self._lang_pair = f'{task_infos["request_data"]["source"]}{task_infos["request_data"]["target"]}'
         if not self._lang_pair:
@@ -105,7 +105,7 @@ class TaskBase:
         self._service_config = task_infos["routes_configuration"].service_config
         self._service_module = task_infos["routes_configuration"].service_module
         self._files = task_infos["files"]
-        self._other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos["routes_configuration"].entity_owner,
+        self.other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos["routes_configuration"].entity_owner,
                                  TaskInfo.STORAGE_ENTITIES.value: json.dumps(
                                      task_infos["routes_configuration"].trainer_entities)}
         self._priority = self._content.get("priority", 0)
@@ -192,7 +192,7 @@ class TaskTrain(TaskBase):
 
 class TaskTranslate(TaskBase):
     def __init__(self, task_infos, parent_task_id, to_translate):
-        translate_task_infos = TaskTranslate._compute_task_infos(task_infos, to_translate)
+        translate_task_infos = TaskTranslate._compute_task_infos(task_infos, parent_task_id, to_translate)
         TaskBase.__init__(self, translate_task_infos, parent_task_id)
         self._task_suffix = "trans"
         self._task_type = "trans"
@@ -202,7 +202,7 @@ class TaskTranslate(TaskBase):
         self._post_init(must_patch_config_name=False)
 
     @staticmethod
-    def _compute_task_infos(task_infos, to_translate):
+    def _compute_task_infos(task_infos, parent_task_id, to_translate):
         content_translate = deepcopy(task_infos["content"])
         content_translate["priority"] = content_translate.get("priority", 0) + 1
         content_translate["ngpus"] = 0
@@ -212,28 +212,25 @@ class TaskTranslate(TaskBase):
 
         content_translate["docker"]["command"] = ["trans"]
         content_translate["docker"]["command"].append("--as_release")
+        content_translate["docker"]["command"].extend('-i')
+        for f in to_translate:
+            content_translate["docker"]["command"].extend(f[0])
+        change_parent_task(content_translate["docker"]["command"], parent_task_id)
+        content_translate["docker"]["command"].extend('-o')
+        for f in to_translate:
+            sub_file = f[1].replace('<MODEL>', parent_task_id)
+            content_translate["docker"]["command"].extend(sub_file)
 
         translate_task_infos = task_infos
         translate_task_infos["content"] = content_translate
         translate_task_infos["to_translate"] = to_translate
         return translate_task_infos
 
-    def compute_docker_command(self, parent_task_id, file_to_trans_task_id):
-        self._content["docker"]["command"].append('-i')
-        for f in self._to_translate:
-            self._content["docker"]["command"].append(f[0])
-        change_parent_task(self._content["docker"]["command"], parent_task_id)
-        self._content["docker"]["command"].append('-o')
-        for f in self._to_translate:
-            sub_file = f[1].replace('<MODEL>', parent_task_id)
-            file_to_trans_task_id[sub_file] = parent_task_id
-            self._content["docker"]["command"].append(sub_file)
-        return file_to_trans_task_id
-
 
 class TaskScoring(TaskBase):
-    def __init__(self, task_infos, parent_task_id, other_infos = None):
-        TaskBase.__init__(self, task_infos, parent_task_id)
+    def __init__(self, task_infos, parent_task_id, to_score, other_infos=None):
+        scoring_task_infos = TaskScoring._compute_task_infos(task_infos, parent_task_id, to_score)
+        TaskBase.__init__(self, scoring_task_infos, parent_task_id)
         self._task_suffix = "score"
         self._task_type = "exec"
         self._parent_task_id = parent_task_id
@@ -244,20 +241,7 @@ class TaskScoring(TaskBase):
         self._post_init(must_patch_config_name=False)
 
     @staticmethod
-    def compute_task_infos(task_infos, to_score, train_task_id, file_to_trans_task_id):
-        to_score_parent = {}
-        for (ofile, rfile) in to_score:
-            ofile = ofile.replace('<MODEL>', train_task_id)
-            parent_task_id = file_to_trans_task_id.get(ofile)
-            if parent_task_id:
-                if parent_task_id not in to_score_parent:
-                    to_score_parent[parent_task_id] = {"output": [], "ref": []}
-                ofile_split = ofile.split(':')
-                if len(ofile_split) == 2 and ofile_split[0] == 'launcher':
-                    ofile = 'launcher:../' + parent_task_id + "/" + ofile_split[1]
-                to_score_parent[parent_task_id]["output"].append(ofile)
-                to_score_parent[parent_task_id]["ref"].append(rfile)
-
+    def _compute_task_infos(task_infos, parent_task_id, to_score):
         content_score = deepcopy(task_infos["content"])
         content_score["priority"] = content_score.get("priority", 0) + 2
         content_score["ngpus"] = 0
@@ -269,9 +253,23 @@ class TaskScoring(TaskBase):
             "tag": "2.0.0",
             "command": []
         }
+
+        output_corpus = []
+        references_corpus = []
+        for corpus in to_score:
+            corpus[0].replace('<MODEL>', parent_task_id)
+            output_corpus.extend(corpus[0])
+            references_corpus.extend(corpus[1])
+
+        content_score["docker"]["command"] = ["score", "-o"]
+        content_score["docker"]["command"].extend(output_corpus)
+        content_score["docker"]["command"].extend("-r")
+        content_score["docker"]["command"].extend(references_corpus)
+        content_score["docker"]["command"].extend(["-f", "launcher:scores"])
+
         translate_task_infos = task_infos
         translate_task_infos["content"] = content_score
-        translate_task_infos["to_score_parent"] = to_score_parent
+
         return translate_task_infos
 
     @staticmethod
@@ -778,9 +776,6 @@ def launch_v2():
                                   , routes_config.entity_owner, routes_config.upload_path
                                   , routes_config.storage_id, data_file_info["training"])
 
-    other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_config.entity_owner,
-                       TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_config.trainer_entities)}
-
     files = {}
 
     to_translate = content["to_translate"]
@@ -801,6 +796,7 @@ def launch_v2():
     }
 
     iterations = content.get("iterations", 1)
+    train_task_id = None
 
     # PreprocessTask
     task_preprocess = TaskPreprocess(task_infos)
@@ -812,40 +808,29 @@ def launch_v2():
     change_parent_task(content["docker"]["command"], preprocess_task_id)
 
     while iterations > 0:
-        # TaskTrain
+        iterations -= 1
         task_train = TaskTrain(task_infos, preprocess_task_id)
+        train_task_id = task_train.task_id
         task_to_create.append(task_train)
         task_names.append(task_train.task_name)
         remove_config_option(content["docker"]["command"])
 
-        file_to_trans_task_id = {}
         if to_translate:
-            task_translate = TaskTranslate(task_infos, task_train.task_id, to_translate)
-            file_to_trans_task_id = task_translate.compute_docker_command(task_train.task_id, file_to_trans_task_id)
+            task_translate = TaskTranslate(task_infos, train_task_id, to_translate)
             task_to_create.append(task_translate)
             task_names.append(task_translate.task_name)
 
         if to_score:
-            scoring_task_infos = TaskScoring.compute_task_infos(task_infos, to_score, task_train.task_id
-                                                            , file_to_trans_task_id)
-
-            for parent_task_id, oref in six.iteritems(scoring_task_infos["to_score_parent"]):
-                scoring_task_infos["content"]["docker"]["command"] = ["score", "-o"] + oref["output"] + ["-r"] \
-                                                                   + oref["ref"] + ['-f', "launcher:scores"]
-                task_scoring = TaskScoring(scoring_task_infos, parent_task_id)
-                task_to_create.append(task_scoring)
-                task_names.append(task_scoring.task_name)
-
-        iterations -= 1
-        if iterations > 0:
-            change_parent_task(content["docker"]["command"], preprocess_task_id)
+            task_scoring = TaskScoring(task_infos, train_task_id, to_score)
+            task_to_create.append(task_scoring)
+            task_names.append(task_scoring.task_name)
 
     (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
 
     # TODO: if iterations > 1 what models to be displayed?
     #  Now keep "last" training task_id as "principal" model name, and save this information to all generated tasks
-    other_task_info["model"] = task_train.task_id
     for tc in task_to_create:
+        tc.other_task_info["model"] = train_task_id
         tc.create()
 
     if len(task_names) == 1:
@@ -855,7 +840,7 @@ def launch_v2():
     domain = request_data.get('domain')
 
     input_name = content["name"] if "name" in content else None
-    create_model_catalog(task_train.task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
+    create_model_catalog(train_task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
 
     return flask.jsonify(task_names)
 
