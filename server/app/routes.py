@@ -734,6 +734,47 @@ def patch_config_explicitname(content, explicitname):
             idx += 2
 
 
+def create_tasks_for_launch_v2(creation_input):
+    task_to_create = []
+    task_names = []
+    # PreprocessTask
+    task_preprocess = TaskPreprocess(creation_input["task_infos"])
+    task_to_create.append(task_preprocess)
+    task_names.append(task_preprocess.task_name)
+    preprocess_task_id = task_preprocess.task_id
+    remove_config_option(creation_input["content"]["docker"]["command"])
+    change_parent_task(creation_input["content"]["docker"]["command"], preprocess_task_id)
+
+    iterations = creation_input["content"].get("iterations", 1)
+    train_task_id = None
+    while iterations > 0:
+        iterations -= 1
+
+        task_train = TaskTrain(creation_input["task_infos"], preprocess_task_id)
+        task_to_create.append(task_train)
+        task_names.append(task_train.task_name)
+        train_task_id = task_train.task_id
+        remove_config_option(creation_input["content"]["docker"]["command"])
+        if creation_input["to_translate"]:
+            task_translate = TaskTranslate(creation_input["task_infos"], train_task_id, creation_input["to_translate"])
+            task_to_create.append(task_translate)
+            task_names.append(task_translate.task_name)
+        if creation_input["to_score"]:
+            task_scoring = TaskScoring(creation_input["task_infos"], train_task_id, creation_input["to_score"])
+            task_to_create.append(task_scoring)
+            task_names.append(task_scoring.task_name)
+
+    (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
+    for tc in task_to_create:
+        tc.other_task_info["model"] = train_task_id
+        tc.create()
+    creation_output = {
+        "task_names": task_names,
+        "train_task_id": train_task_id
+    }
+    return creation_output
+
+
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
@@ -769,9 +810,6 @@ def launch_v2():
     to_translate = content["to_translate"]
     to_score = content["to_score"]
 
-    task_to_create = []
-    task_names = []
-
     task_infos = {
         "service": service,
         "request_data": request_data,
@@ -780,38 +818,15 @@ def launch_v2():
         "routes_configuration": routes_config
     }
 
-    # PreprocessTask
-    task_preprocess = TaskPreprocess(task_infos)
-    task_to_create.append(task_preprocess)
-    task_names.append(task_preprocess.task_name)
-    preprocess_task_id = task_preprocess.task_id
-    remove_config_option(content["docker"]["command"])
-    change_parent_task(content["docker"]["command"], preprocess_task_id)
+    tasks_creation_input = {
+        "task_infos": task_infos,
+        "to_translate": to_translate,
+        "to_score": to_score
+    }
 
-    iterations = content.get("iterations", 1)
-    train_task_id = None
-    while iterations > 0:
-        iterations -= 1
+    tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_input)
 
-        task_train = TaskTrain(task_infos, preprocess_task_id)
-        task_to_create.append(task_train)
-        task_names.append(task_train.task_name)
-        train_task_id = task_train.task_id
-        remove_config_option(content["docker"]["command"])
-        if to_translate:
-            task_translate = TaskTranslate(task_infos, train_task_id, to_translate)
-            task_to_create.append(task_translate)
-            task_names.append(task_translate.task_name)
-        if to_score:
-            task_scoring = TaskScoring(task_infos, train_task_id, to_score)
-            task_to_create.append(task_scoring)
-            task_names.append(task_scoring.task_name)
-
-    (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
-    for tc in task_to_create:
-        tc.other_task_info["model"] = train_task_id
-        tc.create()
-
+    task_names = tasks_creation_output["task_names"]
     if len(task_names) == 1:
         task_names = task_names[0]
 
@@ -819,7 +834,7 @@ def launch_v2():
     domain = request_data.get('domain')
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
-    create_model_catalog(train_task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
+    create_model_catalog(tasks_creation_output["train_task_id"], input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
 
     return flask.jsonify(task_names)
 
