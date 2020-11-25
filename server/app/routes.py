@@ -1357,38 +1357,6 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
                                                 lp=None, state=state, creator=creator, input_name=input_name)
 
 
-def get_content_for_evaluation(service, routes_config, request_data):
-    def get_content_of_task(docker_command, task_infos):
-        docker_image = task_infos.get("docker_image")
-        try:
-            support_statistics = semver.match(docker_image["tag"][1:], ">=1.17.0")
-        except ValueError:
-            support_statistics = False
-
-        content = {
-            'docker': {
-                **docker_image, **{"command": docker_command}
-            },
-            'wait_after_launch': 2,
-            'support_statistics': support_statistics
-        }
-
-    trainer_id = f'{g.userid.entity_code}{g.user_code}'
-    content = {
-        "trainer_id": trainer_id
-        "service": service,
-        "name": model_name,
-        "wait_after_launch": 2,
-        "trainer_id": f"{entity_owner}{user_code}",
-        "options": {},
-        "to_translate": to_translate_corpus,
-        "to_score": to_score_corpus,
-        "ngpus": 0,
-        "priority": 1,
-        "iterations": 1
-    }
-
-
 @app.route("/evaluations", methods=["POST"])
 @filter_request("POST/evaluations", "train")
 def create_evaluation():
