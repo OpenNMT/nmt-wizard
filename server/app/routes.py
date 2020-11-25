@@ -756,42 +756,31 @@ def launch_v2():
     routes_config = RoutesConfiguration(entity_code, service)
     storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
 
-    training_data = request_data.get("training_data")
-    testing_data = request_data.get("testing_data")
     default_test_data = get_default_test_data(routes_config.storage_client
                                               , request_data["source"], request_data["target"])
     tags = request_data.get("tags")
 
     # TODO: change the signature to use RoutesConfiguration and not each part separately
-    data_file_info = {
-        "training": upload_user_files(routes_config.storage_client, routes_config.storage_id
-                                      , f"{routes_config.upload_path}/train/", training_data),
-        "testing": upload_user_files(routes_config.storage_client, routes_config.storage_id
-                                     , f"{routes_config.upload_path}/test/", testing_data)
-    }
+    training_file_info = upload_user_files(routes_config.storage_client, routes_config.storage_id,
+                                           f"{routes_config.upload_path}/train/", request_data.get("training_data"))
     tags = process_tags(tags, entity_code, user_code)
 
     # TODO: change the signature to use RoutesConfiguration and not each part separately
     content = get_training_config(service, request_data, default_test_data, user_code, routes_config.service_module
                                   , routes_config.entity_owner, routes_config.upload_path
-                                  , routes_config.storage_id, data_file_info["training"])
-
-    files = {}
+                                  , routes_config.storage_id, training_file_info)
 
     to_translate = content["to_translate"]
     to_score = content["to_score"]
 
-    del content["to_translate"]
-    del content["to_score"]
-
-    task_names = []
     task_to_create = []
+    task_names = []
 
     task_infos = {
         "service": service,
         "request_data": request_data,
         "content": content,
-        "files": files,
+        "files": {},
         "routes_configuration": routes_config
     }
 
