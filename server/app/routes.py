@@ -755,12 +755,13 @@ def create_tasks_for_launch_v2(creation_input):
         task_names.append(task_train.task_name)
         train_task_id = task_train.task_id
         remove_config_option(creation_input["content"]["docker"]["command"])
-        if creation_input["to_translate"]:
-            task_translate = TaskTranslate(creation_input["task_infos"], train_task_id, creation_input["to_translate"])
+        if creation_input["to_translate_corpus"]:
+            task_translate = TaskTranslate(creation_input["task_infos"], train_task_id,
+                                           creation_input["to_translate_corpus"])
             task_to_create.append(task_translate)
             task_names.append(task_translate.task_name)
-        if creation_input["to_score"]:
-            task_scoring = TaskScoring(creation_input["task_infos"], train_task_id, creation_input["to_score"])
+        if creation_input["to_score_corpus"]:
+            task_scoring = TaskScoring(creation_input["task_infos"], train_task_id, creation_input["to_score_corpus"])
             task_to_create.append(task_scoring)
             task_names.append(task_scoring.task_name)
 
@@ -807,8 +808,8 @@ def launch_v2():
                                   routes_config.service_module, routes_config.entity_owner, routes_config.upload_path,
                                   routes_config.storage_id, training_file_info)
 
-    to_translate = content["to_translate"]
-    to_score = content["to_score"]
+    to_translate_corpus = content["to_translate"]
+    to_score_corpus = content["to_score"]
 
     task_infos = {
         "service": service,
@@ -820,8 +821,8 @@ def launch_v2():
 
     tasks_creation_input = {
         "task_infos": task_infos,
-        "to_translate": to_translate,
-        "to_score": to_score
+        "to_translate": to_translate_corpus,
+        "to_score": to_score_corpus
     }
 
     tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_input)
