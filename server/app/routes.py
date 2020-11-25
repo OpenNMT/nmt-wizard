@@ -737,38 +737,34 @@ def patch_config_explicitname(content, explicitname):
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
-    # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from default.json + other pool accessible (see /resource/list API)
     service = GLOBAL_POOL_NAME
-    entity_code = g.user.entity.entity_code
-    user = g.user
-    user_code = user.user_code
     creator = {
-        'user_id': user.id,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'entity_id': user.entity.id,
-        'entity_code': user.entity.entity_code
+        'user_id': g.user.id,
+        'first_name': g.user.first_name,
+        'last_name': g.user.last_name,
+        'entity_id': g.user.entity.id,
+        'entity_code': g.user.entity.entity_code,
+        'user_code': g.user.user_code
     }
-
     # TODO: Try-catch
     request_data = parse_request_data(request)
 
-    routes_config = RoutesConfiguration(entity_code, service)
+    # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
+    # default.json + other pool accessible (see /resource/list API)
+    routes_config = RoutesConfiguration(creator['entity_code'], service)
     storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
 
     default_test_data = get_default_test_data(routes_config.storage_client
                                               , request_data["source"], request_data["target"])
-    tags = request_data.get("tags")
 
     # TODO: change the signature to use RoutesConfiguration and not each part separately
     training_file_info = upload_user_files(routes_config.storage_client, routes_config.storage_id,
                                            f"{routes_config.upload_path}/train/", request_data.get("training_data"))
-    tags = process_tags(tags, entity_code, user_code)
 
     # TODO: change the signature to use RoutesConfiguration and not each part separately
-    content = get_training_config(service, request_data, default_test_data, user_code, routes_config.service_module
-                                  , routes_config.entity_owner, routes_config.upload_path
-                                  , routes_config.storage_id, training_file_info)
+    content = get_training_config(service, request_data, default_test_data, creator['user_code'],
+                                  routes_config.service_module, routes_config.entity_owner, routes_config.upload_path,
+                                  routes_config.storage_id, training_file_info)
 
     to_translate = content["to_translate"]
     to_score = content["to_score"]
@@ -784,40 +780,34 @@ def launch_v2():
         "routes_configuration": routes_config
     }
 
-    iterations = content.get("iterations", 1)
-    train_task_id = None
-
     # PreprocessTask
     task_preprocess = TaskPreprocess(task_infos)
-    preprocess_task_id = task_preprocess.task_id
     task_to_create.append(task_preprocess)
     task_names.append(task_preprocess.task_name)
-
+    preprocess_task_id = task_preprocess.task_id
     remove_config_option(content["docker"]["command"])
     change_parent_task(content["docker"]["command"], preprocess_task_id)
 
+    iterations = content.get("iterations", 1)
+    train_task_id = None
     while iterations > 0:
         iterations -= 1
+
         task_train = TaskTrain(task_infos, preprocess_task_id)
-        train_task_id = task_train.task_id
         task_to_create.append(task_train)
         task_names.append(task_train.task_name)
+        train_task_id = task_train.task_id
         remove_config_option(content["docker"]["command"])
-
         if to_translate:
             task_translate = TaskTranslate(task_infos, train_task_id, to_translate)
             task_to_create.append(task_translate)
             task_names.append(task_translate.task_name)
-
         if to_score:
             task_scoring = TaskScoring(task_infos, train_task_id, to_score)
             task_to_create.append(task_scoring)
             task_names.append(task_scoring.task_name)
 
     (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
-
-    # TODO: if iterations > 1 what models to be displayed?
-    #  Now keep "last" training task_id as "principal" model name, and save this information to all generated tasks
     for tc in task_to_create:
         tc.other_task_info["model"] = train_task_id
         tc.create()
@@ -827,7 +817,7 @@ def launch_v2():
 
     tasks_for_model = create_tasks_for_model(task_names)
     domain = request_data.get('domain')
-
+    tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
     create_model_catalog(train_task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
 
