@@ -191,8 +191,9 @@ class TaskTrain(TaskBase):
 
 
 class TaskTranslate(TaskBase):
-    def __init__(self, task_infos, parent_task_id):
-        TaskBase.__init__(self, task_infos, parent_task_id)
+    def __init__(self, task_infos, parent_task_id, to_translate):
+        translate_task_infos = TaskTranslate._compute_task_infos(task_infos, to_translate)
+        TaskBase.__init__(self, translate_task_infos, parent_task_id)
         self._task_suffix = "trans"
         self._task_type = "trans"
         self._parent_task_id = parent_task_id
@@ -201,19 +202,16 @@ class TaskTranslate(TaskBase):
         self._post_init(must_patch_config_name=False)
 
     @staticmethod
-    def compute_task_infos(task_infos, to_translate):
+    def _compute_task_infos(task_infos, to_translate):
         content_translate = deepcopy(task_infos["content"])
         content_translate["priority"] = content_translate.get("priority", 0) + 1
         content_translate["ngpus"] = 0
-
         content_translate["ncpus"] = content_translate.get("ncpus") or \
                                      get_cpu_count(task_infos["routes-routes_configuration"].service_config
-                                                   , content_translate["ngpus"]
-                                                   , "trans")
+                                                   , content_translate["ngpus"], "trans")
 
         content_translate["docker"]["command"] = ["trans"]
         content_translate["docker"]["command"].append("--as_release")
-        content_translate["docker"]["command"].append('-i')
 
         translate_task_infos = task_infos
         translate_task_infos["content"] = content_translate
@@ -221,15 +219,15 @@ class TaskTranslate(TaskBase):
         return translate_task_infos
 
     def compute_docker_command(self, parent_task_id, file_to_trans_task_id):
-        docker_command = self._content["docker"]["command"]
-        change_parent_task(docker_command, parent_task_id)
-        docker_command.append('-o')
+        self._content["docker"]["command"].append('-i')
         for f in self._to_translate:
-            docker_command.append(f[0])
+            self._content["docker"]["command"].append(f[0])
+        change_parent_task(self._content["docker"]["command"], parent_task_id)
+        self._content["docker"]["command"].append('-o')
+        for f in self._to_translate:
             sub_file = f[1].replace('<MODEL>', parent_task_id)
             file_to_trans_task_id[sub_file] = parent_task_id
-            docker_command.append(sub_file)
-        self._content["docker"]["content"] = docker_command
+            self._content["docker"]["command"].append(sub_file)
         return file_to_trans_task_id
 
 
@@ -828,8 +826,7 @@ def launch_v2():
 
         file_to_trans_task_id = {}
         if to_translate:
-            translate_task_infos = TaskTranslate.compute_task_infos(task_infos, to_translate)
-            task_translate = TaskTranslate(translate_task_infos, task_train.task_id)
+            task_translate = TaskTranslate(task_infos, task_train.task_id, to_translate)
             file_to_trans_task_id = task_translate.compute_docker_command(task_train.task_id, file_to_trans_task_id)
             task_to_create.append(task_translate)
             task_names.append(task_translate.task_name)
