@@ -781,7 +781,6 @@ def launch_v2():
     other_task_info = {TaskInfo.ENTITY_OWNER.value: routes_config.entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(routes_config.trainer_entities)}
 
-    task_type = "train"
     files = {}
 
     to_translate = content["to_translate"]
@@ -793,10 +792,6 @@ def launch_v2():
     task_names = []
     task_to_create = []
 
-    docker_version = content['docker']['tag']
-    if docker_version.startswith('v'):
-        docker_version = docker_version[1:]
-
     task_infos = {
         "service": service,
         "request_data": request_data,
@@ -805,7 +800,6 @@ def launch_v2():
         "routes_configuration": routes_config
     }
 
-    preprocess_task_id = None
     iterations = content.get("iterations", 1)
 
     # PreprocessTask
