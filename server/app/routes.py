@@ -202,27 +202,19 @@ class TaskTranslate(TaskBase):
         self._post_init(must_patch_config_name=False)
 
     @staticmethod
-    def compute_task_infos(task_infos, trans_as_release, to_translate):
+    def compute_task_infos(task_infos, to_translate):
         content_translate = deepcopy(task_infos["content"])
         content_translate["priority"] = content_translate.get("priority", 0) + 1
-        if trans_as_release:
-            content_translate["ngpus"] = 0
-        else:
-            content_translate["ngpus"] = min(content_translate.get("ngpus", 1), 1)
+        content_translate["ngpus"] = 0
 
         content_translate["ncpus"] = content_translate.get("ncpus") or \
                                      get_cpu_count(task_infos["routes-routes_configuration"].service_config
                                                    , content_translate["ngpus"]
                                                    , "trans")
-
-        if content_translate["ngpus"] == 0:
-            file_per_gpu = len(to_translate)
-        else:
-            file_per_gpu = int((len(to_translate) + content_translate["ngpus"] - 1) / content_translate["ngpus"])
+        file_per_gpu = len(to_translate)
 
         content_translate["docker"]["command"] = ["trans"]
-        if trans_as_release:
-            content_translate["docker"]["command"].append("--as_release")
+        content_translate["docker"]["command"].append("--as_release")
         content_translate["docker"]["command"].append('-i')
 
         translate_task_infos = task_infos
@@ -812,14 +804,6 @@ def launch_v2():
     docker_version = content['docker']['tag']
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
-    try:
-        chain_prepr_train = semver.match(docker_version, ">=1.4.0")
-        trans_as_release = semver.match(docker_version, ">=1.8.0")
-        content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
-    except ValueError as err:
-        # could not match docker_version - not valid semver
-        chain_prepr_train = False
-        trans_as_release = False
 
     task_infos = {
         "service": service,
@@ -831,18 +815,17 @@ def launch_v2():
 
     preprocess_task_id = None
     iterations = content.get("iterations", 1)
-    is_first_iteration = True
+
+    # PreprocessTask
+    task_preprocess = TaskPreprocess(task_infos)
+    preprocess_task_id = task_preprocess.task_id
+    task_to_create.append(task_preprocess)
+    task_names.append(task_preprocess.task_name)
+
+    remove_config_option(content["docker"]["command"])
+    change_parent_task(content["docker"]["command"], preprocess_task_id)
+
     while iterations > 0:
-        # PreprocessTask
-        if chain_prepr_train and is_first_iteration:
-            task_preprocess = TaskPreprocess(task_infos)
-            preprocess_task_id = task_preprocess.task_id
-            task_to_create.append(task_preprocess)
-            task_names.append(task_preprocess.task_name)
-
-            remove_config_option(content["docker"]["command"])
-            change_parent_task(content["docker"]["command"], preprocess_task_id)
-
         # TaskTrain
         task_train = TaskTrain(task_infos, preprocess_task_id)
         task_to_create.append(task_train)
@@ -851,7 +834,7 @@ def launch_v2():
 
         file_to_trans_task_id = {}
         if to_translate:
-            translate_task_infos = TaskTranslate.compute_task_infos(task_infos, trans_as_release, to_translate)
+            translate_task_infos = TaskTranslate.compute_task_infos(task_infos, to_translate)
 
             subset_idx = 0
             while subset_idx * translate_task_infos["file_per_gpu"] < len(to_translate):
@@ -875,7 +858,6 @@ def launch_v2():
                 task_names.append(task_scoring.task_name)
 
         iterations -= 1
-        is_first_iteration = False
         if iterations > 0:
             change_parent_task(content["docker"]["command"], preprocess_task_id)
 
