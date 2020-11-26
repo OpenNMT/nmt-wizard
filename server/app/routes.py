@@ -1343,6 +1343,60 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
                                                 lp=None, state=state, creator=creator, input_name=input_name)
 
 
+def create_tasks_for_evaluation(task_infos, models, evaluation_id, to_translate_corpus, to_score_corpus):
+    model_task_map = {}
+    tasks_to_create = []
+    tasks_name = []
+    models_info = []
+    for model in models:
+        ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
+        if not ok:
+            abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
+        models_info.append(model_info)
+
+        task_infos.other_infos = {
+            "evaluation_id": str(evaluation_id),
+            "eval_model": model
+        }
+        # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
+        task_infos.content["docker_image"] = {
+            "image": "systran/pn9_tf",
+            "tag": "v1.46.0-beta1",
+            "registry": "dockersystran"
+        }
+        task_infos.content["ncpus"] = 4
+        task_translate = TaskTranslate(task_infos=task_infos, parent_task_id=model, to_translate=to_translate_corpus)
+        tasks_to_create.append(task_translate)
+        tasks_name.append(task_translate.task_name)
+
+        # TODO: Create new function to get scoring docker image
+        task_infos.content["docker_image"] = {
+            "image": "nmtwizard/score",
+            "registry": "dockerhub",
+            "tag": "2.1.0-beta1"
+        }
+        task_scoring = TaskScoring(task_infos=task_infos, parent_task_id=model, to_score=to_score_corpus)
+        tasks_to_create.append(task_scoring)
+        tasks_name.append(task_scoring.task_name)
+
+        model_task_map[model] = {
+            "trans": {
+                "id": task_translate.task_id,
+                "status": "running"
+            },
+            "score": {
+                "id": task_scoring.task_id,
+                "status": "running"
+            }
+        }
+
+    (tasks_name, tasks_to_create) = post_function('POST/task/launch', tasks_name, tasks_to_create)
+    for tc in tasks_to_create:
+        tc.create()
+
+    return model_task_map, models_info
+
+
 @app.route("/evaluations", methods=["POST"])
 @filter_request("POST/evaluations", "train")
 def create_evaluation():
@@ -1382,53 +1436,26 @@ def create_evaluation():
     to_score_corpus = get_to_score_corpus(corpus, routes_config.upload_path
                                           , source_language, target_language, routes_config.storage_id)
 
-    model_task_map = {}
-    models_info = []
-    for model in models:
-        ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
-        if not ok:
-            abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
-        models_info.append(model_info)
+    content = {
+        'docker': {
+            **{"command": []}
+        },
+        'wait_after_launch': 2,
+        'trainer_id': f'{entity_code}{user_code}',
+        'ncpus': 1,
+        'ngpus': 0,
+        'iterations': request_data.get("iterations", 1),
+        'service': service,
+        "options": {},
+        'support_statistics': True
+    }
 
-        other_task_infos = {
-            "evaluation_id": str(evaluation_id),
-            "eval_model": model
-        }
-        # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
-        translation_docker_image = {
-            "image": "systran/pn9_tf",
-            "tag": "v1.46.0-beta1",
-            "registry": "dockersystran"
-        }
-        translate_output = list(map(lambda ele: [ele[0], ele[1].replace('<MODEL>', model)], to_translate_corpus))
-        translation_task_infos = combine_common_task_infos(model, user_code, entity_code, translation_docker_image, 4,
-                                                           0, routes_config.entity_owner,
-                                                           routes_config.trainer_entities, "auto")
-        translation_task_id = create_translation_task(translation_task_infos, translate_output, other_task_infos)
+    task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
+                           service=service, resource="auto")
 
-        # TODO: Create new function to get scoring docker image
-        scoring_docker_image = {
-            "image": "nmtwizard/score",
-            "registry": "dockerhub",
-            "tag": "2.1.0-beta1"
-        }
-        score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
-        scoring_task_infos = combine_common_task_infos(translation_task_id, user_code, entity_code,
-                                                       scoring_docker_image, 1,
-                                                       0, routes_config.entity_owner,
-                                                       routes_config.trainer_entities, "auto")
-        scoring_task_id = create_scoring_task(scoring_task_infos, score_output, other_task_infos)
-
-        model_task_map[model] = {
-            "trans": {
-                "id": translation_task_id,
-                "status": "running"
-            },
-            "score": {
-                "id": scoring_task_id,
-                "status": "running"
-            }
-        }
+    model_task_map, models_info = create_tasks_for_evaluation(task_infos=task_infos, models=models, evaluation_id=evaluation_id,
+                                                 to_translate_corpus=to_translate_corpus,
+                                                 to_score_corpus=to_score_corpus)
 
     create_evaluation_catalog(evaluation_id, evaluation_name, creator, models_info, to_translate_corpus, model_task_map,
                               source_language, target_language)
