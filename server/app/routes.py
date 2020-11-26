@@ -114,8 +114,8 @@ class TaskBase:
         self._service_module = task_infos.routes_configurations.service_module
         self._files = task_infos.files
         self.other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos.routes_configurations.entity_owner,
-                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(
-                                     task_infos.routes_configurations.trainer_entities)}
+                                TaskInfo.STORAGE_ENTITIES.value: json.dumps(
+                                    task_infos.routes_configurations.trainer_entities)}
         if task_infos.other_infos:
             self.update_other_infos(task_infos.other_infos)
         self._priority = self._content.get("priority", 0)
@@ -125,8 +125,8 @@ class TaskBase:
             )
         else:
             self._resource = self._service_module.select_resource_from_capacity(
-                self._service_module.get_resource_from_options(self._content["options"])
-                , Capacity(self._content["ngpus"], self._content["ncpus"])
+                self._service_module.get_resource_from_options(self._content["options"]),
+                Capacity(self._content["ngpus"], self._content["ncpus"])
             )
         # All this must be initialized by the derived class
         self.task_name = None
@@ -149,26 +149,26 @@ class TaskBase:
                     self._service, self._content["ngpus"],
                     self._content["ncpus"] and str(self._content["ncpus"]) or "-")), 400))
 
-        self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id
-                                                           , self._content["ngpus"], self._content["ncpus"])
+        self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id,
+                                                           self._content["ngpus"], self._content["ncpus"])
 
     def update_other_infos(self, other_infos):
         self.other_task_info.update(other_infos)
 
     def create(self):
-        task.create(redis_db
-                    , taskfile_dir
-                    , self.task_id
-                    , self._task_type
-                    , self._parent_task_id
-                    , self._resource
-                    , self._service
-                    , self._content
-                    , self._files
-                    , self._priority
-                    , self._content["ngpus"]
-                    , self._content["ncpus"]
-                    , self.other_task_info)
+        task.create(redis_db,
+                    taskfile_dir,
+                    self.task_id,
+                    self._task_type,
+                    self._parent_task_id,
+                    self._resource,
+                    self._service,
+                    self._content,
+                    self._files,
+                    self._priority,
+                    self._content["ngpus"],
+                    self._content["ncpus"],
+                    self.other_task_info)
 
 
 class TaskPreprocess(TaskBase):
@@ -204,8 +204,8 @@ class TaskTrain(TaskBase):
         self._task_suffix = "train"
         self._task_type = "train"
         self._parent_task_id = parent_task_id
-        self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config
-                                                                         , self._content["ngpus"], "train")
+        self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config,
+                                                                         self._content["ngpus"], "train")
 
         self._post_init()
 
@@ -227,8 +227,8 @@ class TaskTranslate(TaskBase):
         content_translate["priority"] = content_translate.get("priority", 0) + 1
         content_translate["ngpus"] = 0
         content_translate["ncpus"] = content_translate.get("ncpus") or \
-                                     get_cpu_count(task_infos["routes-routes_configuration"].service_config
-                                                   , content_translate["ngpus"], "trans")
+                                     get_cpu_count(task_infos["routes-routes_configuration"].service_config,
+                                                   content_translate["ngpus"], "trans")
 
         content_translate["docker"]["command"] = ["trans"]
         content_translate["docker"]["command"].append("--as_release")
@@ -290,8 +290,8 @@ class TaskScoring(TaskBase):
         return translate_task_infos
 
     @staticmethod
-    def compute_scoring_content(model, to_score_corpus, common_task_infos, translation_task_id, scoring_docker_image
-                                , priority, ncpus, ngpus, resource):
+    def compute_scoring_content(model, to_score_corpus, common_task_infos, translation_task_id, scoring_docker_image,
+                                priority, ncpus, ngpus, resource):
         score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
         common_task_infos["parent_task_id"] = translation_task_id
         common_task_infos["ncpus"] = ncpus
@@ -813,8 +813,8 @@ def launch_v2():
     routes_config = RoutesConfiguration(creator['entity_code'], service)
     storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
 
-    default_test_data = get_default_test_data(routes_config.storage_client
-                                              , request_data["source"], request_data["target"])
+    default_test_data = get_default_test_data(routes_config.storage_client,
+                                              request_data["source"], request_data["target"])
 
     # TODO: change the signature to use RoutesConfiguration and not each part separately
     training_file_info = upload_user_files(routes_config.storage_client, routes_config.storage_id,
@@ -1428,13 +1428,13 @@ def create_evaluation():
     target_language = request_data.get("target_language")
 
     # TODO: change function signature to take routes_config instead of each components
-    upload_user_files(routes_config.storage_client, routes_config.storage_id
-                      , f"{routes_config.upload_path}/test/", corpus)
+    upload_user_files(routes_config.storage_client, routes_config.storage_id,
+                      f"{routes_config.upload_path}/test/", corpus)
 
-    to_translate_corpus = get_to_translate_corpus(corpus, routes_config.upload_path, source_language
-                                                  , target_language, routes_config.storage_id)
-    to_score_corpus = get_to_score_corpus(corpus, routes_config.upload_path
-                                          , source_language, target_language, routes_config.storage_id)
+    to_translate_corpus = get_to_translate_corpus(corpus, routes_config.upload_path, source_language,
+                                                  target_language, routes_config.storage_id)
+    to_score_corpus = get_to_score_corpus(corpus, routes_config.upload_path,
+                                          source_language, target_language, routes_config.storage_id)
 
     content = {
         'docker': {
@@ -1632,8 +1632,8 @@ def get_content_of_task(docker_command, task_infos):
 
 
 def create_task(common_task_infos, other_infos=None):
-    parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair \
-        , task_type, task_suffix, task_files, priority, content = break_task_infos(common_task_infos)
+    parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair, \
+    task_type, task_suffix, task_files, priority, content = break_task_infos(common_task_infos)
     task_create = []
     task_ids = []
 
@@ -1689,7 +1689,8 @@ def break_task_infos(task_infos):
     priority = task_infos.get("priority")
     content = task_infos.get("content")
 
-    return parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair, task_type, task_suffix, task_files, priority, content
+    return parent_task_id, trainer_id, ncpus, ngpus, entity_owner, trainer_entities, service, resource, language_pair, \
+           task_type, task_suffix, task_files, priority, content
 
 
 def combine_common_task_infos(parent_task_id, user_code, entity_code, docker_image, ncpus, ngpus, entity_owner,
@@ -1962,8 +1963,7 @@ def launch(service):
                 except Exception:
                     pass
 
-            content["ncpus"] = ncpus or \
-                               get_cpu_count(service_config, ngpus, task_type)
+            content["ncpus"] = ncpus or get_cpu_count(service_config, ngpus, task_type)
             content["ngpus"] = ngpus
 
             if task_type == "trans" and can_trans_as_release:
@@ -2074,8 +2074,8 @@ def launch(service):
                         "image": image_score,
                         "registry": _get_registry(service_module, image_score),
                         "tag": "2.1.0-beta1",
-                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] + option_lang + ['-f',
-                                                                                                            "launcher:scores"]
+                        "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
+                        option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
@@ -2131,7 +2131,7 @@ def launch(service):
                         "registry": _get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                        in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
