@@ -782,7 +782,7 @@ def create_tasks_for_launch_v2(creation_input):
             task_to_create.append(task_scoring)
             task_names.append(task_scoring.task_name)
 
-    (task_names, task_to_create) = post_function('POST/task/launch', task_names, task_to_create)
+    (task_names, task_to_create) = post_function('POST/task/launch_v2', task_names, task_to_create)
     for tc in task_to_create:
         tc.other_task_info["model"] = train_task_id
         tc.create()
@@ -1390,7 +1390,7 @@ def create_tasks_for_evaluation(task_infos, models, evaluation_id, to_translate_
             }
         }
 
-    (tasks_name, tasks_to_create) = post_function('POST/task/launch', tasks_name, tasks_to_create)
+    (tasks_name, tasks_to_create) = post_function('POST/task/launch_v2', tasks_name, tasks_to_create)
     for tc in tasks_to_create:
         tc.create()
 
