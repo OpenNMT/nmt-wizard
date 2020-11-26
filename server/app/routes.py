@@ -248,22 +248,19 @@ class TaskTranslate(TaskBase):
 
 
 class TaskScoring(TaskBase):
-    def __init__(self, task_infos, parent_task_id, to_score, other_infos=None):
+    def __init__(self, task_infos, parent_task_id, to_score):
         scoring_task_infos = TaskScoring._compute_task_infos(task_infos, parent_task_id, to_score)
         TaskBase.__init__(self, scoring_task_infos, parent_task_id)
         self._task_suffix = "score"
         self._task_type = "exec"
         self._parent_task_id = parent_task_id
 
-        if other_infos:
-            self.update_other_infos(other_infos)
-
         self._post_init(must_patch_config_name=False)
 
     @staticmethod
     def _compute_task_infos(task_infos, parent_task_id, to_score):
         content_score = deepcopy(task_infos["content"])
-        content_score["priority"] = content_score.get("priority", 0) + 2
+        content_score["priority"] = content_score.get("priority", 0) + 1
         content_score["ngpus"] = 0
         content_score["ncpus"] = 1
         image_score = "nmtwizard/score"
