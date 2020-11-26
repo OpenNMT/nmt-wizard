@@ -91,27 +91,49 @@ class RoutesConfiguration:
 
 
 class TaskInfos:
-    def __init__(self, content, request_data, routes_configuration, service):
-        self._content = content
+    def __init__(self, content, files, request_data, routes_configuration, service, other_infos=None, resource=None):
+        self.content = content
+        self.files = files
+        self.request_data = request_data
+        self.routes_configurations = routes_configuration
+        self.service = service
+        if other_infos:
+            self.other_infos = other_infos
+        if resource:
+            self.resource = resource
 
 
 class TaskBase:
     def __init__(self, task_infos, parent_task_id=None):
-        self._content = deepcopy(task_infos["content"])
-        self._lang_pair = f'{task_infos["request_data"]["source"]}{task_infos["request_data"]["target"]}'
+        self._content = deepcopy(task_infos.content)
+        self._lang_pair = f'{task_infos.request_data["source"]}{task_infos.request_data["target"]}'
         if not self._lang_pair:
             self._lang_pair = parent_task_id.split("_")[1]
-        self._service = task_infos["service"]
-        self._service_config = task_infos["routes_configuration"].service_config
-        self._service_module = task_infos["routes_configuration"].service_module
-        self._files = task_infos["files"]
-        self.other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos["routes_configuration"].entity_owner,
+        self._service = task_infos.service
+        self._service_config = task_infos.routes_configurations.service_config
+        self._service_module = task_infos.routes_configurations.service_module
+        self._files = task_infos.files
+        self.other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos.routes_configurations.entity_owner,
                                  TaskInfo.STORAGE_ENTITIES.value: json.dumps(
-                                     task_infos["routes_configuration"].trainer_entities)}
+                                     task_infos.routes_configurations.trainer_entities)}
+        if task_infos.other_infos:
+            self.update_other_infos(task_infos.other_infos)
         self._priority = self._content.get("priority", 0)
-        if "resource" in task_infos:
-            self._resource = task_infos["resource"]
+        if task_infos.resource:
+            self._resource = self._service_module.select_resource_from_capacity(
+                task_infos.resource, Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
+        else:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._service_module.get_resource_from_options(self._content["options"])
+                , Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
+        # All this must be initialized by the derived class
         self.task_name = None
+        self._task_suffix = None
+        self._parent_task_id = None
+        self._task_type = None
+        self.token = None
 
     def _post_init(self, must_patch_config_name=True):
         self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
@@ -120,20 +142,18 @@ class TaskBase:
         if explicit_name and must_patch_config_name:
             patch_config_explicitname(self._content, explicit_name)
 
-        if self._resource is None:
-            self._resource = self._service_module.select_resource_from_capacity(
-                self._service_module.get_resource_from_options(self._content["options"])
-                , Capacity(self._content["ngpus"], self._content["ncpus"])
-            )
-        else:
-            self._resource = self._service_module.select_resource_from_capacity(
-                self._resource, Capacity(self._content["ngpus"], self._content["ncpus"])
-            )
+        if not _find_compatible_resource(self._service_module, self._content["ngpus"], self._content["ncpus"],
+                                         self._resource):
+            abort(flask.make_response(
+                flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
+                    self._service, self._content["ngpus"],
+                    self._content["ncpus"] and str(self._content["ncpus"]) or "-")), 400))
+
         self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id
                                                            , self._content["ngpus"], self._content["ncpus"])
 
     def update_other_infos(self, other_infos):
-        self._other_task_info.update(other_infos)
+        self.other_task_info.update(other_infos)
 
     def create(self):
         task.create(redis_db
@@ -148,7 +168,7 @@ class TaskBase:
                     , self._priority
                     , self._content["ngpus"]
                     , self._content["ncpus"]
-                    , self._other_infos)
+                    , self.other_task_info)
 
 
 class TaskPreprocess(TaskBase):
@@ -811,13 +831,8 @@ def launch_v2():
     to_translate_corpus = content["to_translate"]
     to_score_corpus = content["to_score"]
 
-    task_infos = {
-        "service": service,
-        "request_data": request_data,
-        "content": content,
-        "files": {},
-        "routes_configuration": routes_config
-    }
+    task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
+                           service=service)
 
     tasks_creation_input = {
         "task_infos": task_infos,
