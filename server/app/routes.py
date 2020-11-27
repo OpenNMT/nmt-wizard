@@ -910,7 +910,7 @@ def validate_tags(tags):
         for tag in new_tags:
             print(f"Tag: {tag}")
             # TODO: Validate tag
-    except Exception as e:
+    except Exception:
         raise Exception("Invalid tags json")
 
 
@@ -2346,7 +2346,7 @@ def append_log(task_id):
 def post_log(task_id):
     content = flask.request.get_data()
     content = task.set_log(redis_db, taskfile_dir, task_id, content, max_log_size)
-    (task_id, content) = post_function('POST/task/log', task_id, content)
+    post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
 
 
