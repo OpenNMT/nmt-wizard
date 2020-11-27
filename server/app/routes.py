@@ -806,10 +806,8 @@ def launch_v2():
     training_file_info = upload_user_files(routes_config, f"{routes_config.upload_path}/train/",
                                            request_data.get("training_data"))
 
-    # TODO: change the signature to use RoutesConfiguration and not each part separately
-    content = get_training_config(service, request_data, default_test_data, creator['user_code'],
-                                  routes_config.service_module, routes_config.entity_owner, routes_config.upload_path,
-                                  routes_config.storage_id, training_file_info)
+    content = get_training_config(service, request_data, default_test_data, creator['user_code'], routes_config,
+                                  training_file_info)
 
     to_translate_corpus = content["to_translate"]
     to_score_corpus = content["to_score"]
@@ -1175,8 +1173,7 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
-                        uploaded_data_path, storage_id, training_corpus_infos):
+def get_training_config(service, request_data, default_test_data, user_code, routes_config, training_corpus_infos):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model")
     source = request_data["source"]
@@ -1186,11 +1183,13 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
     iterations = request_data.get("iterations")
     docker_image = request_data.get("docker_image")
 
-    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model,
+    final_training_config = get_final_training_config(source, target, routes_config.upload_path, parent_model,
                                                       training_corpus_infos)
-    docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
-    to_translate_corpus = get_to_translate_corpus(data_file_info["testing"], source, target, storage_id, default_test_data)
-    to_score_corpus = get_to_score_corpus(data_file_info["testing"], source, target, storage_id, default_test_data)
+    docker_image_info = get_docker_image_info(routes_config.service_module, routes_config.entity_owner, docker_image)
+    to_translate_corpus = get_to_translate_corpus(testing_data, source, target,
+                                                  routes_config.storage_id, default_test_data)
+    to_score_corpus = get_to_score_corpus(testing_data, source, target,
+                                          routes_config.storage_id, default_test_data)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
@@ -1201,7 +1200,7 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
             "command": docker_commands
         }},
         "wait_after_launch": 2,
-        "trainer_id": f"{entity_owner}{user_code}",
+        "trainer_id": f"{routes_config.entity_owner}{user_code}",
         "options": {},
         "to_translate": to_translate_corpus,
         "to_score": to_score_corpus
