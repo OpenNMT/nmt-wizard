@@ -619,6 +619,7 @@ def post_admin_request(app, service, action, value="1"):
     identifier = "%d.%d" % (os.getpid(), app.request_id)
     app.request_id += 1
     redis_db.set("admin:command:%s:%s:%s" % (service, action, identifier), value)
+    command_result = None
     wait = 0
     while wait < 360:
         command_result = redis_db.get("admin:command_result:%s:%s:%s" % (service, action, identifier))
