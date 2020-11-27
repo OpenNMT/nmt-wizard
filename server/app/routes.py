@@ -97,10 +97,8 @@ class TaskInfos:
         self.request_data = request_data
         self.routes_configurations = routes_configuration
         self.service = service
-        if other_infos:
-            self.other_infos = other_infos
-        if resource:
-            self.resource = resource
+        self.other_infos = other_infos
+        self.resource = resource
 
 
 class TaskBase:
@@ -119,15 +117,7 @@ class TaskBase:
         if task_infos.other_infos:
             self.update_other_infos(task_infos.other_infos)
         self._priority = self._content.get("priority", 0)
-        if task_infos.resource:
-            self._resource = self._service_module.select_resource_from_capacity(
-                task_infos.resource, Capacity(self._content["ngpus"], self._content["ncpus"])
-            )
-        else:
-            self._resource = self._service_module.select_resource_from_capacity(
-                self._service_module.get_resource_from_options(self._content["options"]),
-                Capacity(self._content["ngpus"], self._content["ncpus"])
-            )
+        self._resource = task_infos.resource
         # All this must be initialized by the derived class
         self.task_name = None
         self._task_suffix = None
@@ -151,6 +141,15 @@ class TaskBase:
 
         self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id,
                                                            self._content["ngpus"], self._content["ncpus"])
+        if self._resource:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._resource, Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
+        else:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._service_module.get_resource_from_options(self._content["options"]),
+                Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
 
     def update_other_infos(self, other_infos):
         self.other_task_info.update(other_infos)
@@ -178,8 +177,9 @@ class TaskPreprocess(TaskBase):
         self._task_type = "prepr"
         self._parent_task_id = None
         # launch preprocess task on cpus only
-        self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config, 0, "preprocess")
         self._content["ngpus"] = 0
+        if "ncpus" not in self._content:
+            self._content["ncpus"] = get_cpu_count(self._service_config, self._content["ngpus"], "preprocess")
 
         idx = 0
         prepr_command = []
@@ -204,8 +204,10 @@ class TaskTrain(TaskBase):
         self._task_suffix = "train"
         self._task_type = "train"
         self._parent_task_id = parent_task_id
-        self._content["ncpus"] = self._content["ncpus"] or get_cpu_count(self._service_config,
-                                                                         self._content["ngpus"], "train")
+        if "ncpus" not in self._content:
+            if "ngpus" not in self._content:
+                self._content["ngpus"] = 0
+            self._content["ncpus"] = get_cpu_count(self._service_config, self._content["ngpus"], "train")
 
         self._post_init()
 
@@ -226,9 +228,9 @@ class TaskTranslate(TaskBase):
         content_translate = deepcopy(task_infos["content"])
         content_translate["priority"] = content_translate.get("priority", 0) + 1
         content_translate["ngpus"] = 0
-        content_translate["ncpus"] = content_translate.get("ncpus") or \
-                                     get_cpu_count(task_infos["routes-routes_configuration"].service_config,
-                                                   content_translate["ngpus"], "trans")
+        if "ncpus" not in content_translate:
+            content_translate["ncpus"] = get_cpu_count(task_infos["routes-routes_configuration"].service_config,
+                                                       content_translate["ngpus"], "trans")
 
         content_translate["docker"]["command"] = ["trans"]
         content_translate["docker"]["command"].append("--as_release")
@@ -759,10 +761,10 @@ def create_tasks_for_launch_v2(creation_input):
     task_to_create.append(task_preprocess)
     task_names.append(task_preprocess.task_name)
     preprocess_task_id = task_preprocess.task_id
-    remove_config_option(creation_input["content"]["docker"]["command"])
-    change_parent_task(creation_input["content"]["docker"]["command"], preprocess_task_id)
+    remove_config_option(creation_input["task_infos"]["content"]["docker"]["command"])
+    change_parent_task(creation_input["task_infos"]["content"]["docker"]["command"], preprocess_task_id)
 
-    iterations = creation_input["content"].get("iterations", 1)
+    iterations = creation_input["task_infos"]["content"].get("iterations", 1)
     train_task_id = None
     while iterations > 0:
         iterations -= 1
@@ -771,7 +773,7 @@ def create_tasks_for_launch_v2(creation_input):
         task_to_create.append(task_train)
         task_names.append(task_train.task_name)
         train_task_id = task_train.task_id
-        remove_config_option(creation_input["content"]["docker"]["command"])
+        remove_config_option(creation_input["task_infos"]["content"]["docker"]["command"])
         if creation_input["to_translate_corpus"]:
             task_translate = TaskTranslate(creation_input["task_infos"], train_task_id,
                                            creation_input["to_translate_corpus"])
