@@ -988,7 +988,7 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def get_to_translate_corpus(testing_data_infos, source, target, storage_id, default_test_data=[]):
+def get_to_translate_corpus(testing_data, source, target, storage_id, default_test_data=None):
     result = []
     for corpus in testing_data_infos:
         corpus_path = corpus["filename"]
@@ -999,16 +999,17 @@ def get_to_translate_corpus(testing_data_infos, source, target, storage_id, defa
             f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_path}.{source}.{target}'
         ])
 
-    for corpus_name in default_test_data:
-        result.append([
-            f'shared_testdata:{corpus_name}',
-            f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
-        ])
+    if default_test_data:
+        for corpus_name in default_test_data:
+            result.append([
+                f'shared_testdata:{corpus_name}',
+                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
+            ])
 
     return result
 
 
-def get_to_score_corpus(testing_data_infos, source, target, storage_id, default_test_data=[]):
+def get_to_score_corpus(testing_data, source, target, storage_id, default_test_data=None):
     result = []
     for corpus in testing_data_infos:
         corpus_path = corpus["filename"]
@@ -1019,12 +1020,13 @@ def get_to_score_corpus(testing_data_infos, source, target, storage_id, default_
             f'{storage_id}:{corpus_path}.{target}'
         ])
 
-    for corpus_name in default_test_data:
-        target_corpus = corpus_name[:-3] + "." + target
-        result.append([
-            f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
-            f'shared_testdata:{target_corpus}'
-        ])
+    if default_test_data:
+        for corpus_name in default_test_data:
+            target_corpus = corpus_name[:-3] + "." + target
+            result.append([
+                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
+                f'shared_testdata:{target_corpus}'
+            ])
 
     return result
 
