@@ -803,9 +803,8 @@ def launch_v2():
     default_test_data = get_default_test_data(routes_config.storage_client,
                                               request_data["source"], request_data["target"])
 
-    # TODO: change the signature to use RoutesConfiguration and not each part separately
-    training_file_info = upload_user_files(routes_config.storage_client, routes_config.storage_id,
-                                           f"{routes_config.upload_path}/train/", request_data.get("training_data"))
+    training_file_info = upload_user_files(routes_config, f"{routes_config.upload_path}/train/",
+                                           request_data.get("training_data"))
 
     # TODO: change the signature to use RoutesConfiguration and not each part separately
     content = get_training_config(service, request_data, default_test_data, creator['user_code'],
@@ -979,73 +978,13 @@ def validate_iteration(num_of_iteration):
         raise Exception('num_of_iteration must be numeric')
 
 
-def validate_file(corpus_type, corpus_config, training_data, testing_data, dataset):
-    if not corpus_type or not corpus_type.isnumeric() or int(corpus_type) not in CORPUS_TYPE.values():
-        raise Exception('Invalid corpus_type')
-    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"]:
-        validate_training_data(training_data, corpus_config)
-        validate_testing_data(testing_data, corpus_config)
-    else:
-        if len(dataset) == 0:
-            raise Exception('Num of dataset must greater than 0')
-        for dataset_id in dataset:
-            if not is_valid_object_id(dataset_id):
-                raise Exception(f'Invalid dataset: {dataset_id}')
-
-
-def get_data_file_info(entity_code, request_data, storage_client, storage_id):
-    corpus_type = request_data.get("corpus_type")
-    if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
-        training_data = request_data.get("training_data")
-        testing_data = request_data.get("testing_data")
-
-        return get_user_upload_file_info(entity_code, training_data, testing_data, storage_client, storage_id)
-
-    dataset = request_data.get("dataset")
-    dataset_ids = list(map(lambda ele: ObjectId(ele), dataset))
-    return get_exists_dataset_file_info(dataset_ids)
-
-
-def get_user_upload_file_info(entity_code, training_data, testing_data, storage_client, storage_id):
-    upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
-
-    data_file_info = {
-        "training": upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data),
-        "testing": upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
-    }
-
-    return data_file_info
-
-
-def get_exists_dataset_file_info(dataset_ids):
-    result = {
-        "training": [],
-        "testing": []
-    }
-    exists_dataset = mongo_client.get_dataset_by_ids(dataset_ids)
-    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db,
-                                                                    has_ability, g)
-
-    for dataset in exists_dataset:
-        dataset_name = dataset["name"]
-        entity_code = dataset["entity"]
-        files = get_all_files_of_dataset(f"{entity_code}/{dataset_name}", global_storage_name, storage_client)
-
-        training_files = files.get("train", [])
-        testing_files = files.get("test", [])
-
-        result["training"].extend(training_files)
-        result["testing"].extend(testing_files)
-
-    return result
-
-
-def upload_user_files(storage_client, storage_id, path, files):
+def upload_user_files(routes_config, path, files):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
     for file in files:
         file.save(os.path.join(temp_files, file.filename))
-        push_infos = storage_client.push(os.path.join(temp_files, file.filename), path, storage_id)
+        push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
+                                                       routes_config.storage_id)
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
@@ -1415,8 +1354,7 @@ def create_evaluation():
     target_language = request_data.get("target_language")
 
     # TODO: change function signature to take routes_config instead of each components
-    upload_user_files(routes_config.storage_client, routes_config.storage_id,
-                      f"{routes_config.upload_path}/test/", corpus)
+    upload_user_files(routes_config, f"{routes_config.upload_path}/test/", corpus)
 
     to_translate_corpus = get_to_translate_corpus(corpus, routes_config.upload_path, source_language,
                                                   target_language, routes_config.storage_id)
