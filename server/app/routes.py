@@ -989,16 +989,19 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def get_to_translate_corpus(testing_data, source, target, storage_id, default_test_data=None):
+def get_to_translate_corpus(request_data, routes_config, default_test_data=None):
+    source = request_data["source"]
+    target = request_data["target"]
     result = []
-    for corpus in testing_data_infos:
-        corpus_path = corpus["filename"]
-        if corpus_path[0] == '/':
-            corpus_path = corpus_path[1:]
-        result.append([
-            f'{storage_id}:{corpus_path}.{source}',
-            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_path}.{source}.{target}'
-        ])
+    if request_data.get("testing_data"):
+        for corpus in request_data["testing_data"]:
+            corpus_path = corpus["filename"]
+            if corpus_path[0] == '/':
+                corpus_path = corpus_path[1:]
+            result.append([
+                f'{routes_config.storage_id}:{corpus_path}.{source}',
+                f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}'
+            ])
 
     if default_test_data:
         for corpus_name in default_test_data:
@@ -1010,16 +1013,19 @@ def get_to_translate_corpus(testing_data, source, target, storage_id, default_te
     return result
 
 
-def get_to_score_corpus(testing_data, source, target, storage_id, default_test_data=None):
+def get_to_score_corpus(request_data, routes_config, default_test_data=None):
+    source = request_data["source"]
+    target = request_data["target"]
     result = []
-    for corpus in testing_data_infos:
-        corpus_path = corpus["filename"]
-        if corpus_path[0] == '/':
-            corpus_path = corpus_path[1:]
-        result.append([
-            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_path}.{source}.{target}',
-            f'{storage_id}:{corpus_path}.{target}'
-        ])
+    if request_data.get("testing_data"):
+        for corpus in request_data["testing_data"]:
+            corpus_path = corpus["filename"]
+            if corpus_path[0] == '/':
+                corpus_path = corpus_path[1:]
+            result.append([
+                f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}',
+                f'{routes_config.storage_id}:{corpus_path}.{target}'
+            ])
 
     if default_test_data:
         for corpus_name in default_test_data:
@@ -1072,7 +1078,7 @@ def get_from_scratch_config(source, target, data):
     }
 
 
-def get_final_training_config(source, target, parent_model, training_corpus_infos):
+def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_paths = map(lambda corpus: corpus.get("filename"), training_corpus_infos)
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
 
@@ -1086,11 +1092,11 @@ def get_final_training_config(source, target, parent_model, training_corpus_info
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
+    if not request_data["parent_model"]:
+        return get_from_scratch_config(request_data["source"], request_data["target"], training_data_config)
 
-    if not parent_model:
-        return get_from_scratch_config(source, target, training_data_config)
-
-    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
+    ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
+                                                              boolean_param(request.args.get('short')))
     if ok:
         parent_config["data"] = {
             "sample": training_data_config["sample"] + parent_config["data"]["sample"],
@@ -1098,13 +1104,14 @@ def get_final_training_config(source, target, parent_model, training_corpus_info
         }
         return parent_config
     else:
-        abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model), 400))
+        abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
+                                                        request_data["parent_model"]), 400))
 
 
-def get_docker_image_info(service_module, entity_owner, docker_image):
+def get_docker_image_info(routes_config, docker_image):
     if not docker_image:
-        return get_docker_image_from_db(service_module)
-    return get_docker_image_from_request(service_module, entity_owner, docker_image)
+        return get_docker_image_from_db(routes_config.service_module)
+    return get_docker_image_from_request(routes_config.service_module, routes_config.entity_owner, docker_image)
 
 
 def get_docker_image_from_db(service_module):
@@ -1177,28 +1184,16 @@ def get_default_test_data(storage_client, source, target):
 
 
 def get_training_config(service, request_data, default_test_data, user_code, routes_config, training_corpus_infos):
-    model_name = request_data["model_name"]
-    parent_model = request_data.get("parent_model")
-    source = request_data["source"]
-    target = request_data["target"]
-    ncpus = request_data.get("ncpus")
-    priority = request_data.get("priority")
-    iterations = request_data.get("iterations")
-    docker_image = request_data.get("docker_image")
-
-    final_training_config = get_final_training_config(source, target, routes_config.upload_path, parent_model,
-                                                      training_corpus_infos)
-    docker_image_info = get_docker_image_info(routes_config.service_module, routes_config.entity_owner, docker_image)
-    to_translate_corpus = get_to_translate_corpus(testing_data, source, target,
-                                                  routes_config.storage_id, default_test_data)
-    to_score_corpus = get_to_score_corpus(testing_data, source, target,
-                                          routes_config.storage_id, default_test_data)
+    final_training_config = get_final_training_config(request_data, training_corpus_infos)
+    docker_image_info = get_docker_image_info(routes_config, request_data.get("docker_image"))
+    to_translate_corpus = get_to_translate_corpus(request_data, routes_config, default_test_data)
+    to_score_corpus = get_to_score_corpus(request_data, routes_config, default_test_data)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
     content = {
         "service": service,
-        "name": model_name,
+        "name": request_data["model_name"],
         "docker": {**docker_image_info, **{
             "command": docker_commands
         }},
@@ -1209,12 +1204,12 @@ def get_training_config(service, request_data, default_test_data, user_code, rou
         "to_score": to_score_corpus
     }
 
-    if ncpus:
-        content["ncpus"] = ncpus
-    if priority:
-        content["priority"] = priority
-    if iterations:
-        content["iterations"] = iterations
+    if request_data.get("ncpus"):
+        content["ncpus"] = request_data["ncpus"]
+    if request_data.get("priority"):
+        content["priority"] = request_data["priority"]
+    if request_data.get("iterations"):
+        content["iterations"] = request_data["iterations"]
     return json.loads(json.dumps(content))
 
 
