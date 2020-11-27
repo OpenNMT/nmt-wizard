@@ -845,11 +845,11 @@ def create_tasks_for_model(task_ids):
     return tasks
 
 
-def parse_request_data(request):
-    validate_request_data(request)
+def parse_request_data(current_request):
+    validate_request_data(current_request)
 
-    request_files = request.files
-    request_data = request.form
+    request_files = current_request.files
+    request_data = current_request.form
     tags = request_data.get("tags", [])
 
     training_data = request_files.getlist("training_data")
@@ -865,9 +865,9 @@ def parse_request_data(request):
     }}
 
 
-def validate_request_data(request):
-    request_files = request.files
-    request_data = request.form
+def validate_request_data(current_request):
+    request_files = current_request.files
+    request_data = current_request.form
 
     training_data = request_files.getlist("training_data")
     testing_data = request_files.getlist("testing_data")
@@ -1390,10 +1390,10 @@ def create_evaluation():
     return flask.jsonify(model_task_map)
 
 
-def parse_request_data_of_evaluation(request):
-    validate_request_data_of_evaluation(request)
-    request_files = request.files
-    request_data = request.form
+def parse_request_data_of_evaluation(current_request):
+    validate_request_data_of_evaluation(current_request)
+    request_files = current_request.files
+    request_data = current_request.form
 
     models = request_data.getlist("models")
     evaluation_corpus = request_files.getlist("corpus")
@@ -1410,7 +1410,7 @@ def parse_request_data_of_evaluation(request):
     }
 
 
-def validate_request_data_of_evaluation(request):
+def validate_request_data_of_evaluation(current_request):
     # TODO: Validate request data
     # models: exists? training completed? same lp? num of models?
     # corpus: use is_valid_corpus_extension(file_name, corpus_config)
