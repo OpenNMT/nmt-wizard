@@ -95,7 +95,7 @@ class TaskInfos:
         self.content = content
         self.files = files
         self.request_data = request_data
-        self.routes_configurations = routes_configuration
+        self.routes_configuration = routes_configuration
         self.service = service
         self.other_infos = other_infos
         self.resource = resource
@@ -108,12 +108,12 @@ class TaskBase:
         if not self._lang_pair:
             self._lang_pair = parent_task_id.split("_")[1]
         self._service = task_infos.service
-        self._service_config = task_infos.routes_configurations.service_config
-        self._service_module = task_infos.routes_configurations.service_module
+        self._service_config = task_infos.routes_configuration.service_config
+        self._service_module = task_infos.routes_configuration.service_module
         self._files = task_infos.files
-        self.other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos.routes_configurations.entity_owner,
+        self.other_task_info = {TaskInfo.ENTITY_OWNER.value: task_infos.routes_configuration.entity_owner,
                                 TaskInfo.STORAGE_ENTITIES.value: json.dumps(
-                                    task_infos.routes_configurations.trainer_entities)}
+                                    task_infos.routes_configuration.trainer_entities)}
         if task_infos.other_infos:
             self.update_other_infos(task_infos.other_infos)
         self._priority = self._content.get("priority", 0)
@@ -219,17 +219,16 @@ class TaskTranslate(TaskBase):
         self._task_suffix = "trans"
         self._task_type = "trans"
         self._parent_task_id = parent_task_id
-        self._to_translate = task_infos["to_translate"]
 
         self._post_init(must_patch_config_name=False)
 
     @staticmethod
     def _compute_task_infos(task_infos, parent_task_id, to_translate):
-        content_translate = deepcopy(task_infos["content"])
+        content_translate = deepcopy(task_infos.content)
         content_translate["priority"] = content_translate.get("priority", 0) + 1
         content_translate["ngpus"] = 0
         if "ncpus" not in content_translate:
-            content_translate["ncpus"] = get_cpu_count(task_infos["routes-routes_configuration"].service_config,
+            content_translate["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
                                                        content_translate["ngpus"], "trans")
 
         content_translate["docker"]["command"] = ["trans"]
@@ -244,8 +243,7 @@ class TaskTranslate(TaskBase):
             content_translate["docker"]["command"].extend(sub_file)
 
         translate_task_infos = task_infos
-        translate_task_infos["content"] = content_translate
-        translate_task_infos["to_translate"] = to_translate
+        translate_task_infos.content = content_translate
         return translate_task_infos
 
 
@@ -261,14 +259,14 @@ class TaskScoring(TaskBase):
 
     @staticmethod
     def _compute_task_infos(task_infos, parent_task_id, to_score):
-        content_score = deepcopy(task_infos["content"])
+        content_score = deepcopy(task_infos.content)
         content_score["priority"] = content_score.get("priority", 0) + 1
         content_score["ngpus"] = 0
         content_score["ncpus"] = 1
         image_score = "nmtwizard/score"
         content_score["docker"] = {
             "image": image_score,
-            "registry": _get_registry(task_infos["routes-routes_configuration"].service_module, image_score),
+            "registry": _get_registry(task_infos.routes_configuration.service_module, image_score),
             "tag": "2.0.0",
             "command": []
         }
@@ -287,22 +285,9 @@ class TaskScoring(TaskBase):
         content_score["docker"]["command"].extend(["-f", "launcher:scores"])
 
         translate_task_infos = task_infos
-        translate_task_infos["content"] = content_score
+        translate_task_infos.content = content_score
 
         return translate_task_infos
-
-    @staticmethod
-    def compute_scoring_content(model, to_score_corpus, common_task_infos, translation_task_id, scoring_docker_image,
-                                priority, ncpus, ngpus, resource):
-        score_output = list(map(lambda ele: [ele[0].replace('<MODEL>', model), ele[1]], to_score_corpus))
-        common_task_infos["parent_task_id"] = translation_task_id
-        common_task_infos["ncpus"] = ncpus
-        common_task_infos["ngpus"] = ngpus
-        common_task_infos["resource"] = resource
-        common_task_infos["docker_image"] = scoring_docker_image
-        content = get_content_of_scoring_task(common_task_infos, score_output)
-        content["priority"] = priority
-        return content
 
 
 def get_entity_owner(service_entities, service_name):
@@ -761,10 +746,10 @@ def create_tasks_for_launch_v2(creation_input):
     task_to_create.append(task_preprocess)
     task_names.append(task_preprocess.task_name)
     preprocess_task_id = task_preprocess.task_id
-    remove_config_option(creation_input["task_infos"]["content"]["docker"]["command"])
-    change_parent_task(creation_input["task_infos"]["content"]["docker"]["command"], preprocess_task_id)
+    remove_config_option(creation_input["task_infos"].content["docker"]["command"])
+    change_parent_task(creation_input["task_infos"].content["docker"]["command"], preprocess_task_id)
 
-    iterations = creation_input["task_infos"]["content"].get("iterations", 1)
+    iterations = creation_input["task_infos"].content.get("iterations", 1)
     train_task_id = None
     while iterations > 0:
         iterations -= 1
@@ -773,7 +758,7 @@ def create_tasks_for_launch_v2(creation_input):
         task_to_create.append(task_train)
         task_names.append(task_train.task_name)
         train_task_id = task_train.task_id
-        remove_config_option(creation_input["task_infos"]["content"]["docker"]["command"])
+        remove_config_option(creation_input["task_infos"].content["docker"]["command"])
         if creation_input["to_translate_corpus"]:
             task_translate = TaskTranslate(creation_input["task_infos"], train_task_id,
                                            creation_input["to_translate_corpus"])
@@ -835,8 +820,8 @@ def launch_v2():
 
     tasks_creation_input = {
         "task_infos": task_infos,
-        "to_translate": to_translate_corpus,
-        "to_score": to_score_corpus
+        "to_translate_corpus": to_translate_corpus,
+        "to_score_corpus": to_score_corpus
     }
 
     tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_input)
