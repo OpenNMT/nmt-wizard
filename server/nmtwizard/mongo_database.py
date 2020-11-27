@@ -90,15 +90,7 @@ class MongoDatabase:
 
         return service_config
 
-    def update_insert_service_config(self, service_name, config_data):
-        the_table = self.get("configs")
-        config_data["name"] = service_name
-        query = {
-            "name": service_name
-        }
-        the_table.replace_one(query, config_data, upsert=True)
-
-    def get_service_configs(self, services, views=None):
+    def get_service_configs(self, service_names, views=None):
         the_table = self.get("configs")
         if views is None:
             views = {
@@ -106,13 +98,21 @@ class MongoDatabase:
             }
         query = {
             "name": {
-                "$in": services
+                "$in": service_names
             }
         }
 
         service_configs = the_table.find(query, views)
 
         return service_configs
+
+    def update_insert_service_config(self, service_name, config_data):
+        the_table = self.get("configs")
+        config_data["name"] = service_name
+        query = {
+            "name": service_name
+        }
+        the_table.replace_one(query, config_data, upsert=True)
 
     def tags_put(self, items):
         the_table = self.get("tags")

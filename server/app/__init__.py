@@ -4,7 +4,7 @@ import logging.config
 from flask import Flask
 from nmtwizard import common
 from nmtwizard import configuration as config
-from utils.database_utils import DatabaseUtils
+from server.utils.database_utils import DatabaseUtils
 
 VERSION = "1.12.0"
 app = Flask(__name__)
