@@ -64,7 +64,7 @@ class StorageId:
         return entity, storage_id
 
     @staticmethod
-    def get_entites(names):
+    def get_entities(names):
         entities = set({})
         for storage in names:
             entity, storage_id = StorageId.decode_storage_name(storage)
@@ -130,7 +130,7 @@ class TaskBase:
                                                     self._parent_task_id)
 
         if explicit_name and must_patch_config_name:
-            patch_config_explicitname(self._content, explicit_name)
+            patch_config_explicit_name(self._content, explicit_name)
 
         if not _find_compatible_resource(self._service_module, self._content["ngpus"], self._content["ncpus"],
                                          self._resource):
@@ -305,7 +305,7 @@ def get_entity_owner(service_entities, service_name):
 
     if not entity_owner:
         abort(flask.make_response(flask.jsonify(
-            message="model owner is ambigious between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
+            message="model owner is ambiguous between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
     entity_owner = entity_owner.upper()
 
     if not has_ability(flask.g, 'train', entity_owner):
@@ -341,7 +341,7 @@ def check_permission(service, permission):
 
 @app.errorhandler(Exception)
 def handle_error(e):
-    # return a nice message when any exception occured, keeping the orignal Http error
+    # return a nice message when any exception occurred, keeping the original Http error
     # https://stackoverflow.com/questions/29332056/global-error-handler-for-any-exception
     if 'user' in flask.g:
         app.logger.error("User:'%s'" % flask.g.user.user_code)
@@ -387,7 +387,7 @@ def _duplicate_adapt(service, content):
     return dup_content
 
 
-def _usagecapacity(service):
+def _usage_capacity(service):
     """calculate the current usage of the service."""
     usage_xpu = Capacity()
     capacity_xpus = Capacity()
@@ -562,7 +562,7 @@ def post_function(method, *args):
 @filter_request("GET/service/list")
 def list_services():
     minimal = boolean_param(flask.request.args.get('minimal'))
-    showall = boolean_param(flask.request.args.get('all'))
+    show_all = boolean_param(flask.request.args.get('all'))
     res = {}
     for service_name in redis_db.smembers("admin:services"):
         service_config = config.get_service_config(mongo_client, service_name)
@@ -571,7 +571,7 @@ def list_services():
 
         pool_entities = config.get_entities(service_config)
 
-        if not showall and flask.g.user.entity.entity_code not in pool_entities:
+        if not show_all and flask.g.user.entity.entity_code not in pool_entities:
             continue
 
         if any(has_ability(flask.g, "train", pool_entity) for pool_entity in pool_entities):
@@ -580,7 +580,7 @@ def list_services():
             if minimal:
                 res[service_name] = {'name': name}
             else:
-                usage, queued, capacity, busy, detail = _usagecapacity(service_def)
+                usage, queued, capacity, busy, detail = _usage_capacity(service_def)
                 pids = get_worker_pids(service_name)
                 pid = ",".join(pids)
                 if len(pids) == 0:
@@ -719,7 +719,7 @@ def check(service):
         return flask.jsonify(details)
 
 
-def patch_config_explicitname(content, explicitname):
+def patch_config_explicit_name(content, explicit_name):
     if "docker" in content and content["docker"].get("command"):
         idx = 0
         command = content["docker"].get("command")
@@ -733,7 +733,7 @@ def patch_config_explicitname(content, explicitname):
                 continue
             if command[idx] == '-c' or command[idx] == '--config':
                 config = json.loads(command[idx + 1])
-                config["modelname_description"] = explicitname
+                config["modelname_description"] = explicit_name
                 command[idx + 1] = json.dumps(config)
                 return
             idx += 2
@@ -1834,10 +1834,10 @@ def launch(service):
 
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_task_id, explicitname = build_task_id(content, xxyy, "prepr", parent_task_id)
+            prepr_task_id, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
 
-            if explicitname:
-                patch_config_explicitname(content, explicitname)
+            if explicit_name:
+                patch_config_explicit_name(content, explicit_name)
 
             idx = 0
             prepr_command = []
@@ -1875,10 +1875,10 @@ def launch(service):
 
         if task_type != "prepr":
 
-            task_id, explicitname = build_task_id(content, xxyy, task_suffix, parent_task_id)
+            task_id, explicit_name = build_task_id(content, xxyy, task_suffix, parent_task_id)
 
-            if explicitname:
-                patch_config_explicitname(content, explicitname)
+            if explicit_name:
+                patch_config_explicit_name(content, explicit_name)
 
             file_to_transtaskid = {}
             if task_type == "trans":
@@ -1947,7 +1947,7 @@ def launch(service):
                         content_translate["docker"]["command"].append(f[0])
 
                     change_parent_task(content_translate["docker"]["command"], task_id)
-                    trans_task_id, explicitname = build_task_id(content_translate, xxyy, "trans",
+                    trans_task_id, explicit_name = build_task_id(content_translate, xxyy, "trans",
                                                                 task_id)
 
                     content_translate["docker"]["command"].append('-o')
@@ -2005,7 +2005,7 @@ def launch(service):
                         option_lang + ['-f', "launcher:scores"]
                     }
 
-                    score_task_id, explicitname = build_task_id(content_score, xxyy, "score",
+                    score_task_id, explicit_name = build_task_id(content_score, xxyy, "score",
                                                                 parent_task_id)
                     task_create.append(
                         (redis_db, taskfile_dir,
@@ -2061,7 +2061,7 @@ def launch(service):
                         in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
-                    tuminer_task_id, explicitname = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
+                    tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
                     task_create.append(
                         (redis_db, taskfile_dir,
                          tuminer_task_id, "exec", parent_task_id, tuminer_resource, service,
@@ -2159,7 +2159,7 @@ def list_tasks(pattern):
     service_filter = flask.request.args.get('service')
     status_filter = flask.request.args.get('status')
 
-    ltask = []
+    list_task = []
     prefix = "*" if pattern == '-*' else pattern
 
     suffix = ''
@@ -2232,8 +2232,8 @@ def list_tasks(pattern):
             if not with_parent:
                 del info["parent"]
 
-            ltask.append(info)
-    return flask.jsonify(ltask)
+            list_task.append(info)
+    return flask.jsonify(list_task)
 
 
 @app.route("/task/terminate/<string:task_id>", methods=["GET"])
@@ -2388,8 +2388,8 @@ def get_version_request():
 
 def get_worker_pids(service_name):
     worker_pids = []
-    for keyw in redis_db.scan_iter("admin:worker:%s:*" % service_name):
-        worker_pids.append(keyw[len("admin:worker:%s:" % service_name):])
+    for key_worker in redis_db.scan_iter("admin:worker:%s:*" % service_name):
+        worker_pids.append(key_worker[len("admin:worker:%s:" % service_name):])
     return worker_pids
 
 
