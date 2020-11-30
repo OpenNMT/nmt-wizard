@@ -954,24 +954,22 @@ def validate_docker_image(docker_image):
 
 
 def validate_ncpus(ncpus):
-    if ncpus is None:
-        return
-    if not ncpus.isnumeric():
-        raise Exception('ncpus must be numeric')
+    validate_numeric_value(ncpus, 'ncpus')
 
 
 def validate_priority(priority):
-    if priority is None:
-        return
-    if not priority.isnumeric():
-        raise Exception('priority must be numeric')
+    validate_numeric_value(priority, 'priority')
 
 
 def validate_iteration(num_of_iteration):
-    if num_of_iteration is None:
+    validate_numeric_value(num_of_iteration, 'num_of_iteration')
+
+
+def validate_numeric_value(value, name):
+    if value is None:
         return
-    if not num_of_iteration.isnumeric():
-        raise Exception('num_of_iteration must be numeric')
+    if not value.isnumeric():
+        raise Exception(str(name + 'must be numeric'))
 
 
 def upload_user_files(routes_config, path, files):
