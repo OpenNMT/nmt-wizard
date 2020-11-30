@@ -905,6 +905,8 @@ def validate_tags(tags):
             if not is_valid_object_id(tag):
                 raise Exception(f"Invalid id: {tag}")
         for tag in new_tags:
+            if not is_valid_object_id(tag):
+                raise Exception(f"Invalid id: {tag}")
             print(f"Tag: {tag}")
             # TODO: Validate tag
     except Exception:
