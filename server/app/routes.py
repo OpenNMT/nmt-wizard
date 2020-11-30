@@ -810,15 +810,12 @@ def launch_v2():
     routes_config = RoutesConfiguration(creator['entity_code'], service)
     storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
 
-    default_test_data = get_default_test_data(routes_config.storage_client,
-                                              request_data["source"], request_data["target"])
-
     training_file_info = upload_user_files(routes_config, f"{routes_config.upload_path}/train/",
                                            request_data.get("training_data"))
 
     content = get_training_config(service, request_data, creator['user_code'], routes_config, training_file_info)
 
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config, default_test_data)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config)
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
@@ -999,9 +996,12 @@ def get_model_path(routes_config, corpus_name, source, target):
     return f'pn9_testtrans:<MODEL>/{storage_id}{upload_path}/test/{corpus_name}.{source}.{target}'
 
 
-def get_translate_score_corpus(request_data, routes_config, default_test_data=None):
+def get_translate_score_corpus(request_data, routes_config):
     source = request_data["source"]
     target = request_data["target"]
+    default_test_data = get_default_test_data(routes_config.storage_client, request_data["source"],
+                                              request_data["target"])
+
     to_translate_corpus = []
     to_score_corpus = []
     if request_data.get("testing_data"):
