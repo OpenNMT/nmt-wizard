@@ -916,10 +916,7 @@ def validate_tags(tags):
 def validate_training_data(training_data, corpus_config):
     if not isinstance(training_data, list) or len(training_data) == 0:
         raise Exception("training data is required")
-    for file in training_data:
-        file_name = file.filename
-        if not is_valid_corpus_extension(file_name, corpus_config):
-            raise Exception(f"Invalid corpus extension: {file_name}")
+    validate_corpus_data(training_data, corpus_config)
 
 
 def validate_testing_data(testing_data, corpus_config):
@@ -927,7 +924,11 @@ def validate_testing_data(testing_data, corpus_config):
         raise Exception("testing data must be Array")
     if len(testing_data) == 0:
         return
-    for file in testing_data:
+    validate_corpus_data(testing_data, corpus_config)
+
+
+def validate_corpus_data(files, corpus_config):
+    for file in files:
         file_name = file.filename
         if not is_valid_corpus_extension(file_name, corpus_config):
             raise Exception(f"Invalid corpus extension: {file_name}")
