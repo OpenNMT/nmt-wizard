@@ -1099,7 +1099,7 @@ def get_final_training_config(request_data, training_corpus_infos):
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
-    if not request_data["parent_model"]:
+    if "parent_model" not in request_data:
         return get_from_scratch_config(request_data["source"], request_data["target"], training_data_config)
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
