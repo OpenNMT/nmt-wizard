@@ -101,6 +101,13 @@ class TaskInfos:
         self.resource = resource
 
 
+class TasksCreationInfos:
+    def __init__(self, task_infos, to_translate_corpus, to_score_corpus):
+        self.task_infos = task_infos
+        self.to_translate_corpus = to_translate_corpus
+        self.to_score_corpus = to_score_corpus
+
+
 class TaskBase:
     def __init__(self, task_infos, parent_task_id=None):
         self._content = deepcopy(task_infos.content)
@@ -739,34 +746,33 @@ def patch_config_explicit_name(content, explicit_name):
             idx += 2
 
 
-def create_tasks_for_launch_v2(creation_input):
+def create_tasks_for_launch_v2(creation_infos):
     task_to_create = []
     task_names = []
     # PreprocessTask
-    task_preprocess = TaskPreprocess(creation_input["task_infos"])
+    task_preprocess = TaskPreprocess(creation_infos.task_infos)
     task_to_create.append(task_preprocess)
     task_names.append(task_preprocess.task_name)
     preprocess_task_id = task_preprocess.task_id
-    remove_config_option(creation_input["task_infos"].content["docker"]["command"])
-    change_parent_task(creation_input["task_infos"].content["docker"]["command"], preprocess_task_id)
+    remove_config_option(creation_infos.task_infos.content["docker"]["command"])
+    change_parent_task(creation_infos.task_infos.content["docker"]["command"], preprocess_task_id)
 
-    iterations = creation_input["task_infos"].content.get("iterations", 1)
+    iterations = creation_infos.task_infos.content.get("iterations", 1)
     train_task_id = None
     while iterations > 0:
         iterations -= 1
 
-        task_train = TaskTrain(creation_input["task_infos"], preprocess_task_id)
+        task_train = TaskTrain(creation_infos.task_infos, preprocess_task_id)
         task_to_create.append(task_train)
         task_names.append(task_train.task_name)
         train_task_id = task_train.task_id
-        remove_config_option(creation_input["task_infos"].content["docker"]["command"])
-        if creation_input["to_translate_corpus"]:
-            task_translate = TaskTranslate(creation_input["task_infos"], train_task_id,
-                                           creation_input["to_translate_corpus"])
+        remove_config_option(creation_infos.task_infos.content["docker"]["command"])
+        if creation_infos.to_translate_corpus:
+            task_translate = TaskTranslate(creation_infos.task_infos, train_task_id, creation_infos.to_translate_corpus)
             task_to_create.append(task_translate)
             task_names.append(task_translate.task_name)
-        if creation_input["to_score_corpus"]:
-            task_scoring = TaskScoring(creation_input["task_infos"], train_task_id, creation_input["to_score_corpus"])
+        if creation_infos.to_score_corpus:
+            task_scoring = TaskScoring(creation_infos.task_infos, train_task_id, creation_infos.to_score_corpus)
             task_to_create.append(task_scoring)
             task_names.append(task_scoring.task_name)
 
@@ -814,13 +820,11 @@ def launch_v2():
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
 
-    tasks_creation_input = {
-        "task_infos": task_infos,
-        "to_translate_corpus": to_translate_corpus,
-        "to_score_corpus": to_score_corpus
-    }
+    tasks_creation_infos = TasksCreationInfos(task_infos=task_infos,
+                                              to_translate_corpus=to_translate_corpus,
+                                              to_score_corpus=to_score_corpus)
 
-    tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_input)
+    tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_infos)
 
     task_names = tasks_creation_output["task_names"]
     if len(task_names) == 1:
@@ -1265,7 +1269,7 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
                                                 lp=None, state=state, creator=creator, input_name=input_name)
 
 
-def create_tasks_for_evaluation(task_infos, models, evaluation_id, to_translate_corpus, to_score_corpus):
+def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
     model_task_map = {}
     tasks_to_create = []
     tasks_name = []
@@ -1276,28 +1280,32 @@ def create_tasks_for_evaluation(task_infos, models, evaluation_id, to_translate_
             abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
         models_info.append(model_info)
 
-        task_infos.other_infos = {
+        creation_infos.task_infos.other_infos = {
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
         # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
-        task_infos.content["docker_image"] = {
+        creation_infos.task_infos.content["docker_image"] = {
             "image": "systran/pn9_tf",
             "tag": "v1.46.0-beta1",
             "registry": "dockersystran"
         }
-        task_infos.content["ncpus"] = 4
-        task_translate = TaskTranslate(task_infos=task_infos, parent_task_id=model, to_translate=to_translate_corpus)
+        creation_infos.task_infos.content["ncpus"] = 4
+        task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                       parent_task_id=model,
+                                       to_translate=creation_infos.to_translate_corpus)
         tasks_to_create.append(task_translate)
         tasks_name.append(task_translate.task_name)
 
         # TODO: Create new function to get scoring docker image
-        task_infos.content["docker_image"] = {
+        creation_infos.task_infos.content["docker_image"] = {
             "image": "nmtwizard/score",
             "registry": "dockerhub",
             "tag": "2.1.0-beta1"
         }
-        task_scoring = TaskScoring(task_infos=task_infos, parent_task_id=model, to_score=to_score_corpus)
+        task_scoring = TaskScoring(task_infos=creation_infos.task_infos,
+                                   parent_task_id=model,
+                                   to_score=creation_infos.to_score_corpus)
         tasks_to_create.append(task_scoring)
         tasks_name.append(task_scoring.task_name)
 
@@ -1366,9 +1374,13 @@ def create_evaluation():
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service, resource="auto")
 
-    model_task_map, models_info = create_tasks_for_evaluation(task_infos=task_infos, models=models, evaluation_id=evaluation_id,
-                                                 to_translate_corpus=to_translate_corpus,
-                                                 to_score_corpus=to_score_corpus)
+    tasks_creation_infos = TasksCreationInfos(task_infos=task_infos,
+                                              to_translate_corpus=to_translate_corpus,
+                                              to_score_corpus=to_score_corpus)
+
+    model_task_map, models_info = create_tasks_for_evaluation(creation_infos=tasks_creation_infos,
+                                                 models=models,
+                                                 evaluation_id=evaluation_id)
 
     create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map)
 
