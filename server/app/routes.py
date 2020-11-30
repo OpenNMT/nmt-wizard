@@ -895,8 +895,8 @@ def validate_tags(tags):
         existed_tags = tags_json.get("existed", [])
         new_tags = tags_json.get("new", [])
         if not isinstance(existed_tags, list):
-            raise Exception("new_tags tags must be array")
-        if not isinstance(existed_tags, list):
+            raise Exception("existed_tags tags must be array")
+        if not isinstance(new_tags, list):
             raise Exception("new tags must be array")
         for tag in existed_tags:
             if not is_valid_object_id(tag):
@@ -905,7 +905,6 @@ def validate_tags(tags):
             if not is_valid_object_id(tag):
                 raise Exception(f"Invalid id: {tag}")
             print(f"Tag: {tag}")
-            # TODO: Validate tag
     except Exception:
         raise Exception("Invalid tags json")
 
