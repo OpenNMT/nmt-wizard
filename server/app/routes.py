@@ -807,11 +807,9 @@ def launch_v2():
     training_file_info = upload_user_files(routes_config, f"{routes_config.upload_path}/train/",
                                            request_data.get("training_data"))
 
-    content = get_training_config(service, request_data, default_test_data, creator['user_code'], routes_config,
-                                  training_file_info)
+    content = get_training_config(service, request_data, creator['user_code'], routes_config, training_file_info)
 
-    to_translate_corpus = content["to_translate"]
-    to_score_corpus = content["to_score"]
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config, default_test_data)
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
@@ -989,40 +987,45 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def get_to_translate_corpus(request_data, routes_config, default_test_data=None):
+def get_corpus_path(routes_config, corpus_name, language):
+    return f'{routes_config.storage_id}:{routes_config.upload_path}/test/{corpus_name}.{language}'
+
+
+def get_model_path(routes_config, corpus_name, source, target):
+    storage_id = routes_config.storage_id
+    upload_path = routes_config.upload_path
+    return f'pn9_testtrans:<MODEL>/{storage_id}{upload_path}/test/{corpus_name}.{source}.{target}'
+
+
+def get_translate_score_corpus(request_data, routes_config, default_test_data=None):
     source = request_data["source"]
     target = request_data["target"]
-    result = []
+    to_translate_corpus = []
+    to_score_corpus = []
     if request_data.get("testing_data"):
         for corpus in request_data["testing_data"]:
             corpus_path = corpus["filename"]
             if corpus_path[0] == '/':
                 corpus_path = corpus_path[1:]
-            result.append([
+            to_translate_corpus.append([
                 f'{routes_config.storage_id}:{corpus_path}.{source}',
                 f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}'
             ])
 
     if default_test_data:
         for corpus_name in default_test_data:
-            result.append([
+            default_model_path = f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{request_data["target"]}'
+            to_translate_corpus.append([
                 f'shared_testdata:{corpus_name}',
-                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
+                default_model_path
             ])
 
-    return result
-
-
-def get_to_score_corpus(request_data, routes_config, default_test_data=None):
-    source = request_data["source"]
-    target = request_data["target"]
-    result = []
     if request_data.get("testing_data"):
         for corpus in request_data["testing_data"]:
             corpus_path = corpus["filename"]
             if corpus_path[0] == '/':
                 corpus_path = corpus_path[1:]
-            result.append([
+            to_score_corpus.append([
                 f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}',
                 f'{routes_config.storage_id}:{corpus_path}.{target}'
             ])
@@ -1030,12 +1033,12 @@ def get_to_score_corpus(request_data, routes_config, default_test_data=None):
     if default_test_data:
         for corpus_name in default_test_data:
             target_corpus = corpus_name[:-3] + "." + target
-            result.append([
+            to_score_corpus.append([
                 f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
                 f'shared_testdata:{target_corpus}'
             ])
 
-    return result
+    return to_translate_corpus, to_score_corpus
 
 
 def get_test_folder_name(source, target):
@@ -1183,11 +1186,9 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, default_test_data, user_code, routes_config, training_corpus_infos):
+def get_training_config(service, request_data, user_code, routes_config, training_corpus_infos):
     final_training_config = get_final_training_config(request_data, training_corpus_infos)
     docker_image_info = get_docker_image_info(routes_config, request_data.get("docker_image"))
-    to_translate_corpus = get_to_translate_corpus(request_data, routes_config, default_test_data)
-    to_score_corpus = get_to_score_corpus(request_data, routes_config, default_test_data)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
@@ -1200,8 +1201,6 @@ def get_training_config(service, request_data, default_test_data, user_code, rou
         "wait_after_launch": 2,
         "trainer_id": f"{routes_config.entity_owner}{user_code}",
         "options": {},
-        "to_translate": to_translate_corpus,
-        "to_score": to_score_corpus
     }
 
     if request_data.get("ncpus"):
@@ -1346,17 +1345,11 @@ def create_evaluation():
 
     models = request_data.get("models")
     corpus = request_data.get("corpus")
-    evaluation_name = request_data.get("evaluation_name")
-    source_language = request_data.get("source_language")
-    target_language = request_data.get("target_language")
 
     # TODO: change function signature to take routes_config instead of each components
     upload_user_files(routes_config, f"{routes_config.upload_path}/test/", corpus)
 
-    to_translate_corpus = get_to_translate_corpus(corpus, routes_config.upload_path, source_language,
-                                                  target_language, routes_config.storage_id)
-    to_score_corpus = get_to_score_corpus(corpus, routes_config.upload_path,
-                                          source_language, target_language, routes_config.storage_id)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config)
 
     content = {
         'docker': {
