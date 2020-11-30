@@ -799,8 +799,11 @@ def launch_v2():
         'entity_code': g.user.entity.entity_code,
         'user_code': g.user.user_code
     }
-    # TODO: Try-catch
-    request_data = parse_request_data(request)
+
+    try:
+        request_data = parse_request_data(request)
+    except Exception:
+        raise Exception("Cannot parse request data in launch_v2")
 
     # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
     # default.json + other pool accessible (see /resource/list API)
@@ -1345,8 +1348,10 @@ def create_evaluation():
 
     evaluation_id = ObjectId()
 
-    # TODO: Try-catch
-    request_data = parse_request_data_of_evaluation(request)
+    try:
+        request_data = parse_request_data_of_evaluation(request)
+    except Exception:
+        raise Exception("Cannot parse request data in create_evaluation")
 
     routes_config = RoutesConfiguration(entity_code, service)
 
