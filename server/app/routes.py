@@ -874,28 +874,20 @@ def validate_request_data(current_request):
     request_files = current_request.files
     request_data = current_request.form
 
-    training_data = request_files.getlist("training_data")
-    testing_data = request_files.getlist("testing_data")
-
-    tags = request_data.get("tags")
-    model_name = request_data.get("model_name")
-    docker_image = request_data.get("docker_image")
-    ncpus = request_data.get("ncpus")
-    priority = request_data.get("priority")
-    num_of_iteration = request_data.get("num_of_iteration")
-    corpus_type = request_data.get("corpus_type")
-    dataset = request_data.getlist("dataset")
-
     base_config = config.get_base_config(mongo_client)
     corpus_config = base_config.get("corpus")
 
-    validate_tags(tags)
-    validate_file(corpus_type, corpus_config, training_data, testing_data, dataset)
-    validate_model_name(model_name)
-    validate_docker_image(docker_image)
-    validate_ncpus(ncpus)
-    validate_priority(priority)
-    validate_iteration(num_of_iteration)
+    validate_training_data(request_files.getlist("training_data"), corpus_config)
+    validate_testing_data(request_files.getlist("testing_data"), corpus_config)
+    validate_tags(request_data.get("tags"))
+
+    validate_model_name(request_data.get("model_name"))
+    validate_docker_image(request_data.get("docker_image"))
+    validate_ncpus(request_data.get("ncpus"))
+    validate_priority(request_data.get("priority"))
+    validate_iteration(request_data.get("num_of_iteration"))
+
+    validate_file(request_data.get("corpus_type"), corpus_config, request_files.getlist("training_data"), request_files.getlist("testing_data"), request_data.getlist("dataset"))
 
 
 def validate_tags(tags):
