@@ -1372,8 +1372,7 @@ def create_evaluation():
                                                  to_translate_corpus=to_translate_corpus,
                                                  to_score_corpus=to_score_corpus)
 
-    create_evaluation_catalog(evaluation_id, evaluation_name, creator, models_info, to_translate_corpus, model_task_map,
-                              source_language, target_language)
+    create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map)
 
     return flask.jsonify(model_task_map)
 
@@ -1630,11 +1629,12 @@ def combine_common_task_infos(parent_task_id, user_code, entity_code, docker_ima
     return result
 
 
-def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models_info, to_translate_corpus, model_task_map,
-                              source_language, target_language):
+def create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map):
+    source_language = request_data.get("source_language")
+    target_language = request_data.get("target_language")
     result = {
         "_id": evaluation_id,
-        "name": evaluation_name,
+        "name": request_data["evaluation_name"],
         "creator": creator,
         "source_language": source_language,
         "target_language": target_language,
