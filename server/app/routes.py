@@ -948,7 +948,13 @@ def validate_model_name(model_name):
 def validate_docker_image(docker_image):
     if docker_image is None:
         return
-    # TODO: Validate image
+    if 'image' not in docker_image:
+        raise Exception("no image in docker_image")
+    if 'tag' not in docker_image:
+        raise Exception("no tag in docker_image")
+    if 'registry' not in docker_image:
+        raise Exception("no registry in docker_image")
+    # TODO check each value separately to check if it is correct
     return
 
 
