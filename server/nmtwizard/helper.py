@@ -169,6 +169,8 @@ def build_task_id(content, xxyy, task_type, parent_task):
         trid = content['trainer_id']
 
     name = content["name"] if "name" in content else None
+    if name is not None:
+        name = name.replace("-", "").replace("_", "")
     parent_uuid = ''
     nn = None
     parent_task_type = None
