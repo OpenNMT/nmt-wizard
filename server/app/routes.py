@@ -1340,13 +1340,11 @@ def create_evaluation():
     # TODO: Try-catch
     request_data = parse_request_data_of_evaluation(request)
 
-    # TODO: Create new function to get storage_client, storage_id, service_entities, entity_owner, trainer_entities
     routes_config = RoutesConfiguration(entity_code, service)
 
     models = request_data.get("models")
     corpus = request_data.get("corpus")
 
-    # TODO: change function signature to take routes_config instead of each components
     upload_user_files(routes_config, f"{routes_config.upload_path}/test/", corpus)
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config)
