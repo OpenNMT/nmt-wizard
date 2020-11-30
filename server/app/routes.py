@@ -870,9 +870,10 @@ def launch_v2():
         task_ids = task_ids[0]
 
     tasks_for_model = create_tasks_for_model(task_ids)
+    domain = request_data.get('domain')
 
     input_name = content["name"] if "name" in content else None
-    create_model_catalog(task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags)
+    create_model_catalog(task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags, domain)
 
     return flask.jsonify(task_ids)
 
@@ -1352,7 +1353,7 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, input_name, request_data, docker_info, entity_owner, creator, tasks, tags, state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, docker_info, entity_owner, creator, tasks, tags, domain, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1363,7 +1364,8 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
         "parent_model": parent_model,
         "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
         "tags": tags,
-        "tasks": tasks
+        "tasks": tasks,
+        "domains" : domain
     }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
