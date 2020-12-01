@@ -21,13 +21,15 @@ from functools import cmp_to_key
 from bson import ObjectId
 from app import app, redis_db, redis_db_without_decode, mongo_client, get_version, taskfile_dir
 from nmtwizard import task, configuration as config
-from nmtwizard.helper import build_task_id, shallow_command_analysis, \
-    get_docker_action, cust_jsondump, get_cpu_count, get_params, boolean_param
+from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker_action, get_registry, cust_jsondump, \
+    get_cpu_count, get_params, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
-from nmtwizard.task import get_task_entity, TaskInfo
+from nmtwizard.task import get_task_entity, TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, \
+    TaskTranslate, TaskScoring
+# only for launch() maybe deprecated
+from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
-from nmtwizard.helper import boolean_param
 
 GLOBAL_POOL_NAME = "global_pool"
 
@@ -451,26 +453,6 @@ def _find_compatible_resource(service, ngpus, ncpus, request_resource):
             if ngpus <= capacity.ngpus and (ncpus is None or ncpus <= capacity.ncpus):
                 return True
     return False
-
-
-def _get_registry(service_module, image):
-    p = image.find("/")
-    if p == -1:
-        abort(flask.make_response(flask.jsonify(message="image should be repository/name"),
-                                  400))
-    repository = image[:p]
-    registry = None
-    docker_registries = config.get_registries(mongo_client, service_module.name)
-    for r in docker_registries:
-        v = docker_registries[r]
-        if "default_for" in v and repository in v['default_for']:
-            registry = r
-            break
-    if registry is None:
-        abort(flask.make_response(
-            flask.jsonify(message="cannot find registry for repository %s" % repository),
-            400))
-    return registry
 
 
 def task_request(func):
@@ -1124,7 +1106,7 @@ def get_docker_image_info(routes_config, docker_image):
 
 def get_docker_image_from_db(service_module):
     image = "systran/pn9_tf"
-    registry = _get_registry(service_module, image)
+    registry = get_registry(service_module, image)
     tag = "v1.46.0-beta1"
 
     result = {
@@ -1169,7 +1151,7 @@ def get_docker_image_from_request(service_module, entity_owner, docker_image):
     result = {**docker_image}
     registry = docker_image["registry"]
     if registry == "auto":
-        result["registry"] = _get_registry(service_module, docker_image["image"])
+        result["registry"] = get_registry(service_module, docker_image["image"])
         return result
     if registry not in service_module.get_docker_config(entity_owner)['registries']:
         raise Exception(f"Unknown docker registry: {registry}")
@@ -1671,7 +1653,7 @@ def launch(service):
             'tag' not in content['docker'] or 'command' not in content['docker']):
         abort(flask.make_response(flask.jsonify(message="incomplete docker field"), 400))
     if content['docker']['registry'] == 'auto':
-        content['docker']['registry'] = _get_registry(service_module, content['docker']['image'])
+        content['docker']['registry'] = get_registry(service_module, content['docker']['image'])
     elif content['docker']['registry'] not in service_module.get_docker_config(entity_owner)['registries']:
         abort(flask.make_response(flask.jsonify(message="unknown docker registry"), 400))
 
@@ -1922,14 +1904,13 @@ def launch(service):
 
                     content_score["docker"] = {
                         "image": image_score,
-                        "registry": _get_registry(service_module, image_score),
+                        "registry": get_registry(service_module, image_score),
                         "tag": "2.1.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
                         option_lang + ['-f', "launcher:scores"]
                     }
 
-                    score_task_id, explicit_name = build_task_id(content_score, xxyy, "score",
-                                                                parent_task_id)
+                    score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
                     task_create.append(
                         (redis_db, taskfile_dir,
                          score_task_id, "exec", parent_task_id, score_resource, service,
@@ -1978,7 +1959,7 @@ def launch(service):
 
                     content_tuminer["docker"] = {
                         "image": image_score,
-                        "registry": _get_registry(service_module, image_score),
+                        "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
                         in_out["outfile"] + ["--output"] + in_out["scorefile"]

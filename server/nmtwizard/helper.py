@@ -3,7 +3,11 @@ import json
 import time
 import uuid
 
+from app import mongo_client
 from bson import json_util
+from flask import abort, jsonify, make_response
+
+from nmtwizard import task, configuration as config
 
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
@@ -242,3 +246,20 @@ def boolean_param(value):
                 value == "0" or
                 value == "False" or
                 value == "false")
+
+
+def get_registry(service_module, image):
+    p = image.find("/")
+    if p == -1:
+        abort(make_response(jsonify(message="image should be repository/name"), 400))
+    repository = image[:p]
+    registry = None
+    docker_registries = config.get_registries(mongo_client, service_module.name)
+    for r in docker_registries:
+        v = docker_registries[r]
+        if "default_for" in v and repository in v['default_for']:
+            registry = r
+            break
+    if registry is None:
+        abort(make_response( jsonify(message="cannot find registry for repository %s" % repository), 400))
+    return registry
