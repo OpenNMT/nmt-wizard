@@ -523,8 +523,15 @@ def launch_v2():
     service = GLOBAL_POOL_NAME
     entity_code = g.user.entity.entity_code
     user = g.user
-    user_id = user.id
     user_code = user.user_code
+    creator = {
+        'user_id': user.id,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'entity_id': user.entity.id,
+        'entity_code': user.entity.entity_code
+    }
+
     # TODO: Try-catch
     request_data = parse_request_data(request)
 
@@ -865,7 +872,7 @@ def launch_v2():
 
     tasks_for_model = create_tasks_for_model(task_ids)
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, user_id, tasks_for_model, tags)
+    create_model_catalog(task_id, request_data, content["docker"], entity_code, creator, tasks_for_model, tags)
 
     return flask.jsonify(task_ids)
 
