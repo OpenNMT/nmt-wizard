@@ -56,7 +56,7 @@ class TaskBase:
         self._priority = self._content.get("priority", 0)
         self._resource = task_infos.resource
 
-        if self._task_suffix and self._parent_task_id:
+        if self._task_suffix:
             self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
                                                         self._parent_task_id)
             self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id,
@@ -147,10 +147,11 @@ class TaskTrain(TaskBase):
         self._task_type = "train"
         self._parent_task_id = parent_task_id
 
-        if "ncpus" not in self._content:
+        if "ncpus" not in task_infos.content:
             if "ngpus" not in task_infos.content:
                 task_infos.content["ngpus"] = 0
-            task_infos.content["ncpus"] = get_cpu_count(self._service_config, task_infos.content["ngpus"], "train")
+            task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                        task_infos.content["ngpus"], "train")
 
         TaskBase.__init__(self, task_infos)
 
