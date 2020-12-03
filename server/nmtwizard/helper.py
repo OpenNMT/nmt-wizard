@@ -157,12 +157,12 @@ def model_name_analysis(model):
 
 def build_task_id(content, xxyy, task_type, parent_task):
     # let us build a meaningful name for the task
-    # name will be TRID_XXYY_NAME_NN_UUID(-UUID)_TYPE with:
+    # name will be TRID_XXYY_NAME_NN_UUID(:UUID)-TYPE with:
     # * TRID - the trainer ID
     # * XXYY - the language pair
     # * NAME - user provided or generated name
     # * NN - the iteration (epoch) - automatically incremented for training task
-    # * UUID - one or 2 parts - child-parent or child
+    # * UUID - one or 2 parts - parent:child or child
     # * TYPE - trans|prepr|vocab|relea or other 5 letter action
 
     # first find nature of the task - train or not
