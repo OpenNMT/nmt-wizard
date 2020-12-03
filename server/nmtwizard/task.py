@@ -93,6 +93,10 @@ class TaskBase:
                         self._content["ngpus"],
                         self._content["ncpus"],
                         self.other_task_info)
+        self.post_create(self)
+
+    def post_create(self):
+        pass
 
     @staticmethod
     def patch_config_explicit_name(content, explicit_name):
