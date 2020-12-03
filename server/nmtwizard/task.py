@@ -283,6 +283,28 @@ class TaskScoring(TaskBase):
         TaskBase.__init__(self, task_infos, must_patch_config_name=False)
 
 
+class TaskRelease(TaskBase):
+    def __init__(self, task_infos, model, destination):
+        self._task_suffix = "trans"
+        self._task_type = "trans"
+        self._parent_task_id = model
+
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 12
+        task_infos.content["ngpus"] = 0
+        task_infos.content["ncpus"] = 2
+        task_infos.content["docker"] = TaskBase.get_docker_image_from_db(task_infos.routes_configuration.service_module)
+        task_infos.content["docker"]["command"] = ['--model',
+                                                   self._parent_task_id,
+                                                   'release',
+                                                   '--destination',
+                                                   destination]
+        TaskBase.__init__(self, task_infos, must_patch_config_name=False)
+
+    def post_create(self):
+        builtins.pn9model_db.model_set_release_state(self._parent_task_id, self._content["trainer_id"], self.task_id,
+                                                     "in progress")
+
+
 def get_task_entity(task_id):
     return task_id[:2] if task_id else ""
 
