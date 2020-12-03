@@ -76,52 +76,67 @@ class StorageId:
 
 class RoutesConfiguration:
     def __init__(self, entity_code, service):
+        self._service = service
         self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
-        self.entity_storages_config = get_entity_storages(self.service_config, entity_code)
-        self.storage_client = get_storage_client(self.entity_storages_config)
+        self.entity_storages_config = self._get_entity_storages(entity_code)
+        self.storage_client = self._get_storage_client()
         self.storage_id = next(iter(self.entity_storages_config))
         self.upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
 
-        if service is not GLOBAL_POOL_NAME:
-            self.service_config = config.get_service_config(mongo_client, service)
+        if self._service is not GLOBAL_POOL_NAME:
+            self.service_config = config.get_service_config(mongo_client, self._service)
         self.service_module = get_service(service)
         self.service_entities = config.get_entities(self.service_config)
-        self.entity_owner = get_entity_owner(self.service_entities, service)
-        self.trainer_entities = get_entities_by_permission("train", flask.g)
+        self.entity_owner = self._get_entity_owner()
+        self.trainer_entities = RoutesConfiguration.get_entities_by_permission("train")
         assert self.trainer_entities  # Here: almost sure you are trainer
 
+    def _get_entity_storages(self, entity_code):
+        if config.is_polyentity_config(self.service_config):
+            entity_config = self.service_config["entities"][entity_code]
+            return entity_config["storages"]
+        return self.service_config["storages"]
 
-def get_entity_owner(service_entities, service_name):
-    trainer_of_entities = get_entities_by_permission("train", flask.g)
+    def _get_storage_client(self):
+        storage_client = StorageClient(rmprivate(self.entity_storages_config)
+        return storage_client
 
-    if not trainer_of_entities:
-        abort(flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
+    def _get_entity_owner(self):
+        return RoutesConfiguration.get_entity_owner(self.service_entities, self._service)
 
-    entity_owner = flask.request.form.get('entity_owner')
-    if not entity_owner:
-        if len(trainer_of_entities) == 1:
-            entity_owner = trainer_of_entities[0]
-        elif len(service_entities) == 1:
-            entity_owner = service_entities[0]
+    @staticmethod
+    def get_entity_owner(service_entities, service_name):
+        trainer_of_entities = RoutesConfiguration.get_entities_by_permission("train")
 
-    if not entity_owner:
-        abort(flask.make_response(flask.jsonify(
-            message="model owner is ambiguous between these entities: (%s)" % str(",".join(trainer_of_entities))), 400))
-    entity_owner = entity_owner.upper()
+        if not trainer_of_entities:
+            abort(flask.make_response(flask.jsonify(message="you are not a trainer in any entity"), 403))
 
-    if not has_ability(flask.g, 'train', entity_owner):
-        abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
-    elif entity_owner not in service_entities:
-        abort(flask.make_response(flask.jsonify(
-            message="This service '%s' is not reserved to launch the task of the entity %s" % (
-                service_name, entity_owner)), 400))
+        entity_owner = flask.request.form.get('entity_owner')
+        if not entity_owner:
+            if len(trainer_of_entities) == 1:
+                entity_owner = trainer_of_entities[0]
+            elif len(service_entities) == 1:
+                entity_owner = service_entities[0]
 
-    return entity_owner
+        if not entity_owner:
+            abort(flask.make_response(flask.jsonify(
+                message="model owner is ambiguous between these entities: (%s)" % str(",".join(trainer_of_entities))),
+                400))
+        entity_owner = entity_owner.upper()
 
+        if not has_ability(flask.g, 'train', entity_owner):
+            abort(flask.make_response(flask.jsonify(message="you are not a trainer of %s" % entity_owner), 403))
+        elif entity_owner not in service_entities:
+            abort(flask.make_response(flask.jsonify(
+                message="This service '%s' is not reserved to launch the task of the entity %s" % (
+                    service_name, entity_owner)), 400))
 
-def get_entities_by_permission(the_permission, g):
-    return [ent_code for ent_code in g.entities if
-            isinstance(ent_code, str) and has_ability(g, the_permission, ent_code)]
+        return entity_owner
+
+    @staticmethod
+    def get_entities_by_permission(the_permission):
+        return [ent_code for ent_code in flask.g.entities if
+                isinstance(ent_code, str) and has_ability(flask.g, the_permission, ent_code)]
 
 
 def check_permission(service, permission):
@@ -1203,8 +1218,8 @@ def launch(service):
             task_suffix = task_type
 
     service_entities = config.get_entities(service_config)
-    entity_owner = get_entity_owner(service_entities, service)
-    trainer_entities = get_entities_by_permission("train", flask.g)
+    entity_owner = RoutesConfiguration.get_entity_owner(service_entities, service)
+    trainer_entities = RoutesConfiguration.get_entities_by_permission("train")
     assert trainer_entities  # Here: almost sure you are trainer
     other_task_info = {TaskEnum.ENTITY_OWNER.value: entity_owner,
                        TaskEnum.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
