@@ -17,7 +17,6 @@ import flask
 from flask import abort, make_response, jsonify, Response, request, g
 import tempfile
 import uuid
-from functools import cmp_to_key
 from bson import ObjectId
 from app import app, redis_db, redis_db_without_decode, mongo_client, get_version, taskfile_dir
 from nmtwizard import task, configuration as config
@@ -871,66 +870,6 @@ def get_final_training_config(request_data, training_corpus_infos):
                                                         request_data["parent_model"]), 400))
 
 
-def get_docker_image_info(routes_config, docker_image):
-    if not docker_image:
-        return get_docker_image_from_db(routes_config.service_module)
-    return get_docker_image_from_request(routes_config.service_module, routes_config.entity_owner, docker_image)
-
-
-def get_docker_image_from_db(service_module):
-    image = "systran/pn9_tf"
-    registry = get_registry(service_module, image)
-    tag = "v1.46.0-beta1"
-
-    result = {
-        "image": image,
-        "tag": tag,
-        "registry": registry
-    }
-
-    latest_docker_image_tag = get_latest_docker_image_tag(image)
-
-    if not latest_docker_image_tag:
-        return result
-    return {**result, **{"tag": f'v{latest_docker_image_tag}'}}
-
-
-def get_latest_docker_image_tag(image):
-    docker_images = list(mongo_client.get_docker_images(image))
-    if len(docker_images) == 0:
-        return None
-    only_tag_docker_images = list(map(lambda docker_image: get_docker_image_tag(docker_image["image"]), docker_images))
-    only_tag_docker_images = list(filter(lambda tag: tag != "latest", only_tag_docker_images))
-    if len(only_tag_docker_images) == 0:
-        return None
-    if len(only_tag_docker_images) == 1:
-        return only_tag_docker_images[0]
-    sorted_docker_image_tags = sorted(only_tag_docker_images, key=cmp_to_key(
-        lambda x, y: semver.compare(x, y)), reverse=True)
-    return sorted_docker_image_tags[0]
-
-
-def get_docker_image_tag(image):
-    split_name = image.split(":")
-    if len(split_name) < 2:
-        return None
-    tag = split_name[-1]
-    if not tag.startswith("v"):
-        return tag
-    return tag[1:]
-
-
-def get_docker_image_from_request(service_module, entity_owner, docker_image):
-    result = {**docker_image}
-    registry = docker_image["registry"]
-    if registry == "auto":
-        result["registry"] = get_registry(service_module, docker_image["image"])
-        return result
-    if registry not in service_module.get_docker_config(entity_owner)['registries']:
-        raise Exception(f"Unknown docker registry: {registry}")
-    return result
-
-
 def get_default_test_data(storage_client, source, target):
     result = []
     test_folder_name = get_test_folder_name(source, target)
@@ -948,7 +887,7 @@ def get_default_test_data(storage_client, source, target):
 
 def get_training_config(service, request_data, user_code, routes_config, training_corpus_infos):
     final_training_config = get_final_training_config(request_data, training_corpus_infos)
-    docker_image_info = get_docker_image_info(routes_config, request_data.get("docker_image"))
+    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"))
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 

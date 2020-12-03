@@ -2,8 +2,10 @@ import time
 import json
 import os
 import shutil
-from app import redis_db, taskfile_dir
+from app import redis_db, taskfile_dir, mongo_client
+from functools import cmp_to_key
 import builtins
+import semver
 from copy import deepcopy
 from enum import Enum
 from nmtwizard.capacity import Capacity
@@ -111,6 +113,68 @@ class TaskBase:
                     command[idx + 1] = json.dumps(config)
                     return
                 idx += 2
+
+    @staticmethod
+    def get_docker_image_info(routes_config, docker_image):
+        if not docker_image:
+            return TaskBase.get_docker_image_from_db(routes_config.service_module)
+        return TaskBase.get_docker_image_from_request(routes_config.service_module, routes_config.entity_owner,
+                                                      docker_image)
+
+    @staticmethod
+    def get_docker_image_from_db(service_module):
+        image = "systran/pn9_tf"
+        registry = get_registry(service_module, image)
+        tag = "v1.35.2-beta9"
+
+        result = {
+            "image": image,
+            "tag": tag,
+            "registry": registry
+        }
+
+        latest_docker_image_tag = TaskBase.get_latest_docker_image_tag(image)
+
+        if not latest_docker_image_tag:
+            return result
+        return {**result, **{"tag": f'v{latest_docker_image_tag}'}}
+
+    @staticmethod
+    def get_latest_docker_image_tag(image):
+        docker_images = list(mongo_client.get_docker_images(image))
+        if len(docker_images) == 0:
+            return None
+        only_tag_docker_images = list(
+            map(lambda docker_image: TaskBase.get_docker_image_tag(docker_image["image"]), docker_images))
+        only_tag_docker_images = list(filter(lambda tag: tag != "latest", only_tag_docker_images))
+        if len(only_tag_docker_images) == 0:
+            return None
+        if len(only_tag_docker_images) == 1:
+            return only_tag_docker_images[0]
+        sorted_docker_image_tags = sorted(only_tag_docker_images, key=cmp_to_key(
+            lambda x, y: semver.compare(x, y)), reverse=True)
+        return sorted_docker_image_tags[0]
+
+    @staticmethod
+    def get_docker_image_tag(image):
+        split_name = image.split(":")
+        if len(split_name) < 2:
+            return None
+        tag = split_name[-1]
+        if not tag.startswith("v"):
+            return tag
+        return tag[1:]
+
+    @staticmethod
+    def get_docker_image_from_request(service_module, entity_owner, docker_image):
+        result = {**docker_image}
+        registry = docker_image["registry"]
+        if registry == "auto":
+            result["registry"] = get_registry(service_module, docker_image["image"])
+            return result
+        if registry not in service_module.get_docker_config(entity_owner)['registries']:
+            raise Exception(f"Unknown docker registry: {registry}")
+        return result
 
 
 class TaskPreprocess(TaskBase):
