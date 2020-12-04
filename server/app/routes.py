@@ -98,7 +98,7 @@ class RoutesConfiguration:
         return self.service_config["storages"]
 
     def _get_storage_client(self):
-        storage_client = StorageClient(rmprivate(self.entity_storages_config)
+        storage_client = StorageClient(rmprivate(self.entity_storages_config))
         return storage_client
 
     def _get_entity_owner(self):
