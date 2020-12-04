@@ -24,8 +24,8 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker
     get_cpu_count, get_params, boolean_param
 from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
-from nmtwizard.task import get_task_entity, TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, \
-    TaskTranslate, TaskScoring
+from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
+    TaskScoring
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
@@ -275,6 +275,17 @@ def task_request(func):
     return func_wrapper
 
 
+def get_task_entity(task_id):
+    if task_id is None:
+        abort(make_response(jsonify(message="task empty"), 404))
+
+    if not task.exists(redis_db, task_id):
+        abort(make_response(jsonify(message="task %s unknown" % task_id), 404))
+
+    entity = task_id[:2] if task_id else ""
+    return entity
+
+
 def task_write_control(func):
     """minimal check on the request to check that tasks exists"""
 
@@ -282,13 +293,6 @@ def task_write_control(func):
     def func_wrapper(*args, **kwargs):
         ok = False
         task_id = kwargs['task_id']
-
-        if task_id is None:
-            abort(flask.make_response(flask.jsonify(message="task empty"), 404))
-
-        if not task.exists(redis_db, task_id):
-            abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
-
         entity = get_task_entity(task_id)
 
         if has_ability(flask.g, 'admin_task', entity):
@@ -306,11 +310,6 @@ def task_write_control(func):
 
 
 def task_readonly_control(task_id):
-    if task_id is None:
-        abort(flask.make_response(flask.jsonify(message="task empty"), 404))
-
-    if not task.exists(redis_db, task_id):
-        abort(flask.make_response(flask.jsonify(message="task %s unknown" % task_id), 404))
     entity = get_task_entity(task_id)
     if not has_ability(flask.g, 'train', entity):
         abort(

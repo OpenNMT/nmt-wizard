@@ -305,10 +305,6 @@ class TaskRelease(TaskBase):
                                                      "in progress")
 
 
-def get_task_entity(task_id):
-    return task_id[:2] if task_id else ""
-
-
 def set_ttl_policy(func):
     global ttl_policy_func
     ttl_policy_func = func
