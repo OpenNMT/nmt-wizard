@@ -3,11 +3,10 @@ import json
 import time
 import uuid
 
-from app import mongo_client
 from bson import json_util
 from flask import abort, jsonify, make_response
 
-from nmtwizard import task, configuration as config
+from nmtwizard import configuration as config
 
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
@@ -250,6 +249,7 @@ def boolean_param(value):
 
 
 def get_registry(service_module, image):
+    from app import mongo_client
     p = image.find("/")
     if p == -1:
         abort(make_response(jsonify(message="image should be repository/name"), 400))
