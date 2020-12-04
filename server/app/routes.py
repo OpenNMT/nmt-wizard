@@ -341,9 +341,9 @@ def filter_request(route, ability=None):
     return wrapper
 
 
-def has_ability(g, ability, entity):
+def has_ability(flask_global, ability, entity):
     for f in has_ability_funcs:
-        if not f(g, ability, entity):
+        if not f(flask_global, ability, entity):
             return False
     return True
 
@@ -1295,7 +1295,7 @@ def launch(service):
         trans_as_release = (not exec_mode and not content.get("notransasrelease", False) and
                             semver.match(docker_version, ">=1.8.0"))
         content["support_statistics"] = semver.match(docker_version, ">=1.17.0")
-    except ValueError as err:
+    except ValueError:
         # could not match docker_version - not valid semver
         chain_prepr_train = False
         trans_as_release = False
@@ -1432,8 +1432,7 @@ def launch(service):
                         content_translate["docker"]["command"].append(f[0])
 
                     change_parent_task(content_translate["docker"]["command"], task_id)
-                    trans_task_id, explicit_name = build_task_id(content_translate, xxyy, "trans",
-                                                                task_id)
+                    trans_task_id, explicit_name = build_task_id(content_translate, xxyy, "trans", task_id)
 
                     content_translate["docker"]["command"].append('-o')
                     for f in subset_to_translate:
