@@ -872,7 +872,8 @@ def launch_v2():
 
     tasks_for_model = create_tasks_for_model(task_ids)
 
-    create_model_catalog(task_id, request_data, content["docker"], entity_code, creator, tasks_for_model, tags)
+    input_name = content["name"] if "name" in content else None
+    create_model_catalog(task_id, input_name, request_data, content["docker"], entity_code, creator, tasks_for_model, tags)
 
     return flask.jsonify(task_ids)
 
@@ -981,7 +982,7 @@ def is_valid_corpus_extension(file_name, corpus_config):
 
 
 def validate_model_name(model_name):
-    reg = r"(^[a-zA-Z0-9\.]+$)"
+    reg = r"(^[a-zA-Z0-9\.\_\-]+$)"
     if not re.match(reg, model_name):
         raise Exception("Invalid model_name")
     return
@@ -1282,7 +1283,7 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, request_data, docker_info, entity_owner, creator, tasks, tags, state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, docker_info, entity_owner, creator, tasks, tags, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1298,7 +1299,7 @@ def create_model_catalog(training_task_id, request_data, docker_info, entity_own
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
                                                 entity_owner=entity_owner,
-                                                lp=None, state=state, creator=creator)
+                                                lp=None, state=state, creator=creator, input_name=input_name)
 
 
 @app.route("/evaluations", methods=["POST"])
