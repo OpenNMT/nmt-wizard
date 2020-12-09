@@ -1102,10 +1102,12 @@ def upload_user_files(storage_client, storage_id, path, files):
 def get_to_translate_corpus(testing_data_infos, source, target, storage_id, default_test_data=[]):
     result = []
     for corpus in testing_data_infos:
-        corpus_filename = corpus["filename"]
+        corpus_path = corpus["filename"]
+        if corpus_path[0] == '/':
+            corpus_path = corpus_path[1:]
         result.append([
-            f'{storage_id}:{corpus_filename}.{source}',
-            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_filename}.{source}.{target}'
+            f'{storage_id}:{corpus_path}.{source}',
+            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_path}.{source}.{target}'
         ])
 
     for corpus_name in default_test_data:
@@ -1120,10 +1122,12 @@ def get_to_translate_corpus(testing_data_infos, source, target, storage_id, defa
 def get_to_score_corpus(testing_data_infos, source, target, storage_id, default_test_data=[]):
     result = []
     for corpus in testing_data_infos:
-        corpus_filename = corpus["filename"]
+        corpus_path = corpus["filename"]
+        if corpus_path[0] == '/':
+            corpus_path = corpus_path[1:]
         result.append([
-            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_filename}.{source}.{target}',
-            f'{storage_id}:{corpus_filename}.{target}'
+            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_path}.{source}.{target}',
+            f'{storage_id}:{corpus_path}.{target}'
         ])
 
     for corpus_name in default_test_data:
@@ -1289,7 +1293,6 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
     priority = request_data.get("priority")
     iterations = request_data.get("iterations")
     docker_image = request_data.get("docker_image")
-    testing_data = request_data.get("testing_data")
 
     final_training_config = get_final_training_config(source, target, parent_model, data_file_info["training"])
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
@@ -1411,14 +1414,19 @@ def create_evaluation():
     source_language = request_data.get("source_language")
     target_language = request_data.get("target_language")
 
-    upload_user_files(storage_client, global_storage_name, f"{upload_path}/test/", corpus)
+    uploaded_info = upload_user_files(storage_client, global_storage_name, f"{upload_path}/test/", corpus)
 
-    to_translate_corpus = get_to_translate_corpus(corpus, upload_path, source_language, target_language, global_storage_name)
-    to_score_corpus = get_to_score_corpus(corpus, upload_path, source_language, target_language, global_storage_name)
+    to_translate_corpus = get_to_translate_corpus(uploaded_info, source_language, target_language, global_storage_name)
+    to_score_corpus = get_to_score_corpus(uploaded_info, source_language, target_language, global_storage_name)
 
     model_task_map = {}
-
+    models_info = []
     for model in models:
+        ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
+        if not ok:
+            abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
+        models_info.append(model_info)
+
         other_task_infos = {
             "evaluation_id": str(evaluation_id),
             "eval_model": model
@@ -1457,7 +1465,7 @@ def create_evaluation():
             }
         }
 
-    create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, to_translate_corpus, model_task_map,
+    create_evaluation_catalog(evaluation_id, evaluation_name, creator, models_info, to_translate_corpus, model_task_map,
                               source_language, target_language)
 
     return flask.jsonify(model_task_map)
@@ -1721,7 +1729,7 @@ def combine_common_task_infos(parent_task_id, user_code, entity_code, docker_ima
     return result
 
 
-def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, to_translate_corpus, model_task_map,
+def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models_info, to_translate_corpus, model_task_map,
                               source_language, target_language):
     result = {
         "_id": evaluation_id,
@@ -1734,11 +1742,12 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
         "created_at": int(time.time())
     }
 
-    for model in models:
+    for model in models_info:
         model_evaluation_info = {
-            "name": model,
+            "input_name": model.get("input_name", model["model"]),
+            "name": model["model"],
             "tests": {},
-            "tasks": model_task_map[model]
+            "tasks": model_task_map[model["model"]]
         }
 
         for corpus in to_translate_corpus:
@@ -1746,7 +1755,7 @@ def create_evaluation_catalog(evaluation_id, evaluation_name, creator, models, t
             result_corpus = corpus[1]
             model_evaluation_info["tests"][source_corpus] = {
                 "score": {},
-                "output": result_corpus.replace("<MODEL>", model)
+                "output": result_corpus.replace("<MODEL>", model["model"])
             }
 
         result["models"].append(model_evaluation_info)
