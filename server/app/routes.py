@@ -1365,7 +1365,7 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
         "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
         "tags": tags,
         "tasks": tasks,
-        "domains" : domain
+        "domain": domain
     }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
