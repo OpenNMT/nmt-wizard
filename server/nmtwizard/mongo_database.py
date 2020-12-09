@@ -4,7 +4,8 @@ tables = {
     "configs": "pn9-config",
     "tags": "pn9-tag",
     "dockers": "pn9-docker",
-    "evaluations": "pn9-evaluation"
+    "evaluations": "pn9-evaluation",
+    "dataset": "pn9-dataset"
 }
 
 
@@ -170,3 +171,10 @@ class MongoDatabase:
         the_table = self.get("evaluations")
         evaluation_catalog = the_table.find_one({"_id": evaluation_id})
         return evaluation_catalog
+
+    def get_dataset_by_ids(self, dataset_ids):
+        the_table = self.get("dataset")
+        dataset = the_table.find({"_id": {
+            "$in": dataset_ids
+        }})
+        return dataset

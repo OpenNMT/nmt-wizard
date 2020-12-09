@@ -40,6 +40,11 @@ if max_log_size is not None:
 
 TASK_RELEASE_TYPE = "relea"
 
+CORPUS_TYPE = {
+    "USER_UPLOAD": 1,
+    "EXISTS_CORPUS": 2
+}
+
 
 class StorageId:
     @staticmethod
@@ -536,17 +541,11 @@ def launch_v2():
     request_data = parse_request_data(request)
 
     storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
-    upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
 
-    training_data = request_data.get("training_data")
-    testing_data = request_data.get("testing_data")
+    data_file_info = get_data_file_info(entity_code, request_data, storage_client, global_storage_name)
     default_test_data = get_default_test_data(storage_client, request_data["source"], request_data["target"])
-    tags = request_data.get("tags")
 
-    data_file_info = {
-        "training": upload_user_files(storage_client, global_storage_name, f"{upload_path}/train/", training_data),
-        "testing": upload_user_files(storage_client, global_storage_name, f"{upload_path}/test/", testing_data)
-    }
+    tags = request_data.get("tags")
     tags = process_tags(tags, entity_code, user_code)
 
     service_config = config.get_service_config(mongo_client, service)
@@ -557,7 +556,7 @@ def launch_v2():
     assert trainer_entities  # Here: almost sure you are trainer
 
     content = get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner,
-                                  upload_path, global_storage_name, data_file_info["training"])
+                                  global_storage_name, data_file_info)
 
     other_task_info = {TaskInfo.ENTITY_OWNER.value: entity_owner,
                        TaskInfo.STORAGE_ENTITIES.value: json.dumps(trainer_entities)}
@@ -895,10 +894,14 @@ def parse_request_data(request):
 
     training_data = request_files.getlist("training_data")
     testing_data = request_files.getlist("testing_data")
+    dataset = request_data.getlist("dataset")
+    corpus_type = int(request_data.get("corpus_type"))
 
     return {**request_data, **{"tags": json.loads(tags)}, **{
         "training_data": training_data,
-        "testing_data": testing_data
+        "testing_data": testing_data,
+        "dataset": dataset,
+        "corpus_type": corpus_type
     }}
 
 
@@ -918,13 +921,14 @@ def validate_request_data(request):
     ncpus = request_data.get("ncpus")
     priority = request_data.get("priority")
     num_of_iteration = request_data.get("num_of_iteration")
+    corpus_type = request_data.get("corpus_type")
+    dataset = request_data.getlist("dataset")
 
     base_config = config.get_base_config(mongo_client)
     corpus_config = base_config.get("corpus")
 
     validate_tags(tags)
-    validate_training_data(training_data, corpus_config)
-    validate_testing_data(testing_data, corpus_config)
+    validate_file(corpus_type, corpus_config, training_data, testing_data, dataset)
     validate_model_name(model_name)
     validate_docker_image(docker_image)
     validate_ncpus(ncpus)
@@ -1022,6 +1026,67 @@ def validate_iteration(num_of_iteration):
     # TODO: Validate num_of_iteration
 
 
+def validate_file(corpus_type, corpus_config, training_data, testing_data, dataset):
+    if not corpus_type or not corpus_type.isnumeric() or int(corpus_type) not in CORPUS_TYPE.values():
+        raise Exception('Invalid corpus_type')
+    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"]:
+        validate_training_data(training_data, corpus_config)
+        validate_testing_data(testing_data, corpus_config)
+    else:
+        if len(dataset) == 0:
+            raise Exception('Num of dataset must greater than 0')
+        for dataset_id in dataset:
+            if not is_valid_object_id(dataset_id):
+                raise Exception(f'Invalid dataset: {dataset_id}')
+
+
+def get_data_file_info(entity_code, request_data, storage_client, storage_id):
+    corpus_type = request_data.get("corpus_type")
+    if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
+        training_data = request_data.get("training_data")
+        testing_data = request_data.get("testing_data")
+
+        return get_user_upload_file_info(entity_code, training_data, testing_data, storage_client, storage_id)
+
+    dataset = request_data.get("dataset")
+    dataset_ids = list(map(lambda ele: ObjectId(ele), dataset))
+    return get_exists_dataset_file_info(dataset_ids)
+
+
+def get_user_upload_file_info(entity_code, training_data, testing_data, storage_client, storage_id):
+    upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
+
+    data_file_info = {
+        "training": upload_user_files(storage_client, storage_id, f"{upload_path}/train/", training_data),
+        "testing": upload_user_files(storage_client, storage_id, f"{upload_path}/test/", testing_data)
+    }
+
+    return data_file_info
+
+
+def get_exists_dataset_file_info(dataset_ids):
+    result = {
+        "training": [],
+        "testing": []
+    }
+    exists_dataset = mongo_client.get_dataset_by_ids(dataset_ids)
+    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db,
+                                                                    has_ability, g)
+
+    for dataset in exists_dataset:
+        dataset_name = dataset["name"]
+        entity_code = dataset["entity"]
+        files = get_all_files_of_dataset(f"{entity_code}/{dataset_name}", global_storage_name, storage_client)
+
+        training_files = files.get("train", [])
+        testing_files = files.get("test", [])
+
+        result["training"].extend(training_files)
+        result["testing"].extend(testing_files)
+
+    return result
+
+
 def upload_user_files(storage_client, storage_id, path, files):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
@@ -1033,13 +1098,13 @@ def upload_user_files(storage_client, storage_id, path, files):
     return push_infos_list
 
 
-def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data=[]):
+def get_to_translate_corpus(testing_data_infos, source, target, storage_id, default_test_data=[]):
     result = []
-    for corpus in testing_data:
-        corpus_name = corpus.filename
+    for corpus in testing_data_infos:
+        corpus_filename = corpus["filename"]
         result.append([
-            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{source}',
-            f'pn9_testtrans:<MODEL>/{storage_id}{uploaded_data_path}/test/{corpus_name}.{source}.{target}'
+            f'{storage_id}:{corpus_filename}.{source}',
+            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_filename}.{source}.{target}'
         ])
 
     for corpus_name in default_test_data:
@@ -1051,13 +1116,13 @@ def get_to_translate_corpus(testing_data, uploaded_data_path, source, target, st
     return result
 
 
-def get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data=[]):
+def get_to_score_corpus(testing_data_infos, source, target, storage_id, default_test_data=[]):
     result = []
-    for corpus in testing_data:
-        corpus_name = corpus.filename
+    for corpus in testing_data_infos:
+        corpus_filename = corpus["filename"]
         result.append([
-            f'pn9_testtrans:<MODEL>/{storage_id}{uploaded_data_path}/test/{corpus_name}.{source}.{target}',
-            f'{storage_id}:{uploaded_data_path}/test/{corpus_name}.{target}'
+            f'pn9_testtrans:<MODEL>/{storage_id}/{corpus_filename}.{source}.{target}',
+            f'{storage_id}:{corpus_filename}.{target}'
         ])
 
     for corpus_name in default_test_data:
@@ -1110,17 +1175,21 @@ def get_from_scratch_config(source, target, data):
     }
 
 
-def get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos):
+def get_final_training_config(source, target, parent_model, training_corpus_infos):
+    training_corpus_paths = map(lambda corpus: corpus.get("filename"), training_corpus_infos)
+    training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
+
     sample = 0
     for corpus_infos in training_corpus_infos:
         sample += int(corpus_infos["nbSegments"])
     training_data_config = {
         "sample": sample,
-        "sample_dist": [{
-            "path": "${GLOBAL_DATA}" + uploaded_data_path + "/train/",
+        "sample_dist": list(map(lambda training_folder: {
+            "path": "${GLOBAL_DATA}" + f"{training_folder}/",
             "distribution": [["*", "*"]]
-        }]
+        }, training_corpus_folders))
     }
+
     if not parent_model:
         return get_from_scratch_config(source, target, training_data_config)
 
@@ -1210,7 +1279,7 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, uploaded_data_path, storage_id, training_corpus_infos):
+def get_training_config(service, request_data, default_test_data, user_code, service_module, entity_owner, storage_id, data_file_info):
     model_name = request_data["model_name"]
     parent_model = request_data.get("parent_model")
     source = request_data["source"]
@@ -1221,10 +1290,10 @@ def get_training_config(service, request_data, default_test_data, user_code, ser
     docker_image = request_data.get("docker_image")
     testing_data = request_data.get("testing_data")
 
-    final_training_config = get_final_training_config(source, target, uploaded_data_path, parent_model, training_corpus_infos)
+    final_training_config = get_final_training_config(source, target, parent_model, data_file_info["training"])
     docker_image_info = get_docker_image_info(service_module, entity_owner, docker_image)
-    to_translate_corpus = get_to_translate_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data)
-    to_score_corpus = get_to_score_corpus(testing_data, uploaded_data_path, source, target, storage_id, default_test_data)
+    to_translate_corpus = get_to_translate_corpus(data_file_info["testing"], source, target, storage_id, default_test_data)
+    to_score_corpus = get_to_score_corpus(data_file_info["testing"], source, target, storage_id, default_test_data)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
@@ -2399,3 +2468,21 @@ def get_worker_pids(service_name):
     for keyw in redis_db.scan_iter("admin:worker:%s:*" % service_name):
         worker_pids.append(keyw[len("admin:worker:%s:" % service_name):])
     return worker_pids
+
+
+def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
+    keys = ["train", "test"]
+    result = {
+        "train": [],
+        "test": []
+    }
+
+    for key in keys:
+        data_path = f"{dataset_path}/{key}/"
+        if not storage_client.exists(data_path, storage_id=global_storage_name):
+            continue
+        directories = storage_client.list(data_path, storage_id=global_storage_name)
+        for k, v in directories.items():
+            result[key].append({**v, **{"filename": k, "nbSegments": v.get("entries")}})
+
+    return result
