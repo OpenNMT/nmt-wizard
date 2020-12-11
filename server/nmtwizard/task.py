@@ -13,6 +13,8 @@ from nmtwizard.helper import build_task_id, get_cpu_count, get_registry, change_
 
 import six
 
+TASK_RELEASE_TYPE = "relea"
+
 
 class TaskEnum(Enum):
     ENTITY_OWNER = "owner"
@@ -285,11 +287,11 @@ class TaskScoring(TaskBase):
 
 class TaskRelease(TaskBase):
     def __init__(self, task_infos, model, destination):
-        self._task_suffix = "trans"
-        self._task_type = "trans"
+        self._task_suffix = TASK_RELEASE_TYPE
+        self._task_type = TASK_RELEASE_TYPE
         self._parent_task_id = model
 
-        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 12
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 10
         task_infos.content["ngpus"] = 0
         task_infos.content["ncpus"] = 2
         task_infos.content["docker"] = TaskBase.get_docker_image_from_db(task_infos.routes_configuration.service_module)

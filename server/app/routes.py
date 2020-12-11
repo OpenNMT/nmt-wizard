@@ -21,11 +21,10 @@ from bson import ObjectId
 from app import app, redis_db, redis_db_without_decode, mongo_client, get_version, taskfile_dir
 from nmtwizard import task, configuration as config
 from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker_action, get_registry, cust_jsondump, \
-    get_cpu_count, get_params, boolean_param
-from nmtwizard.helper import change_parent_task, remove_config_option, model_name_analysis
+    get_cpu_count, get_params, boolean_param, change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
-    TaskScoring
+    TaskScoring, TASK_RELEASE_TYPE
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
@@ -38,8 +37,6 @@ logger.addHandler(app.logger)
 max_log_size = app.get_other_config(['default', 'max_log_size'], fallback=None)
 if max_log_size is not None:
     max_log_size = int(max_log_size)
-
-TASK_RELEASE_TYPE = "relea"
 
 CORPUS_TYPE = {
     "USER_UPLOAD": 1,
