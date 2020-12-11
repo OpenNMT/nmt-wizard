@@ -76,8 +76,11 @@ class RoutesConfiguration:
         self._service = service
         self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
         self.entity_storages_config = self._get_entity_storages(entity_code)
-        self.storage_client = self._get_storage_client()
-        self.storage_id = next(iter(self.entity_storages_config))
+        self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
+                                                                                  mongo_client,
+                                                                                  redis_db,
+                                                                                  has_ability,
+                                                                                  g)
         self.upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
 
         if self._service is not GLOBAL_POOL_NAME:
@@ -93,10 +96,6 @@ class RoutesConfiguration:
             entity_config = self.service_config["entities"][entity_code]
             return entity_config["storages"]
         return self.service_config["storages"]
-
-    def _get_storage_client(self):
-        storage_client = StorageClient(rmprivate(self.entity_storages_config))
-        return storage_client
 
     def _get_entity_owner(self):
         return RoutesConfiguration.get_entity_owner(self.service_entities, self._service)
@@ -573,7 +572,6 @@ def launch_v2():
     # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
     # default.json + other pool accessible (see /resource/list API)
     routes_config = RoutesConfiguration(creator['entity_code'], service)
-    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db, has_ability, g)
 
     training_file_info = upload_user_files(routes_config, f"{routes_config.upload_path}/train/",
                                            request_data.get("training_data"))
@@ -748,20 +746,20 @@ def upload_user_files(routes_config, path, files):
     for file in files:
         file.save(os.path.join(temp_files, file.filename))
         push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
-                                                       routes_config.storage_id)
+                                                       routes_config.global_storage_name)
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
 
 
 def get_corpus_path(routes_config, corpus_name, language):
-    return f'{routes_config.storage_id}:{routes_config.upload_path}/test/{corpus_name}.{language}'
+    return f'{routes_config.gobal}:{routes_config.upload_path}/test/{corpus_name}.{language}'
 
 
 def get_model_path(routes_config, corpus_name, source, target):
-    storage_id = routes_config.storage_id
+    global_storage_name = routes_config.global_storage_name
     upload_path = routes_config.upload_path
-    return f'pn9_testtrans:<MODEL>/{storage_id}{upload_path}/test/{corpus_name}.{source}.{target}'
+    return f'pn9_testtrans:<MODEL>/{global_storage_name}{upload_path}/test/{corpus_name}.{source}.{target}'
 
 
 def get_translate_score_corpus(request_data, routes_config):
