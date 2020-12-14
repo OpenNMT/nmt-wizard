@@ -1102,8 +1102,8 @@ def create_evaluation():
                                               to_score_corpus=to_score_corpus)
 
     model_task_map, models_info = create_tasks_for_evaluation(creation_infos=tasks_creation_infos,
-                                                 models=models,
-                                                 evaluation_id=evaluation_id)
+                                                              models=models,
+                                                              evaluation_id=evaluation_id)
 
     create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map)
 
