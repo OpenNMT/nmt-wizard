@@ -648,7 +648,8 @@ def validate_request_data(current_request):
     validate_priority(request_data.get("priority"))
     validate_iteration(request_data.get("num_of_iteration"))
 
-    validate_file(request_data.get("corpus_type"), corpus_config, request_files.getlist("training_data"), request_files.getlist("testing_data"), request_data.getlist("dataset"))
+    validate_file(request_data.get("corpus_type"), corpus_config, request_files.getlist("training_data"),
+                  request_files.getlist("testing_data"), request_data.getlist("dataset"))
 
 
 def validate_tags(tags):
@@ -751,6 +752,20 @@ def upload_user_files(routes_config, path, files):
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
+
+
+def validate_file(corpus_type, corpus_config, training_data, testing_data, dataset):
+    if not corpus_type or not corpus_type.isnumeric() or int(corpus_type) not in CORPUS_TYPE.values():
+        raise Exception('Invalid corpus_type')
+    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"]:
+        validate_training_data(training_data, corpus_config)
+        validate_testing_data(testing_data, corpus_config)
+    else:
+        if len(dataset) == 0:
+            raise Exception('Num of dataset must greater than 0')
+        for dataset_id in dataset:
+            if not is_valid_object_id(dataset_id):
+                raise Exception(f'Invalid dataset: {dataset_id}')
 
 
 def get_corpus_path(routes_config, corpus_name, language):
