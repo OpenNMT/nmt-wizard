@@ -140,11 +140,11 @@ def check_permission(service, permission):
     if service not in services:
         abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
                             403))
-    is_polyentity = config.is_polyentity_service(mongo_client, service)
-    if is_polyentity and not has_ability(flask.g, permission, ""):  # super admin
+    is_poly_entity = config.is_polyentity_service(mongo_client, service)
+    if is_poly_entity and not has_ability(flask.g, permission, ""):  # super admin
         abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
                             403))
-    elif not is_polyentity:
+    elif not is_poly_entity:
         pool_entity = service[0:2].upper()
         if not has_ability(flask.g, "edit_config", pool_entity):
             abort(make_response(jsonify(message="insufficient credentials for edit_config (entity %s)" % pool_entity),
