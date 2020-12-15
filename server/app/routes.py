@@ -72,16 +72,25 @@ class StorageId:
 
 
 class RoutesConfiguration:
-    def __init__(self, entity_code, service):
+    def __init__(self, flask_global, service):
         self._service = service
+        user = flask_global.user
+        self.creator = {
+            'user_id': user.id,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'entity_id': user.entity.id,
+            'entity_code': user.entity.entity_code,
+            'user_code': user.user_code
+        }
         self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
-        self.entity_storages_config = self._get_entity_storages(entity_code)
+        self.entity_storages_config = self._get_entity_storages(self.creator['entity_code'])
         self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
                                                                                   mongo_client,
                                                                                   redis_db,
                                                                                   has_ability,
                                                                                   g)
-        self.upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
+        self.upload_path = f"/{self.creator['entity_code']}/{uuid.uuid4().hex}"
 
         if self._service is not GLOBAL_POOL_NAME:
             self.service_config = config.get_service_config(mongo_client, self._service)
@@ -555,15 +564,6 @@ def create_tasks_for_launch_v2(creation_infos):
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
     service = GLOBAL_POOL_NAME
-    creator = {
-        'user_id': g.user.id,
-        'first_name': g.user.first_name,
-        'last_name': g.user.last_name,
-        'entity_id': g.user.entity.id,
-        'entity_code': g.user.entity.entity_code,
-        'user_code': g.user.user_code
-    }
-
     try:
         request_data = parse_request_data(request)
     except Exception:
@@ -571,11 +571,11 @@ def launch_v2():
 
     # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
     # default.json + other pool accessible (see /resource/list API)
-    routes_config = RoutesConfiguration(creator['entity_code'], service)
+    routes_config = RoutesConfiguration(flask.g, service)
 
-    data_file_info = get_data_file_info(creator['entity_code'], request_data, routes_config)
+    data_file_info = get_data_file_info(request_data, routes_config)
 
-    content = get_training_config(service, request_data, creator['user_code'], routes_config, data_file_info)
+    content = get_training_config(service, request_data, routes_config, data_file_info)
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info, request_data, routes_config)
 
@@ -592,8 +592,9 @@ def launch_v2():
     domain = request_data.get('domain')
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
-    create_model_catalog(tasks_creation_output["train_task_id"], input_name, request_data, content["docker"], creator,
-                         tasks_for_model, tags, domain)
+    create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
+                         request_data=request_data, docker_info=content["docker"], creator=routes_config.creator,
+                         tasks=tasks_for_model, tags=tags, domain=domain)
 
     return flask.jsonify(tasks_creation_output["tasks_id"])
 
@@ -762,25 +763,23 @@ def validate_file(corpus_type, corpus_config, training_data, testing_data, datas
                 raise Exception(f'Invalid dataset: {dataset_id}')
 
 
-def get_data_file_info(entity_code, request_data, routes_config):
+def get_data_file_info(request_data, routes_config):
     corpus_type = request_data.get("corpus_type")
     if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
         training_data = request_data.get("training_data")
         testing_data = request_data.get("testing_data")
 
-        return get_user_upload_file_info(entity_code, training_data, testing_data, routes_config)
+        return get_user_upload_file_info(routes_config, training_data, testing_data)
 
     dataset = request_data.get("dataset")
     dataset_ids = list(map(lambda ele: ObjectId(ele), dataset))
     return get_exists_dataset_file_info(dataset_ids)
 
 
-def get_user_upload_file_info(entity_code, training_data, testing_data, routes_config):
-    upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
-
+def get_user_upload_file_info(routes_config, training_data, testing_data):
     data_file_info = {
-        "training": upload_user_files(routes_config, f"{upload_path}/train/", training_data),
-        "testing": upload_user_files(routes_config, f"{upload_path}/test/", testing_data)
+        "training": upload_user_files(routes_config, f"{routes_config.upload_path}/train/", training_data),
+        "testing": upload_user_files(routes_config, f"{routes_config.upload_path}/test/", testing_data)
     }
 
     return data_file_info
@@ -929,7 +928,7 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, user_code, routes_config, data_file_info):
+def get_training_config(service, request_data, routes_config, data_file_info):
     final_training_config = get_final_training_config(request_data, data_file_info["training"])
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"))
 
@@ -942,7 +941,7 @@ def get_training_config(service, request_data, user_code, routes_config, data_fi
             "command": docker_commands
         }},
         "wait_after_launch": 2,
-        "trainer_id": f"{routes_config.entity_owner}{user_code}",
+        "trainer_id": f"{routes_config.entity_owner}{routes_config.creator['user_code']}",
         "options": {},
     }
 
@@ -1071,18 +1070,6 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
 @filter_request("POST/evaluations", "train")
 def create_evaluation():
     # TODO: Create new function to get service and user info
-    service = GLOBAL_POOL_NAME
-    entity_code = g.user.entity.entity_code
-    user = g.user
-    user_code = user.user_code
-    creator = {
-        'user_id': user.id,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'entity_id': user.entity.id,
-        'entity_code': user.entity.entity_code
-    }
-
     evaluation_id = ObjectId()
 
     try:
@@ -1090,11 +1077,12 @@ def create_evaluation():
     except Exception:
         raise Exception("Cannot parse request data in create_evaluation")
 
-    routes_config = RoutesConfiguration(entity_code, service)
+    service = GLOBAL_POOL_NAME
+    routes_config = RoutesConfiguration(flask.g, service)
 
     models = request_data.get("models")
 
-    data_file_info = get_data_file_info(creator['entity_code'], request_data, routes_config)
+    data_file_info = get_data_file_info(request_data, routes_config)
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info, request_data, routes_config)
 
@@ -1103,7 +1091,7 @@ def create_evaluation():
             **{"command": []}
         },
         'wait_after_launch': 2,
-        'trainer_id': f'{entity_code}{user_code}',
+        'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
         'ncpus': 1,
         'ngpus': 0,
         'iterations': request_data.get("iterations", 1),
@@ -1123,7 +1111,8 @@ def create_evaluation():
                                                               models=models,
                                                               evaluation_id=evaluation_id)
 
-    create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map)
+    create_evaluation_catalog(evaluation_id, request_data, routes_config.creator, models_info, to_translate_corpus,
+                              model_task_map)
 
     return flask.jsonify(model_task_map)
 
