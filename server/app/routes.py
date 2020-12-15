@@ -763,21 +763,10 @@ def validate_file(corpus_type, corpus_config, training_data, testing_data, datas
                 raise Exception(f'Invalid dataset: {dataset_id}')
 
 
-def get_corpus_path(routes_config, corpus_name, language):
-    return f'{routes_config.gobal}:{routes_config.upload_path}/test/{corpus_name}.{language}'
-
-
-def get_model_path(routes_config, corpus_name, source, target):
-    global_storage_name = routes_config.global_storage_name
-    upload_path = routes_config.upload_path
-    return f'pn9_testtrans:<MODEL>/{global_storage_name}{upload_path}/test/{corpus_name}.{source}.{target}'
-
-
 def get_translate_score_corpus(request_data, routes_config):
     source = request_data["source"]
     target = request_data["target"]
-    default_test_data = get_default_test_data(routes_config.storage_client, request_data["source"],
-                                              request_data["target"])
+    default_test_data = get_default_test_data(routes_config.storage_client, source, target)
 
     to_translate_corpus = []
     to_score_corpus = []
@@ -790,6 +779,10 @@ def get_translate_score_corpus(request_data, routes_config):
                 f'{routes_config.storage_id}:{corpus_path}.{source}',
                 f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}'
             ])
+            to_score_corpus.append([
+                f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}',
+                f'{routes_config.storage_id}:{corpus_path}.{target}'
+            ])
 
     if default_test_data:
         for corpus_name in default_test_data:
@@ -798,19 +791,6 @@ def get_translate_score_corpus(request_data, routes_config):
                 f'shared_testdata:{corpus_name}',
                 default_model_path
             ])
-
-    if request_data.get("testing_data"):
-        for corpus in request_data["testing_data"]:
-            corpus_path = corpus["filename"]
-            if corpus_path[0] == '/':
-                corpus_path = corpus_path[1:]
-            to_score_corpus.append([
-                f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}',
-                f'{routes_config.storage_id}:{corpus_path}.{target}'
-            ])
-
-    if default_test_data:
-        for corpus_name in default_test_data:
             target_corpus = corpus_name[:-3] + "." + target
             to_score_corpus.append([
                 f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
