@@ -590,8 +590,6 @@ def launch_v2():
     tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_infos)
 
     task_names = tasks_creation_output["task_names"]
-    if len(task_names) == 1:
-        task_names = task_names[0]
 
     tasks_for_model = create_tasks_for_model(task_names)
     domain = request_data.get('domain')
