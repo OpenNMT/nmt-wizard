@@ -43,7 +43,7 @@ class TasksCreationInfos:
 
 
 class TaskBase:
-    def __init__(self, task_infos, must_patch_config_name=True):
+    def __init__(self, task_infos, must_patch_config_name=False):
         self._content = deepcopy(task_infos.content)
         self._lang_pair = f'{task_infos.request_data["source"]}{task_infos.request_data["target"]}'
         if not self._lang_pair and self._parent_task_id:
@@ -208,7 +208,7 @@ class TaskPreprocess(TaskBase):
         preprocess_command.append("--build_model")
         task_infos.content["docker"]["command"] = preprocess_command
 
-        TaskBase.__init__(self, task_infos)
+        TaskBase.__init__(self, task_infos, must_patch_config_name=True)
 
 
 class TaskTrain(TaskBase):
@@ -223,7 +223,7 @@ class TaskTrain(TaskBase):
             task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
                                                         task_infos.content["ngpus"], "train")
 
-        TaskBase.__init__(self, task_infos)
+        TaskBase.__init__(self, task_infos, must_patch_config_name=True)
 
 
 class TaskTranslate(TaskBase):
@@ -249,7 +249,7 @@ class TaskTranslate(TaskBase):
             sub_file = f[1].replace('<MODEL>', parent_task_id)
             task_infos.content["docker"]["command"].extend(sub_file)
 
-        TaskBase.__init__(self, task_infos, must_patch_config_name=False)
+        TaskBase.__init__(self, task_infos)
 
 
 class TaskScoring(TaskBase):
@@ -282,7 +282,7 @@ class TaskScoring(TaskBase):
         task_infos.content["docker"]["command"].extend(references_corpus)
         task_infos.content["docker"]["command"].extend(["-f", "launcher:scores"])
 
-        TaskBase.__init__(self, task_infos, must_patch_config_name=False)
+        TaskBase.__init__(self, task_infos)
 
 
 class TaskRelease(TaskBase):
@@ -300,7 +300,7 @@ class TaskRelease(TaskBase):
                                                    'release',
                                                    '--destination',
                                                    destination]
-        TaskBase.__init__(self, task_infos, must_patch_config_name=False)
+        TaskBase.__init__(self, task_infos)
 
     def post_create(self):
         builtins.pn9model_db.model_set_release_state(self._parent_task_id, self._content["trainer_id"], self.task_id,
