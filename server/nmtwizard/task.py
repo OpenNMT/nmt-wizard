@@ -2,7 +2,6 @@ import time
 import json
 import os
 import shutil
-from app import redis_db, taskfile_dir, mongo_client
 from functools import cmp_to_key
 import builtins
 import semver
@@ -79,7 +78,7 @@ class TaskBase:
     def update_other_infos(self, other_infos):
         self.other_task_info.update(other_infos)
 
-    def create(self):
+    def create(self, redis_db, taskfile_dir):
         create_internal(redis_db,
                         taskfile_dir,
                         self.task_id,
@@ -119,14 +118,14 @@ class TaskBase:
                 idx += 2
 
     @staticmethod
-    def get_docker_image_info(routes_config, docker_image):
+    def get_docker_image_info(routes_config, docker_image, mongo_client):
         if not docker_image:
-            return TaskBase.get_docker_image_from_db(routes_config.service_module)
+            return TaskBase.get_docker_image_from_db(routes_config.service_module, mongo_client)
         return TaskBase.get_docker_image_from_request(routes_config.service_module, routes_config.entity_owner,
                                                       docker_image)
 
     @staticmethod
-    def get_docker_image_from_db(service_module):
+    def get_docker_image_from_db(service_module, mongo_client):
         image = "systran/pn9_tf"
         registry = get_registry(service_module, image)
         tag = "v1.35.2-beta9"
@@ -137,14 +136,14 @@ class TaskBase:
             "registry": registry
         }
 
-        latest_docker_image_tag = TaskBase.get_latest_docker_image_tag(image)
+        latest_docker_image_tag = TaskBase.get_latest_docker_image_tag(image, mongo_client)
 
         if not latest_docker_image_tag:
             return result
         return {**result, **{"tag": f'v{latest_docker_image_tag}'}}
 
     @staticmethod
-    def get_latest_docker_image_tag(image):
+    def get_latest_docker_image_tag(image, mongo_client):
         docker_images = list(mongo_client.get_docker_images(image))
         if len(docker_images) == 0:
             return None

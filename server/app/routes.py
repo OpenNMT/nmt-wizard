@@ -552,7 +552,7 @@ def create_tasks_for_launch_v2(creation_infos):
     (tasks_id, task_to_create) = post_function('POST/task/launch_v2', tasks_id, task_to_create)
     for tc in task_to_create:
         tc.other_task_info["model"] = train_task_id
-        tc.create()
+        tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
     creation_output = {
         "tasks_id": tasks_id,
         "train_task_id": train_task_id
@@ -930,7 +930,7 @@ def get_default_test_data(storage_client, source, target):
 
 def get_training_config(service, request_data, routes_config, data_file_info):
     final_training_config = get_final_training_config(request_data, data_file_info["training"])
-    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"))
+    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
 
@@ -1061,7 +1061,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
 
     (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id, tasks_to_create)
     for tc in tasks_to_create:
-        tc.create()
+        tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
 
     return model_task_map, models_info
 
