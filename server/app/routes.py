@@ -512,11 +512,11 @@ def check(service):
 
 def create_tasks_for_launch_v2(creation_infos):
     task_to_create = []
-    task_names = []
+    tasks_id = []
     # PreprocessTask
     task_preprocess = TaskPreprocess(creation_infos.task_infos)
     task_to_create.append(task_preprocess)
-    task_names.append(task_preprocess.task_name)
+    tasks_id.append(task_preprocess.task_id)
     preprocess_task_id = task_preprocess.task_id
     remove_config_option(creation_infos.task_infos.content["docker"]["command"])
     change_parent_task(creation_infos.task_infos.content["docker"]["command"], preprocess_task_id)
@@ -528,24 +528,24 @@ def create_tasks_for_launch_v2(creation_infos):
 
         task_train = TaskTrain(creation_infos.task_infos, preprocess_task_id)
         task_to_create.append(task_train)
-        task_names.append(task_train.task_name)
+        tasks_id.append(task_train.task_id)
         train_task_id = task_train.task_id
         remove_config_option(creation_infos.task_infos.content["docker"]["command"])
         if creation_infos.to_translate_corpus:
             task_translate = TaskTranslate(creation_infos.task_infos, train_task_id, creation_infos.to_translate_corpus)
             task_to_create.append(task_translate)
-            task_names.append(task_translate.task_name)
+            tasks_id.append(task_translate.task_id)
         if creation_infos.to_score_corpus:
             task_scoring = TaskScoring(creation_infos.task_infos, train_task_id, creation_infos.to_score_corpus)
             task_to_create.append(task_scoring)
-            task_names.append(task_scoring.task_name)
+            tasks_id.append(task_scoring.task_id)
 
-    (task_names, task_to_create) = post_function('POST/task/launch_v2', task_names, task_to_create)
+    (tasks_id, task_to_create) = post_function('POST/task/launch_v2', tasks_id, task_to_create)
     for tc in task_to_create:
         tc.other_task_info["model"] = train_task_id
         tc.create()
     creation_output = {
-        "task_names": task_names,
+        "tasks_id": tasks_id,
         "train_task_id": train_task_id
     }
     return creation_output
@@ -589,22 +589,19 @@ def launch_v2():
 
     tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_infos)
 
-    task_names = tasks_creation_output["task_names"]
-
-    tasks_for_model = create_tasks_for_model(task_names)
+    tasks_for_model = create_tasks_for_model(tasks_creation_output["tasks_id"])
     domain = request_data.get('domain')
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
     create_model_catalog(tasks_creation_output["train_task_id"], input_name, request_data, content["docker"], creator,
                          tasks_for_model, tags, domain)
 
-    return flask.jsonify(task_names)
+    return flask.jsonify(tasks_creation_output["tasks_id"])
 
 
-def create_tasks_for_model(task_ids):
+def create_tasks_for_model(tasks_id):
     tasks = []
-    for task in task_ids:
-        task_id = task.split('\t')[1]
+    for task_id in tasks_id:
         tasks.append(task_id)
     return tasks
 
@@ -991,7 +988,7 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
 def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
     model_task_map = {}
     tasks_to_create = []
-    tasks_name = []
+    tasks_id = []
     models_info = []
     for model in models:
         ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
@@ -1014,7 +1011,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
                                        parent_task_id=model,
                                        to_translate=creation_infos.to_translate_corpus)
         tasks_to_create.append(task_translate)
-        tasks_name.append(task_translate.task_name)
+        tasks_id.append(task_translate.task_id)
 
         # TODO: Create new function to get scoring docker image
         creation_infos.task_infos.content["docker_image"] = {
@@ -1026,7 +1023,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
                                    parent_task_id=model,
                                    to_score=creation_infos.to_score_corpus)
         tasks_to_create.append(task_scoring)
-        tasks_name.append(task_scoring.task_name)
+        tasks_id.append(task_scoring.task_id)
 
         model_task_map[model] = {
             "trans": {
@@ -1039,7 +1036,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
             }
         }
 
-    (tasks_name, tasks_to_create) = post_function('POST/task/launch_v2', tasks_name, tasks_to_create)
+    (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id, tasks_to_create)
     for tc in tasks_to_create:
         tc.create()
 

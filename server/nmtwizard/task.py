@@ -63,8 +63,6 @@ class TaskBase:
         if self._task_suffix:
             self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
                                                         self._parent_task_id)
-            self.task_name = "%s\t%s\tngpus: %d, ncpus: %d" % (self._task_suffix, self.task_id,
-                                                               self._content["ngpus"], self._content["ncpus"])
             if must_patch_config_name:
                 TaskBase.patch_config_explicit_name(self._content, explicit_name)
 
