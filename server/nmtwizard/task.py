@@ -93,7 +93,7 @@ class TaskBase:
                         self._content["ngpus"],
                         self._content["ncpus"],
                         self.other_task_info)
-        self.post_create(self)
+        self.post_create()
 
     def post_create(self):
         pass
