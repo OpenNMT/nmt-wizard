@@ -573,12 +573,11 @@ def launch_v2():
     # default.json + other pool accessible (see /resource/list API)
     routes_config = RoutesConfiguration(creator['entity_code'], service)
 
-    training_file_info = upload_user_files(routes_config, f"{routes_config.upload_path}/train/",
-                                           request_data.get("training_data"))
+    data_file_info = get_data_file_info(creator['entity_code'], request_data, routes_config)
 
-    content = get_training_config(service, request_data, creator['user_code'], routes_config, training_file_info)
+    content = get_training_config(service, request_data, creator['user_code'], routes_config, data_file_info)
 
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info, request_data, routes_config)
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
@@ -763,33 +762,78 @@ def validate_file(corpus_type, corpus_config, training_data, testing_data, datas
                 raise Exception(f'Invalid dataset: {dataset_id}')
 
 
-def get_translate_score_corpus(request_data, routes_config):
+def get_data_file_info(entity_code, request_data, routes_config):
+    corpus_type = request_data.get("corpus_type")
+    if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
+        training_data = request_data.get("training_data")
+        testing_data = request_data.get("testing_data")
+
+        return get_user_upload_file_info(entity_code, training_data, testing_data, routes_config)
+
+    dataset = request_data.get("dataset")
+    dataset_ids = list(map(lambda ele: ObjectId(ele), dataset))
+    return get_exists_dataset_file_info(dataset_ids)
+
+
+def get_user_upload_file_info(entity_code, training_data, testing_data, routes_config):
+    upload_path = f"/{entity_code}/{uuid.uuid4().hex}"
+
+    data_file_info = {
+        "training": upload_user_files(routes_config, f"{upload_path}/train/", training_data),
+        "testing": upload_user_files(routes_config, f"{upload_path}/test/", testing_data)
+    }
+
+    return data_file_info
+
+
+def get_exists_dataset_file_info(dataset_ids):
+    result = {
+        "training": [],
+        "testing": []
+    }
+    exists_dataset = mongo_client.get_dataset_by_ids(dataset_ids)
+    storage_client, global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME, mongo_client, redis_db,
+                                                                    has_ability, g)
+
+    for dataset in exists_dataset:
+        dataset_name = dataset["name"]
+        entity_code = dataset["entity"]
+        files = get_all_files_of_dataset(f"{entity_code}/{dataset_name}", global_storage_name, storage_client)
+
+        training_files = files.get("train", [])
+        testing_files = files.get("test", [])
+
+        result["training"].extend(training_files)
+        result["testing"].extend(testing_files)
+
+    return result
+
+
+def get_translate_score_corpus(testing_data_infos, request_data, routes_config):
     source = request_data["source"]
     target = request_data["target"]
     default_test_data = get_default_test_data(routes_config.storage_client, source, target)
 
     to_translate_corpus = []
     to_score_corpus = []
-    if request_data.get("testing_data"):
-        for corpus in request_data["testing_data"]:
-            corpus_path = corpus["filename"]
-            if corpus_path[0] == '/':
-                corpus_path = corpus_path[1:]
-            to_translate_corpus.append([
-                f'{routes_config.storage_id}:{corpus_path}.{source}',
-                f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}'
-            ])
-            to_score_corpus.append([
-                f'pn9_testtrans:<MODEL>/{routes_config.storage_id}/{corpus_path}.{source}.{target}',
-                f'{routes_config.storage_id}:{corpus_path}.{target}'
-            ])
+    for corpus in testing_data_infos:
+        corpus_path = corpus["filename"]
+        if corpus_path[0] == '/':
+            corpus_path = corpus_path[1:]
+        to_translate_corpus.append([
+            f'{routes_config.global_storage_name}:{corpus_path}.{source}',
+            f'pn9_testtrans:<MODEL>/{routes_config.global_storage_name}/{corpus_path}.{source}.{target}'
+        ])
+        to_score_corpus.append([
+            f'pn9_testtrans:<MODEL>/{routes_config.global_storage_name}/{corpus_path}.{source}.{target}',
+            f'{routes_config.global_storage_name}:{corpus_path}.{target}'
+        ])
 
     if default_test_data:
         for corpus_name in default_test_data:
-            default_model_path = f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{request_data["target"]}'
             to_translate_corpus.append([
                 f'shared_testdata:{corpus_name}',
-                default_model_path
+                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
             ])
             target_corpus = corpus_name[:-3] + "." + target
             to_score_corpus.append([
@@ -885,8 +929,8 @@ def get_default_test_data(storage_client, source, target):
     return result
 
 
-def get_training_config(service, request_data, user_code, routes_config, training_corpus_infos):
-    final_training_config = get_final_training_config(request_data, training_corpus_infos)
+def get_training_config(service, request_data, user_code, routes_config, data_file_info):
+    final_training_config = get_final_training_config(request_data, data_file_info["training"])
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"))
 
     docker_commands = ["-c", json.dumps(final_training_config), "train"]
@@ -1049,11 +1093,10 @@ def create_evaluation():
     routes_config = RoutesConfiguration(entity_code, service)
 
     models = request_data.get("models")
-    corpus = request_data.get("corpus")
 
-    upload_user_files(routes_config, f"{routes_config.upload_path}/test/", corpus)
+    data_file_info = get_data_file_info(creator['entity_code'], request_data, routes_config)
 
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(request_data, routes_config)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info, request_data, routes_config)
 
     content = {
         'docker': {
