@@ -577,7 +577,8 @@ def launch_v2():
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
 
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data, routes_config)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
+                                                                      routes_config)
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
@@ -1084,7 +1085,8 @@ def create_evaluation():
 
     data_file_info = get_data_file_info(request_data, routes_config)
 
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data, routes_config)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
+                                                                      routes_config)
 
     content = {
         'docker': {
