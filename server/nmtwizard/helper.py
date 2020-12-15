@@ -210,8 +210,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
         task_id = '%s_%s_%s_%s' % (trid, xxyy, name, the_uuid)
     else:
         task_id = '%s_%s_%s_%02d_%s' % (trid, xxyy, name, nn, the_uuid)
-    if parent_uuid:
-        task_id = task_id + parent_uuid
+    task_id = task_id[0:47 - len(parent_uuid)] + parent_uuid
     if task_type != "train":
         task_id += '_' + model_type_map.get(task_type, task_type)
     return task_id, explicitname
