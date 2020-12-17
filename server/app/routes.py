@@ -1010,7 +1010,7 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
                                                 lp=None, state=state, creator=creator, input_name=input_name)
 
 
-def create_tasks_for_evaluation(creation_infos, models, evaluation_id):
+def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_content):
     model_task_map = {}
     tasks_to_create = []
     tasks_id = []
@@ -1087,13 +1087,10 @@ def create_evaluation():
     testing_info = upload_user_files(routes_config, f"{routes_config.upload_path}/test/", request_data.get('corpus'))
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False)
 
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
-                                                                      routes_config)
-
+    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+    docker_content = {**docker_image_info, **{"command": []}}
     content = {
-        'docker': {
-            **{"command": []}
-        },
+        "docker": {},
         'wait_after_launch': 2,
         'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
         'ncpus': 1,
@@ -1111,9 +1108,9 @@ def create_evaluation():
                                               to_translate_corpus=to_translate_corpus,
                                               to_score_corpus=to_score_corpus)
 
-    model_task_map, models_info = create_tasks_for_evaluation(creation_infos=tasks_creation_infos,
-                                                              models=models,
-                                                              evaluation_id=evaluation_id)
+    model_task_map, models_info = create_tasks_for_evaluation(creation_infos=tasks_creation_infos, models=models,
+                                                              evaluation_id=evaluation_id,
+                                                              docker_content=docker_content)
 
     create_evaluation_catalog(evaluation_id, request_data, routes_config.creator, models_info, to_translate_corpus,
                               model_task_map)
