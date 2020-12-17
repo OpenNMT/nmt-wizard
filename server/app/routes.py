@@ -810,10 +810,10 @@ def get_exists_dataset_file_info(dataset_ids):
     return result
 
 
-def get_translate_score_corpus(testing_data_infos, request_data, routes_config):
+def get_translate_score_corpus(testing_data_infos, request_data, routes_config, with_default_test=True):
     source = request_data["source"]
     target = request_data["target"]
-    default_test_data = get_default_test_data(routes_config.storage_client, source, target)
+    default_test_data = get_default_test_data(routes_config.storage_client, source, target) if with_default_test else []
 
     to_translate_corpus = []
     to_score_corpus = []
@@ -1084,7 +1084,8 @@ def create_evaluation():
 
     models = request_data.get("models")
 
-    data_file_info = get_data_file_info(request_data, routes_config)
+    testing_info = upload_user_files(routes_config, f"{routes_config.upload_path}/test/", request_data.get('corpus'))
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False)
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
                                                                       routes_config)
