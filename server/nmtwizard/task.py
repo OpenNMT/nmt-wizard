@@ -283,7 +283,7 @@ class TaskScoring(TaskBase):
 
 
 class TaskRelease(TaskBase):
-    def __init__(self, task_infos, model, destination):
+    def __init__(self, task_infos, model, destination, mongo_client):
         self._task_suffix = TASK_RELEASE_TYPE
         self._task_type = TASK_RELEASE_TYPE
         self._parent_task_id = model
@@ -291,7 +291,8 @@ class TaskRelease(TaskBase):
         task_infos.content["priority"] = task_infos.content.get("priority", 0) + 10
         task_infos.content["ngpus"] = 0
         task_infos.content["ncpus"] = 2
-        task_infos.content["docker"] = TaskBase.get_docker_image_from_db(task_infos.routes_configuration.service_module)
+        task_infos.content["docker"] = TaskBase.get_docker_image_from_db(task_infos.routes_configuration.service_module,
+                                                                         mongo_client)
         task_infos.content["docker"]["command"] = ['--model',
                                                    self._parent_task_id,
                                                    'release',
