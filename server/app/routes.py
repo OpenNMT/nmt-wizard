@@ -1013,9 +1013,10 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
 def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_content):
     model_task_map = {}
     tasks_to_create = []
-    tasks_id = []
     models_info = []
     for model in models:
+        tasks_id_per_model = []
+        tasks_to_create_per_model = []
         ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
         if not ok:
             abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
@@ -1025,30 +1026,20 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
-        # TODO: Use get_docker_image_info(service_module, entity_owner, docker_image)
-        creation_infos.task_infos.content["docker_image"] = {
-            "image": "systran/pn9_tf",
-            "tag": "v1.46.0-beta1",
-            "registry": "dockersystran"
-        }
+        creation_infos.task_infos.content["docker"] = docker_content
         creation_infos.task_infos.content["ncpus"] = 4
         task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
                                        parent_task_id=model,
                                        to_translate=creation_infos.to_translate_corpus)
-        tasks_to_create.append(task_translate)
-        tasks_id.append(task_translate.task_id)
+        tasks_to_create_per_model.append(task_translate)
+        tasks_id_per_model.append(task_translate.task_id)
 
-        # TODO: Create new function to get scoring docker image
-        creation_infos.task_infos.content["docker_image"] = {
-            "image": "nmtwizard/score",
-            "registry": "dockerhub",
-            "tag": "2.1.0-beta1"
-        }
         task_scoring = TaskScoring(task_infos=creation_infos.task_infos,
-                                   parent_task_id=model,
+                                   parent_task_id=task_translate.task_id,
+                                   model=model,
                                    to_score=creation_infos.to_score_corpus)
-        tasks_to_create.append(task_scoring)
-        tasks_id.append(task_scoring.task_id)
+        tasks_to_create_per_model.append(task_scoring)
+        tasks_id_per_model.append(task_scoring.task_id)
 
         model_task_map[model] = {
             "trans": {
@@ -1061,7 +1052,10 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             }
         }
 
-    (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id, tasks_to_create)
+        (tasks_id_per_model, tasks_to_create_per_model) = post_function('POST/task/launch_v2', tasks_id_per_model,
+                                                                        tasks_to_create_per_model)
+        tasks_to_create.extend(tasks_to_create_per_model)
+
     for tc in tasks_to_create:
         tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
 
