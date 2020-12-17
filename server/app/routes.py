@@ -1126,13 +1126,13 @@ def parse_request_data_of_evaluation(current_request):
     models = request_data.getlist("models")
     evaluation_corpus = request_files.getlist("corpus")
 
-    language_pair = "en_fr"  # NOTE: Get language_pair from model catalog
+    language_pair = "en_fr"  # TODO: Get language_pair from model catalog
     source_language = language_pair.split("_")[0]
     target_language = language_pair.split("_")[1]
 
     return {
         **request_data,
-        **{"source_language": source_language, "target_language": target_language},
+        **{"source": source_language, "target": target_language},
         **{"models": models},
         **{"corpus": evaluation_corpus}
     }
@@ -1146,8 +1146,8 @@ def validate_request_data_of_evaluation(current_request):
 
 
 def create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map):
-    source_language = request_data.get("source_language")
-    target_language = request_data.get("target_language")
+    source_language = request_data.get("source")
+    target_language = request_data.get("target")
     result = {
         "_id": evaluation_id,
         "name": request_data["evaluation_name"],
