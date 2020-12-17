@@ -523,12 +523,14 @@ def create_tasks_for_launch_v2(creation_infos):
     task_to_create = []
     tasks_id = []
     # PreprocessTask
+    train_command = creation_infos.task_infos.content["docker"]["command"]
     task_preprocess = TaskPreprocess(creation_infos.task_infos)
     task_to_create.append(task_preprocess)
     tasks_id.append(task_preprocess.task_id)
     preprocess_task_id = task_preprocess.task_id
-    remove_config_option(creation_infos.task_infos.content["docker"]["command"])
-    change_parent_task(creation_infos.task_infos.content["docker"]["command"], preprocess_task_id)
+    remove_config_option(train_command)
+    change_parent_task(train_command, preprocess_task_id)
+    creation_infos.task_infos.content["docker"]["command"] = train_command
 
     iterations = creation_infos.task_infos.content.get("iterations", 1)
     train_task_id = None
@@ -540,12 +542,15 @@ def create_tasks_for_launch_v2(creation_infos):
         tasks_id.append(task_train.task_id)
         train_task_id = task_train.task_id
         remove_config_option(creation_infos.task_infos.content["docker"]["command"])
+        trans_task_id = None
         if creation_infos.to_translate_corpus:
             task_translate = TaskTranslate(creation_infos.task_infos, train_task_id, creation_infos.to_translate_corpus)
             task_to_create.append(task_translate)
-            tasks_id.append(task_translate.task_id)
+            trans_task_id = task_translate.task_id
+            tasks_id.append(trans_task_id)
         if creation_infos.to_score_corpus:
-            task_scoring = TaskScoring(creation_infos.task_infos, train_task_id, creation_infos.to_score_corpus)
+            task_scoring = TaskScoring(creation_infos.task_infos, trans_task_id, train_task_id,
+                                       creation_infos.to_score_corpus)
             task_to_create.append(task_scoring)
             tasks_id.append(task_scoring.task_id)
 

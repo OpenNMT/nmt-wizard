@@ -237,20 +237,20 @@ class TaskTranslate(TaskBase):
 
         task_infos.content["docker"]["command"] = ["trans"]
         task_infos.content["docker"]["command"].append("--as_release")
-        task_infos.content["docker"]["command"].extend('-i')
+        task_infos.content["docker"]["command"].append('-i')
         for f in to_translate:
-            task_infos.content["docker"]["command"].extend(f[0])
+            task_infos.content["docker"]["command"].append(f[0])
         change_parent_task(task_infos.content["docker"]["command"], parent_task_id)
-        task_infos.content["docker"]["command"].extend('-o')
+        task_infos.content["docker"]["command"].append('-o')
         for f in to_translate:
             sub_file = f[1].replace('<MODEL>', parent_task_id)
-            task_infos.content["docker"]["command"].extend(sub_file)
+            task_infos.content["docker"]["command"].append(sub_file)
 
         TaskBase.__init__(self, task_infos)
 
 
 class TaskScoring(TaskBase):
-    def __init__(self, task_infos, parent_task_id, to_score):
+    def __init__(self, task_infos, parent_task_id, model, to_score):
         self._task_suffix = "score"
         self._task_type = "exec"
         self._parent_task_id = parent_task_id
@@ -269,15 +269,16 @@ class TaskScoring(TaskBase):
         output_corpus = []
         references_corpus = []
         for corpus in to_score:
-            corpus[0].replace('<MODEL>', parent_task_id)
-            output_corpus.extend(corpus[0])
-            references_corpus.extend(corpus[1])
+            output_file = corpus[0].replace('<MODEL>', model)
+            output_corpus.append(output_file)
+            references_corpus.append(corpus[1])
 
         task_infos.content["docker"]["command"] = ["score", "-o"]
         task_infos.content["docker"]["command"].extend(output_corpus)
-        task_infos.content["docker"]["command"].extend("-r")
+        task_infos.content["docker"]["command"].append("-r")
         task_infos.content["docker"]["command"].extend(references_corpus)
-        task_infos.content["docker"]["command"].extend(["-f", "launcher:scores"])
+        task_infos.content["docker"]["command"].extend(["-l", task_infos.request_data['target'],
+                                                        "-f", "launcher:scores"])
 
         TaskBase.__init__(self, task_infos)
 
