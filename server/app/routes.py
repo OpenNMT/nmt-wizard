@@ -639,8 +639,6 @@ def validate_request_data(current_request):
     base_config = config.get_base_config(mongo_client)
     corpus_config = base_config.get("corpus")
 
-    validate_training_data(request_files.getlist("training_data"), corpus_config)
-    validate_testing_data(request_files.getlist("testing_data"), corpus_config)
     validate_tags(request_data.get("tags"))
 
     validate_model_name(request_data.get("model_name"))
@@ -668,8 +666,6 @@ def validate_tags(tags):
             if not is_valid_object_id(tag):
                 raise Exception(f"Invalid id: {tag}")
         for tag in new_tags:
-            if not is_valid_object_id(tag):
-                raise Exception(f"Invalid id: {tag}")
             print(f"Tag: {tag}")
     except Exception:
         raise Exception("Invalid tags json")
