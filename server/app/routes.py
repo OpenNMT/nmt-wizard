@@ -24,12 +24,13 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker
     get_cpu_count, get_params, boolean_param, change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
-    TaskScoring, TASK_RELEASE_TYPE
+    TaskScoring, TaskServe, TASK_RELEASE_TYPE
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
+SERVE_POOL_NAME = "serve_pool"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -814,7 +815,6 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
     source = request_data["source"]
     target = request_data["target"]
     default_test_data = get_default_test_data(routes_config.storage_client, source, target) if with_default_test else []
-
     to_translate_corpus = []
     to_score_corpus = []
     for corpus in testing_data_infos:
@@ -1180,6 +1180,113 @@ def get_evaluations():
     visible_entities = [g.user.entity.entity_code]
     evaluation_catalogs = list(mongo_client.get_evaluation_catalogs(visible_entities))
     return cust_jsonify(evaluation_catalogs)
+
+
+@app.route("/models/deploy", methods=["POST"])
+@filter_request("POST/models/deploy", "train")
+def deploy_model_local():
+    request_data = _parse_request_data_for_deploy_model(request)
+    service_config = config.get_service_config(mongo_client, SERVE_POOL_NAME)
+    resource = _select_resource_for_deploy_model(service_config)
+    port_to_deploy = _select_port_for_deploy_model(resource)
+
+    if port_to_deploy is None:
+        raise Exception("Not available port")
+
+    create_serve_task(request_data["model"], SERVE_POOL_NAME, request_data["source"], request_data["target"],
+                      port_to_deploy, resource["host"])
+
+    return cust_jsonify({"message": "ok"})
+
+
+def _parse_request_data_for_deploy_model(current_request):
+    # model = "SAAKH_enes_JDBroadCarrot_52_de9bcac-c7565_release"
+    # TODO: Validate request data
+    request_data = current_request.form
+    model = request_data.get("model")
+    # TODO: Get language_pair from model catalog
+    language_pair = "en_fr"
+    source_language = language_pair.split("_")[0]
+    target_language = language_pair.split("_")[1]
+
+    return {
+        "source": source_language,
+        "target": target_language,
+        "model": model
+    }
+
+
+def _select_resource_for_deploy_model(service_config):
+    # TODO: Select suitable resource for deploy
+    return service_config["variables"]["server_pool"][0]
+
+
+def _select_port_for_deploy_model(resource_config):
+    busy_ports = _get_all_busy_port_of_resource(resource_config["host"])
+    port_range = resource_config["serve_port_range"]
+    port_range_from = port_range.get("from")
+    port_range_to = port_range.get("to")
+
+    if len(busy_ports) == 0:
+        return port_range_from
+
+    for port in range(port_range_from, port_range_to + 1):
+        if port not in busy_ports:
+            return port
+    return None
+
+
+def _get_all_busy_port_of_resource(resource):
+    deployment_of_resources = mongo_client.get_all_deployment_of_resource(resource)
+    busy_ports = list(map(lambda deployment: deployment["port"], deployment_of_resources))
+    return busy_ports
+
+
+def create_serve_task(model, service, source_language, target_language, resource_port, resource):
+    request_data = {
+        "source": source_language,
+        "target": target_language
+    }
+    routes_config = RoutesConfiguration(flask.g, service)
+    content = get_serve_task_config(service=service, request_data=request_data, routes_config=routes_config)
+    task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
+                           service=service, resource=resource)
+
+    serve_task = TaskServe(task_infos, model, resource_port)
+
+    serve_task.create(redis_db, taskfile_dir)
+
+
+def get_serve_task_config(service, request_data, routes_config):
+    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+
+    content = {
+        "service": service,
+        "docker": {**docker_image_info},
+        "wait_after_launch": 2,
+        "creator": f"{routes_config.entity_owner}{routes_config.creator['user_code']}",
+        "options": {},
+    }
+
+    if request_data.get("ncpus"):
+        content["ncpus"] = request_data["ncpus"]
+    if request_data.get("priority"):
+        content["priority"] = request_data["priority"]
+    if request_data.get("iterations"):
+        content["iterations"] = request_data["iterations"]
+    return json.loads(json.dumps(content))
+
+
+# Notes: Call this function when deploy success
+def create_model_deployment_info(creator, model, resource_host, resource_port):
+    model_deployment_info = {
+        "model": model,
+        "resource": resource_host,
+        "port": resource_port,
+        "creator": creator
+    }
+
+    mongo_client.create_deployment_info(model_deployment_info)
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])

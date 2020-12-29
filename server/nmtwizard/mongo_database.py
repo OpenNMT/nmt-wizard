@@ -6,7 +6,8 @@ tables = {
     "tags": "pn9-tag",
     "dockers": "pn9-docker",
     "evaluations": "pn9-evaluation",
-    "dataset": "pn9-dataset"
+    "dataset": "pn9-dataset",
+    "serving_models": "pn9-serving-model"
 }
 
 
@@ -181,3 +182,15 @@ class MongoDatabase:
             "$in": dataset_ids
         }})
         return dataset
+
+    def get_all_deployment_of_resource(self, resource):
+        the_table = self.get("serving_models")
+        query = {
+            "resource": resource
+        }
+        deployments = the_table.find(query)
+        return deployments
+
+    def create_deployment_info(self, deployment_info):
+        the_table = self.get("serving_models")
+        the_table.insert(deployment_info)

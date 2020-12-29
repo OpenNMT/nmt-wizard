@@ -249,6 +249,28 @@ class TaskTranslate(TaskBase):
         TaskBase.__init__(self, task_infos)
 
 
+class TaskServe(TaskBase):
+    def __init__(self, task_infos, parent_task_id, resource_port):
+        self._task_suffix = "serve"
+        self._task_type = "serve"
+        self._parent_task_id = parent_task_id
+        self._resource_port = resource_port
+        self._docker_container_port = 4000
+
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
+        task_infos.content["ngpus"] = 0
+        if "ncpus" not in task_infos.content:
+            task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                        task_infos.content["ngpus"], "trans")
+
+        task_infos.content["docker"]["command"] = ["-m", self._parent_task_id]
+        task_infos.content["docker"]["command"].extend(["-ms", "s3_release:"])
+        task_infos.content["docker"]["command"].extend(["serve", "-p", self._docker_container_port])
+        change_parent_task(task_infos.content["docker"]["command"], parent_task_id)
+
+        TaskBase.__init__(self, task_infos)
+
+
 class TaskScoring(TaskBase):
     def __init__(self, task_infos, parent_task_id, model, to_score):
         self._task_suffix = "score"
