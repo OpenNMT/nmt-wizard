@@ -28,6 +28,7 @@ from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreproce
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
+from utils.request_utils import RequestUtils
 
 GLOBAL_POOL_NAME = "global_pool"
 SERVE_POOL_NAME = "serve_pool"
@@ -1180,6 +1181,33 @@ def get_evaluations():
     visible_entities = [g.user.entity.entity_code]
     evaluation_catalogs = list(mongo_client.get_evaluation_catalogs(visible_entities))
     return cust_jsonify(evaluation_catalogs)
+
+
+@app.route("/models/predict", methods=["POST"])
+@filter_request("POST/models/predict", "train")
+def predict():
+    request_data = _parse_request_data_for_predict(request)
+    model = request_data["model"]
+    model_deployment_info = mongo_client.get_deployment_info_of_model(model)
+    if not model_deployment_info:
+        abort(flask.make_response(flask.jsonify(message="Model has not been deployed: %s" % model), 400))
+    request_url = f"http://{model_deployment_info['resource']}:{model_deployment_info['port']}/translate"
+    request_data = {"src": [{"text": request_data["text"]}]}
+    response = RequestUtils.post(request_url, request_data)
+    return response.json(), response.status_code
+
+
+def _parse_request_data_for_predict(current_request):
+    # model = "SAAKH_enes_JDBroadCarrot_52_de9bcac-c7565_release"
+    # TODO: Validate request data
+    request_data = current_request.form
+    model = request_data.get("model")
+    text = request_data.get("text")
+
+    return {
+        "model": model,
+        "text": text
+    }
 
 
 @app.route("/models/deploy", methods=["POST"])

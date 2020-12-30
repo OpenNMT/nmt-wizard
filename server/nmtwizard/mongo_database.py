@@ -194,3 +194,11 @@ class MongoDatabase:
     def create_deployment_info(self, deployment_info):
         the_table = self.get("serving_models")
         the_table.insert(deployment_info)
+
+    def get_deployment_info_of_model(self, model):
+        the_table = self.get("serving_models")
+        query = {
+            "model": model
+        }
+        deployment = the_table.find_one(query)
+        return deployment
