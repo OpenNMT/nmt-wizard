@@ -1214,12 +1214,15 @@ def _parse_request_data_for_predict(current_request):
 @filter_request("POST/models/deploy", "train")
 def deploy_model_local():
     request_data = _parse_request_data_for_deploy_model(request)
+    model_deployment_info = mongo_client.get_deployment_info_of_model(request_data["model"])
+    if model_deployment_info:
+        abort(flask.make_response(flask.jsonify(message="The model has deployed!"), 400))
+
     service_config = config.get_service_config(mongo_client, SERVE_POOL_NAME)
     resource = _select_resource_for_deploy_model(service_config)
     port_to_deploy = _select_port_for_deploy_model(resource)
-
     if port_to_deploy is None:
-        raise Exception("Not available port")
+        abort(flask.make_response(flask.jsonify(message="Not available port to deploy"), 400))
 
     create_serve_task(request_data["model"], SERVE_POOL_NAME, request_data["source"], request_data["target"],
                       port_to_deploy, resource["host"])
