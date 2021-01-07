@@ -603,9 +603,31 @@ def launch_v2():
     tasks_for_model = create_tasks_for_model(tasks_creation_output["tasks_id"])
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
+    nb_segments_training = 0
+    nb_segments_testing = 0
+    user_corpus = []
+    for file in data_file_info["training"]:
+        nb_segments_training += int(file["nbSegments"])
+        if request_data["corpus_type"] and request_data["corpus_type"] == 1:
+            # new dataset
+            corpus_info = {"name": "new_dataset" + file["filename"][file["filename"].index("/", 4):]}
+            user_corpus.append(corpus_info)
+        else:
+            # existing dataset
+            corpus_info = {"name": file["filename"][3:], "dataset_id": file["dataset_id"], "file_id": file["id"]}
+            user_corpus.append(corpus_info)
+    if "testing" in data_file_info:
+        for file in data_file_info["testing"]:
+            nb_segments_testing += int(file["nbSegments"])
+    corpus_info = {
+        "nb_segments_training": nb_segments_training,
+        "user_corpus": user_corpus
+    }
+    if nb_segments_testing:
+        corpus_info["nb_segments_testing"] = nb_segments_testing
     create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
                          request_data=request_data, docker_info=content["docker"], creator=routes_config.creator,
-                         tasks=tasks_for_model, tags=tags, domain=domain)
+                         tasks=tasks_for_model, tags=tags, domain=domain, corpus_info=corpus_info)
 
     return flask.jsonify(tasks_creation_output["tasks_id"])
 
@@ -808,6 +830,8 @@ def get_exists_dataset_file_info(dataset_ids):
 
         training_files = files.get("train", [])
         testing_files = files.get("test", [])
+        for f in training_files:
+            f["dataset_id"] = str(dataset["_id"])
 
         result["training"].extend(training_files)
         result["testing"].extend(testing_files)
@@ -986,12 +1010,10 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, input_name, request_data, docker_info, creator, tasks, tags, domain,
-                         state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, docker_info, creator, tasks, tags, domain, corpus_info, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
-
     config = {
         "source": source,
         "target": target,
@@ -999,8 +1021,12 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
         "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
         "tags": tags,
         "tasks": tasks,
-        "domain": domain
+        "domain": domain,
+        "nb_segments_training": corpus_info["nb_segments_training"],
+        "user_corpus": corpus_info["user_corpus"]
     }
+    if "nb_segments_testing" in corpus_info:
+        config["nb_segments_testing"] = corpus_info["nb_segments_testing"]
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
                                                 entity_owner=creator['entity_code'],
