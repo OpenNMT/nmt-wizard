@@ -596,6 +596,11 @@ def launch_v2():
 
     tasks_for_model = create_tasks_for_model(tasks_creation_output["tasks_id"])
     domain = request_data.get('domain')
+    if domain is None:
+        abort(make_response(jsonify(message="unknown domain"), 400))
+    parent_model = request_data.get('parent_model')
+    if parent_model is None:
+        abort(make_response(jsonify(message="unknown parent model"), 400))
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
     create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
