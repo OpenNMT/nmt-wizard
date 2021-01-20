@@ -890,8 +890,18 @@ def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
 
     sample = 0
+    sample_by_path = {}
+
     for corpus_infos in training_corpus_infos:
         sample += int(corpus_infos["nbSegments"])
+        training_folder = os.path.dirname(corpus_infos.get("filename"))
+        training_folder_path = "${GLOBAL_DATA}" + f"{training_folder}/"
+
+        if sample_by_path.get(training_folder_path) is None:
+            sample_by_path[training_folder_path] = int(corpus_infos["nbSegments"])
+        else:
+            sample_by_path[training_folder_path] += int(corpus_infos["nbSegments"])
+
     training_data_config = {
         "sample": sample,
         "sample_dist": list(map(lambda training_folder: {
@@ -899,20 +909,41 @@ def get_final_training_config(request_data, training_corpus_infos):
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
+
     if "parent_model" not in request_data:
         return get_from_scratch_config(request_data["source"], request_data["target"], training_data_config)
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        sample_data = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
+
         parent_config["data"] = {
-            "sample": training_data_config["sample"] + parent_config["data"]["sample"],
-            "sample_dist": training_data_config["sample_dist"] + parent_config["data"]["sample_dist"]
+            "sample": sample_data[0],
+            "sample_dist": sample_data[1]
         }
+
         return parent_config
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
+
+
+def get_sample_data(current_data, parent_data, sample_by_path):
+    current_sample_dists = current_data["sample_dist"]
+    sample_dists = parent_data["sample_dist"]
+    sample = parent_data["sample"]
+
+    for current_sample_dist in current_sample_dists:
+        duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
+        
+        if len(duplicate) > 0:
+            continue
+
+        sample_dists.append(current_sample_dist)
+        sample += int(sample_by_path[current_sample_dist['path']])
+    
+    return [sample, sample_dists]
 
 
 def get_default_test_data(storage_client, source, target):
