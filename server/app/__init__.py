@@ -1,10 +1,12 @@
 import os
 import logging.config
+import redis
 
 from flask import Flask
 from nmtwizard import common
 from nmtwizard import configuration as config
 from utils.database_utils import DatabaseUtils
+from flask_session import Session
 
 VERSION = "1.12.0"
 app = Flask(__name__)
@@ -56,12 +58,17 @@ app.logger.addHandler(log_handler)
 common.add_log_handler(log_handler)
 
 flask_config = system_config["flask"]
+redis_uri = DatabaseUtils.get_redis_uri(system_config)
+flask_config['SESSION_REDIS'] = redis.from_url(redis_uri)
 app.config.update(flask_config)
 app.other_config = system_config
 
 app.__class__.get_other_config = get_other_config_flask
 
 app.logger.setLevel(logging.getLevelName(app.get_other_config(["default", "log_level"], fallback='ERROR')))
+
+sess = Session()
+sess.init_app(app)
 
 assert system_config["default"]["taskfile_dir"], "missing taskfile_dir from settings.yaml"
 taskfile_dir = system_config["default"]["taskfile_dir"]
