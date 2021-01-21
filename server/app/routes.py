@@ -854,42 +854,6 @@ def get_test_folder_name(source, target):
     return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
-# TODO define and build real configuration
-def get_from_scratch_config(source, target, data):
-    return {
-        "tokenization": {
-            "source": {
-                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
-                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab32k.en",
-                "preserve_placeholders": True,
-                "mode": "aggressive",
-                "preserve_segmented_tokens": True,
-                "segment_numbers": True,
-                "segment_case": True,
-                "joiner_annotate": True
-            },
-            "target": {
-                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
-                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab34k.fr",
-                "preserve_placeholders": True,
-                "mode": "aggressive",
-                "preserve_segmented_tokens": True,
-                "segment_numbers": True,
-                "segment_case": True,
-                "joiner_annotate": True
-            }
-        },
-        "description": "apostrophe test",
-        "source": source,
-        "target": target,
-        "data": data,
-        "options": {
-            "auto_config": True,
-            "model": "${SHARED_DATA_DIR}/xx/transformer_mini.py"
-        }
-    }
-
-
 def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_paths = map(lambda corpus: corpus.get("filename"), training_corpus_infos)
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
@@ -905,7 +869,7 @@ def get_final_training_config(request_data, training_corpus_infos):
         }, training_corpus_folders))
     }
     if "parent_model" not in request_data:
-        return get_from_scratch_config(request_data["source"], request_data["target"], training_data_config)
+        abort(flask.make_response(flask.jsonify(message="No parent model found"), 400))
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
