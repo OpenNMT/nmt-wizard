@@ -576,6 +576,12 @@ def launch_v2():
 
     # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
     # default.json + other pool accessible (see /resource/list API)
+    domain = request_data.get('domain')
+    if domain is None:
+        abort(make_response(jsonify(message="unknown domain"), 400))
+    parent_model = request_data.get('parent_model')
+    if parent_model is None:
+        abort(make_response(jsonify(message="unknown parent model"), 400))
     routes_config = RoutesConfiguration(flask.g, service)
 
     data_file_info = get_data_file_info(request_data, routes_config)
@@ -595,12 +601,6 @@ def launch_v2():
     tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_infos)
 
     tasks_for_model = create_tasks_for_model(tasks_creation_output["tasks_id"])
-    domain = request_data.get('domain')
-    if domain is None:
-        abort(make_response(jsonify(message="unknown domain"), 400))
-    parent_model = request_data.get('parent_model')
-    if parent_model is None:
-        abort(make_response(jsonify(message="unknown parent model"), 400))
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
     create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
@@ -868,8 +868,6 @@ def get_final_training_config(request_data, training_corpus_infos):
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
-    if "parent_model" not in request_data:
-        abort(flask.make_response(flask.jsonify(message="No parent model found"), 400))
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
