@@ -1,6 +1,7 @@
 import logging
 import time
 
+from app import mongo_client
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.capacity import Capacity
@@ -149,6 +150,13 @@ class SSHService(Service):
                support_statistics):
         options['server'] = resource
         params = _get_params(self._config, options)
+
+        # update resource for serve tasks
+        if task_id.split("_")[-1] == "serve":
+            model_name = docker_command[1]
+            mongo_client.update_document(model_name, {"resource": params["host"], "serving_port":
+                docker_command[-1].split(":")[-1]})
+
         client = self._get_client(params=params)
         try:
             callback_url = self._config.get('callback_url')

@@ -18,7 +18,7 @@ def displaycmd(lst):
         while p != -1:
             q = t.find("]]", p)
             if q != -1:
-                t = t[0:p] + t[q+2:]
+                t = t[0:p] + t[q + 2:]
             else:
                 t = t[0:p]
             p = t.find("[[private:", p)
@@ -45,10 +45,10 @@ def rmprivate(lst):
     if isinstance(t, six.string_types):
         p = t.find("[[private:")
         while p != -1:
-            t = t[0:p] + t[p+10:]
+            t = t[0:p] + t[p + 10:]
             q = t.find("]]")
             if q != -1:
-                t = t[0:q] + t[q+2:]
+                t = t[0:q] + t[q + 2:]
                 p = t.find("[[private:", q)
             else:
                 p = -1
@@ -165,7 +165,7 @@ def ssh_connect_with_retry(hostname,
                 pkey=pkey,
                 key_filename=key_filename,
                 look_for_keys=False)
-            logger.info("Connection to %s successful (%f)", hostname, time.time()-start)
+            logger.info("Connection to %s successful (%f)", hostname, time.time() - start)
             if login_cmd is not None:
                 if not run_and_check_command(client, login_cmd):
                     raise RuntimeError("failed to run login command")
@@ -267,9 +267,9 @@ def cmd_connect_private_registry(docker_registry):
     if docker_registry['type'] == "aws":
         return ('$(AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s '
                 'aws ecr get-login --no-include-email --region %s)') % (
-                    docker_registry['credentials']['AWS_ACCESS_KEY_ID'],
-                    docker_registry['credentials']['AWS_SECRET_ACCESS_KEY'],
-                    docker_registry['region'])
+                   docker_registry['credentials']['AWS_ACCESS_KEY_ID'],
+                   docker_registry['credentials']['AWS_SECRET_ACCESS_KEY'],
+                   docker_registry['region'])
     username = docker_registry['credentials']['username']
     password = docker_registry['credentials']['password']
     return 'docker login --username %s --password %s' % (username, password)
@@ -291,8 +291,8 @@ def cmd_docker_run(lxpu, docker_options, task_id,
     if nbgpu == 0 or (nbgpu == 1 and lgpu[0] == 0):
         gpu_id = '0'
     else:
-        env['NV_GPU'] = ",".join([str(int(g)-1) for g in lgpu])
-        gpu_id = ",".join([str(v) for v in range(1, nbgpu+1)])
+        env['NV_GPU'] = ",".join([str(int(g) - 1) for g in lgpu])
+        gpu_id = ",".join([str(v) for v in range(1, nbgpu + 1)])
 
     if docker_options.get('dev') == 1:
         return "sleep 35"
@@ -306,6 +306,13 @@ def cmd_docker_run(lxpu, docker_options, task_id,
 
     # launch the task
     cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
+
+    # only for serve tasks
+    if task_id.split("_")[-1] == "serve":
+        if "port" in server_params:
+            cmd += "_o_-p_o_{}".format(docker_command[-1])
+            docker_command = docker_command[:-1]
+
     if 'mount' in docker_options:
         for k in docker_options['mount']:
             cmd += '_o_-v_o_%s' % k
@@ -410,6 +417,7 @@ def launch_task(task_id,
         * `callback_url`: server to callback for beat of activity
         * `callback_interval`: time between 2 beats
     """
+
     (lgpu, lcpu) = lxpu
     gpu_id = ",".join(lgpu)
     logger.info("launching task - %s / %s", task_id, gpu_id)

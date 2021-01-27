@@ -7,7 +7,7 @@ tables = {
     "dockers": "pn9-docker",
     "evaluations": "pn9-evaluation",
     "dataset": "pn9-dataset",
-    "serving_models": "pn9-serving-model"
+    "models": "pn9-model"
 }
 
 
@@ -184,21 +184,47 @@ class MongoDatabase:
         return dataset
 
     def get_all_deployment_of_resource(self, resource):
-        the_table = self.get("serving_models")
+        the_table = self.get("models")
         query = {
             "resource": resource
         }
-        deployments = the_table.find(query)
-        return deployments
+        model_info = the_table.find(query)
+
+        if model_info and model_info.get("resource") is not None:
+            deployment_info = {
+                "resource": model_info["resource"],
+                "serving_port": model_info["serving_port"]
+            }
+            return deployment_info
+
+        return None
 
     def create_deployment_info(self, deployment_info):
         the_table = self.get("serving_models")
         the_table.insert(deployment_info)
 
     def get_deployment_info_of_model(self, model):
-        the_table = self.get("serving_models")
+        the_table = self.get("models")
         query = {
             "model": model
         }
-        deployment = the_table.find_one(query)
-        return deployment
+        model_info = the_table.find_one(query)
+
+        if model_info and model_info.get("resource") is not None:
+            deployment_info = {
+                "resource": model_info["resource"],
+                "serving_port": model_info["serving_port"]
+            }
+            return deployment_info
+
+        return None
+
+    def update_document(self, model, data):
+        the_table = self.get("models")
+        query = {
+            "model": model
+        }
+        update = {
+            "$set": data
+        }
+        the_table.update_one(query, update)

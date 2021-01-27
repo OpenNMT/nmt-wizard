@@ -31,7 +31,6 @@ from utils.storage_utils import StorageUtils
 from utils.request_utils import RequestUtils
 
 GLOBAL_POOL_NAME = "global_pool"
-SERVE_POOL_NAME = "serve_pool"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -1183,22 +1182,31 @@ def get_evaluations():
     return cust_jsonify(evaluation_catalogs)
 
 
-@app.route("/models/predict", methods=["POST"])
-@filter_request("POST/models/predict", "train")
+@app.route("/model/predict", methods=["POST"])
+@filter_request("POST/model/predict", "train")
 def predict():
     request_data = _parse_request_data_for_predict(request)
+
+    if len(request_data["text"]) > config.get_system_config()["predict"]["max_characters"]:
+        abort(flask.make_response(flask.jsonify(message="your input is too long"), 403))
+
     model = request_data["model"]
-    model_deployment_info = mongo_client.get_deployment_info_of_model(model)
-    if not model_deployment_info:
+    deployment_info = mongo_client.get_deployment_info_of_model(model)
+    if not deployment_info:
         abort(flask.make_response(flask.jsonify(message="Model has not been deployed: %s" % model), 400))
-    request_url = f"http://{model_deployment_info['resource']}:{model_deployment_info['port']}/translate"
+    request_url = f"http://{deployment_info['resource']}:{deployment_info['serving_port']}/translate"
     request_data = {"src": [{"text": request_data["text"]}]}
     response = RequestUtils.post(request_url, request_data)
     return response.json(), response.status_code
 
 
+@app.route("/model/inactive", methods=["POST"])
+@filter_request("POST/model/inactive", "train")
+def inactive_model():
+    pass
+
+
 def _parse_request_data_for_predict(current_request):
-    # model = "SAAKH_enes_JDBroadCarrot_52_de9bcac-c7565_release"
     # TODO: Validate request data
     request_data = current_request.form
     model = request_data.get("model")
@@ -1210,35 +1218,38 @@ def _parse_request_data_for_predict(current_request):
     }
 
 
-@app.route("/models/deploy", methods=["POST"])
-@filter_request("POST/models/deploy", "train")
-def deploy_model_local():
+@app.route("/model/active", methods=["POST"])
+@filter_request("POST/model/active", "train")
+def active_model_local():
+    """
+    deploy model on local machine for prediction (only for model studio lite)
+    """
     request_data = _parse_request_data_for_deploy_model(request)
-    model_deployment_info = mongo_client.get_deployment_info_of_model(request_data["model"])
-    if model_deployment_info:
-        abort(flask.make_response(flask.jsonify(message="The model has deployed!"), 400))
+    deployment_info = mongo_client.get_deployment_info_of_model(request_data["model"])
+    if deployment_info:
+        abort(flask.make_response(flask.jsonify(message="The model has been active!"), 400))
 
-    service_config = config.get_service_config(mongo_client, SERVE_POOL_NAME)
+    service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
+    # TODO: select resource for deployment
     resource = _select_resource_for_deploy_model(service_config)
-    port_to_deploy = _select_port_for_deploy_model(resource)
+    # TODO: select port for deployment
+    port_to_deploy = 4000  # _select_port_for_deploy_model(resource)
     if port_to_deploy is None:
-        abort(flask.make_response(flask.jsonify(message="Not available port to deploy"), 400))
+        abort(flask.make_response(flask.jsonify(message="Not available port to active"), 400))
 
-    create_serve_task(request_data["model"], SERVE_POOL_NAME, request_data["source"], request_data["target"],
-                      port_to_deploy, resource["host"])
+    create_serve_task(request_data["model"], GLOBAL_POOL_NAME, request_data["source"], request_data["target"],
+                      port_to_deploy, "auto")  # resource["host"]
 
     return cust_jsonify({"message": "ok"})
 
 
 def _parse_request_data_for_deploy_model(current_request):
-    # model = "SAAKH_enes_JDBroadCarrot_52_de9bcac-c7565_release"
     # TODO: Validate request data
     request_data = current_request.form
     model = request_data.get("model")
-    # TODO: Get language_pair from model catalog
-    language_pair = "en_fr"
-    source_language = language_pair.split("_")[0]
-    target_language = language_pair.split("_")[1]
+    language_pair = model.split('_')[1]
+    source_language = language_pair[:2]
+    target_language = language_pair[2:]
 
     return {
         "source": source_language,
@@ -1268,12 +1279,16 @@ def _select_port_for_deploy_model(resource_config):
 
 
 def _get_all_busy_port_of_resource(resource):
+    # TODO: change port type to list
     deployment_of_resources = mongo_client.get_all_deployment_of_resource(resource)
-    busy_ports = list(map(lambda deployment: deployment["port"], deployment_of_resources))
-    return busy_ports
+    if deployment_of_resources:
+        busy_ports = list(map(lambda deployment: deployment["serving_port"], deployment_of_resources))
+        return busy_ports
+    else:
+        return []
 
 
-def create_serve_task(model, service, source_language, target_language, resource_port, resource):
+def create_serve_task(model, service, source_language, target_language, exposed_port, resource):
     request_data = {
         "source": source_language,
         "target": target_language
@@ -1283,7 +1298,7 @@ def create_serve_task(model, service, source_language, target_language, resource
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service, resource=resource)
 
-    serve_task = TaskServe(task_infos, model, resource_port)
+    serve_task = TaskServe(task_infos, model, exposed_port)
 
     serve_task.create(redis_db, taskfile_dir)
 
@@ -1637,7 +1652,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "2.1.0-beta1",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                        option_lang + ['-f', "launcher:scores"]
+                                   option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1692,7 +1707,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                        in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)

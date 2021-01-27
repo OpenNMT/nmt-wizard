@@ -9,6 +9,8 @@ import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
+from utils.request_utils import RequestUtils
+from app import mongo_client
 
 
 def _compatible_resource(resource, request_resource):
@@ -210,11 +212,13 @@ class Worker(object):
             task.terminate(self._redis, task_id, phase='launch_error')
             self._logger.info(traceback.format_exc())
             return
+
         self._logger.info('%s: task started on %s', task_id, service.name)
         self._redis.hset(keyt, 'job', json.dumps(data))
         task.set_status(self._redis, keyt, 'running')
         # For services that do not notify their activity, we should
         # poll the task status more regularly.
+
         task.work_queue(self._redis, task_id, service.name,
                         delay=service.is_notifying_activity and 120 or 30)
 
@@ -230,6 +234,16 @@ class Worker(object):
                                   task_id, service.name)
                 task.terminate(self._redis, task_id, phase='exited')
             else:
+                # check serving status for serve tasks
+                if task_id.split('_')[-1] == "serve":
+                    model_name = json.loads(self._redis.hget(keyt, 'content'))["docker"]["command"][1]
+                    deployment_info = mongo_client.get_deployment_info_of_model(model_name)
+                    serving_status = RequestUtils.get(f"http://{deployment_info['resource']}:{deployment_info['serving_port']}/status")
+                    if json.loads(serving_status.text)["status"] == "ready":
+                        task.terminate(self._redis, task_id, phase='successful activation')
+                        # update serving status in mongodb
+                        mongo_client.update_document(model_name, {"serving_status": "running"})
+
                 task.work_queue(self._redis, task_id, service.name,
                                 delay=service.is_notifying_activity and 600 or 120)
         except Exception as e:
