@@ -1304,20 +1304,20 @@ def launch(service):
             flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
                 service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
-    if "to_translate" in content:
+    if "totranslate" in content:
         if exec_mode:
             abort(flask.make_response(
                 flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
-        to_translate = content["to_translate"]
-        del content["to_translate"]
+        to_translate = content["totranslate"]
+        del content["totranslate"]
     else:
         to_translate = None
-    if "to_score" in content:
+    if "toscore" in content:
         if exec_mode:
             abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"),
                                       400))
-        to_score = content["to_score"]
-        del content["to_score"]
+        to_score = content["toscore"]
+        del content["toscore"]
     else:
         to_score = None
     if "totuminer" in content:
@@ -1529,7 +1529,7 @@ def launch(service):
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": get_registry(service_module, image_score),
-                        "tag": "2.1.0-beta1",
+                        "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
                         option_lang + ['-f', "launcher:scores"]
                     }
