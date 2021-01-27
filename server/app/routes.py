@@ -859,8 +859,18 @@ def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
 
     sample = 0
+    sample_by_path = {}
+
     for corpus_infos in training_corpus_infos:
         sample += int(corpus_infos["nbSegments"])
+        training_folder = os.path.dirname(corpus_infos.get("filename"))
+        training_folder_path = "${GLOBAL_DATA}" + f"{training_folder}/"
+
+        if sample_by_path.get(training_folder_path) is None:
+            sample_by_path[training_folder_path] = int(corpus_infos["nbSegments"])
+        else:
+            sample_by_path[training_folder_path] += int(corpus_infos["nbSegments"])
+
     training_data_config = {
         "sample": sample,
         "sample_dist": list(map(lambda training_folder: {
@@ -872,14 +882,34 @@ def get_final_training_config(request_data, training_corpus_infos):
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        sample_data = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
+
         parent_config["data"] = {
-            "sample": training_data_config["sample"] + parent_config["data"]["sample"],
-            "sample_dist": training_data_config["sample_dist"] + parent_config["data"]["sample_dist"]
+            "sample": sample_data[0],
+            "sample_dist": sample_data[1]
         }
+
         return parent_config
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
+
+
+def get_sample_data(current_data, parent_data, sample_by_path):
+    current_sample_dists = current_data["sample_dist"]
+    sample_dists = parent_data["sample_dist"]
+    sample = parent_data["sample"]
+
+    for current_sample_dist in current_sample_dists:
+        duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
+        
+        if len(duplicate) > 0:
+            continue
+
+        sample_dists.append(current_sample_dist)
+        sample += int(sample_by_path[current_sample_dist['path']])
+    
+    return [sample, sample_dists]
 
 
 def get_default_test_data(storage_client, source, target):
@@ -1087,7 +1117,8 @@ def parse_request_data_of_evaluation(current_request):
     models = request_data.getlist("models")
     evaluation_corpus = request_files.getlist("corpus")
 
-    language_pair = "en_fr"  # TODO: Get language_pair from model catalog
+    model_info = builtins.pn9model_db.catalog_get_info(models[0], True)
+    language_pair = model_info[1].get('lp')
     source_language = language_pair.split("_")[0]
     target_language = language_pair.split("_")[1]
 
@@ -1239,20 +1270,20 @@ def launch(service):
             flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
                 service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
-    if "to_translate" in content:
+    if "totranslate" in content:
         if exec_mode:
             abort(flask.make_response(
                 flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
-        to_translate = content["to_translate"]
-        del content["to_translate"]
+        to_translate = content["totranslate"]
+        del content["totranslate"]
     else:
         to_translate = None
-    if "to_score" in content:
+    if "toscore" in content:
         if exec_mode:
             abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"),
                                       400))
-        to_score = content["to_score"]
-        del content["to_score"]
+        to_score = content["toscore"]
+        del content["toscore"]
     else:
         to_score = None
     if "totuminer" in content:
@@ -1464,7 +1495,7 @@ def launch(service):
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": get_registry(service_module, image_score),
-                        "tag": "2.1.0-beta1",
+                        "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
                         option_lang + ['-f', "launcher:scores"]
                     }

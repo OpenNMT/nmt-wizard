@@ -61,6 +61,8 @@ def is_polyentity_config(config):
 def get_docker(config, entity):
     if is_polyentity_config(config):
         if entity in config["entities"].keys():
+            if "registries" not in config["entities"][entity]["docker"]:
+                config["entities"][entity]["docker"]["registries"] = config["docker"]["registries"]
             return config["entities"][entity]["docker"]
         raise ValueError("cannot find the config for the entity %s" % entity)
     return config["docker"]
