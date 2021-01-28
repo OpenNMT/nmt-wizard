@@ -878,6 +878,14 @@ def get_test_folder_name(source, target):
     return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
+def format_training_folder(training_folder):
+    if not training_folder.startswith('/'):
+        training_folder = '/' + training_folder
+    if not training_folder.endswith('/'):
+        training_folder += '/'
+    return "${GLOBAL_DATA}" + training_folder
+
+
 def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_paths = map(lambda corpus: corpus.get("filename"), training_corpus_infos)
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
@@ -888,7 +896,7 @@ def get_final_training_config(request_data, training_corpus_infos):
     for corpus_infos in training_corpus_infos:
         sample += int(corpus_infos["nbSegments"])
         training_folder = os.path.dirname(corpus_infos.get("filename"))
-        training_folder_path = "${GLOBAL_DATA}" + f"{training_folder}/"
+        training_folder_path = format_training_folder(training_folder)
 
         if sample_by_path.get(training_folder_path) is None:
             sample_by_path[training_folder_path] = int(corpus_infos["nbSegments"])
@@ -898,7 +906,7 @@ def get_final_training_config(request_data, training_corpus_infos):
     training_data_config = {
         "sample": sample,
         "sample_dist": list(map(lambda training_folder: {
-            "path": "${GLOBAL_DATA}" + f"{training_folder}/",
+            "path": format_training_folder(training_folder),
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
