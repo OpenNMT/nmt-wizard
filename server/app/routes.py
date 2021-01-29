@@ -882,6 +882,13 @@ def get_final_training_config(request_data, training_corpus_infos):
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        # Change batch size to settings value if specified
+        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"]\
+                and "batch_size" in parent_config["options"]["config"]["train"]:
+            batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
+            if batch_size:
+                parent_config["options"]["config"]["train"]["batch_size"] = batch_size
+
         sample_data = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
 
         parent_config["data"] = {
@@ -902,13 +909,13 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
     for current_sample_dist in current_sample_dists:
         duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
-        
+
         if len(duplicate) > 0:
             continue
 
         sample_dists.append(current_sample_dist)
         sample += int(sample_by_path[current_sample_dist['path']])
-    
+
     return [sample, sample_dists]
 
 
