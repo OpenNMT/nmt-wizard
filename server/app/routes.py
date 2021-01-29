@@ -565,6 +565,23 @@ def create_tasks_for_launch_v2(creation_infos):
     return creation_output
 
 
+def get_corpus_info(data_files):
+    user_corpus = []
+    nb_segments = 0
+    for file in data_files:
+        nb_segments += int(file["nbSegments"])
+        file_name = file["filename"]
+        corpus_data = {
+            "full_path": file_name,
+            "file_id": file["id"],
+            "nb_segments": int(file["nbSegments"])
+        }
+        if file.get("dataset_id"):
+            corpus_data["dataset_id"] = file["dataset_id"]
+        user_corpus.append(corpus_data)
+    return user_corpus, nb_segments
+
+
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
@@ -603,9 +620,19 @@ def launch_v2():
     tasks_for_model = create_tasks_for_model(tasks_creation_output["tasks_id"])
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
+
+    user_training_corpus, nb_training_segments = get_corpus_info(data_file_info["training"])
+    user_corpus = {
+        "type": "USER_UPLOAD" if request_data.get("corpus_type") == CORPUS_TYPE["USER_UPLOAD"] else "EXISTS_CORPUS",
+        "training": {"corpus": user_training_corpus, "nb_segments": nb_training_segments}
+    }
+    if "testing" in data_file_info:
+        user_testing_corpus, nb_testing_segments = get_corpus_info(data_file_info["testing"])
+        user_corpus["testing"] = {"corpus": user_testing_corpus, "nb_segments": nb_testing_segments}
+
     create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
                          request_data=request_data, docker_info=content["docker"], creator=routes_config.creator,
-                         tasks=tasks_for_model, tags=tags, domain=domain)
+                         tasks=tasks_for_model, tags=tags, domain=domain, user_corpus=user_corpus)
 
     return flask.jsonify(tasks_creation_output["tasks_id"])
 
@@ -808,6 +835,8 @@ def get_exists_dataset_file_info(dataset_ids):
 
         training_files = files.get("train", [])
         testing_files = files.get("test", [])
+        for f in training_files:
+            f["dataset_id"] = str(dataset["_id"])
 
         result["training"].extend(training_files)
         result["testing"].extend(testing_files)
@@ -854,6 +883,14 @@ def get_test_folder_name(source, target):
     return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
+def format_training_folder(training_folder):
+    if not training_folder.startswith('/'):
+        training_folder = '/' + training_folder
+    if not training_folder.endswith('/'):
+        training_folder += '/'
+    return "${GLOBAL_DATA}" + training_folder
+
+
 def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_paths = map(lambda corpus: corpus.get("filename"), training_corpus_infos)
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
@@ -864,7 +901,7 @@ def get_final_training_config(request_data, training_corpus_infos):
     for corpus_infos in training_corpus_infos:
         sample += int(corpus_infos["nbSegments"])
         training_folder = os.path.dirname(corpus_infos.get("filename"))
-        training_folder_path = "${GLOBAL_DATA}" + f"{training_folder}/"
+        training_folder_path = format_training_folder(training_folder)
 
         if sample_by_path.get(training_folder_path) is None:
             sample_by_path[training_folder_path] = int(corpus_infos["nbSegments"])
@@ -874,7 +911,7 @@ def get_final_training_config(request_data, training_corpus_infos):
     training_data_config = {
         "sample": sample,
         "sample_dist": list(map(lambda training_folder: {
-            "path": "${GLOBAL_DATA}" + f"{training_folder}/",
+            "path": format_training_folder(training_folder),
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
@@ -993,12 +1030,10 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, input_name, request_data, docker_info, creator, tasks, tags, domain,
-                         state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, docker_info, creator, tasks, tags, domain, user_corpus, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
-
     config = {
         "source": source,
         "target": target,
@@ -1006,7 +1041,8 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
         "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
         "tags": tags,
         "tasks": tasks,
-        "domain": domain
+        "domain": domain,
+        "user_corpus": user_corpus
     }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
