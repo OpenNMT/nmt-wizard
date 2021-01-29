@@ -214,9 +214,8 @@ class TaskTrain(TaskBase):
         self._task_type = "train"
         self._parent_task_id = parent_task_id
 
+        task_infos.content["ngpus"] = 1
         if "ncpus" not in task_infos.content:
-            if "ngpus" not in task_infos.content:
-                task_infos.content["ngpus"] = 0
             task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
                                                         task_infos.content["ngpus"], "train")
 
