@@ -1196,7 +1196,8 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
 
     for model in models_info:
         model_evaluation_info = {
-            "input_name": model.get("input_name", model["model"]),
+            "input_name": model.get("input_name", model["model"]) if model.get("type") != "base" else
+            model["owner"]["entity"] + ' ' + model["domain"],
             "name": model["model"],
             "tests": {},
             "tasks": model_task_map[model["model"]]
@@ -1943,6 +1944,6 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
         for k, v in directories.items():
-            result[key].append({**v, **{"filename": k, "nbSegments": v.get("entries")}})
+            result[key].append({**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
