@@ -298,14 +298,20 @@ def cmd_docker_run(lxpu, docker_options, task_id,
         return "sleep 35"
 
     docker_cmd = 'docker'
-    if gpu_id != '0' and server_params and server_params.get('with_nvidia_docker'):
-        docker_cmd = 'nvidia-docker'
+    need_expose_gpus = False
+    if gpu_id != '0':
+        if server_params and server_params.get('with_nvidia_docker'):
+            docker_cmd = 'nvidia-docker'
+        else:
+            need_expose_gpus = True
     docker_path = docker_options.get('path')
     if docker_path:
         docker_cmd = docker_path + '/' + docker_cmd
 
     # launch the task
     cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
+    if need_expose_gpus:
+        cmd += '_o_--gpus=all'
     if 'mount' in docker_options:
         for k in docker_options['mount']:
             cmd += '_o_-v_o_%s' % k
