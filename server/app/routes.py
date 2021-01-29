@@ -608,14 +608,12 @@ def launch_v2():
     user_corpus = []
     for file in data_file_info["training"]:
         nb_segments_training += int(file["nbSegments"])
-        if request_data["corpus_type"] and request_data["corpus_type"] == 1:
-            # new dataset
-            corpus_info = {"name": "new_dataset" + file["filename"][file["filename"].index("/", 4):]}
-            user_corpus.append(corpus_info)
-        else:
+        file_name = file["filename"]
+        corpus_info = {"name": file_name.split('/')[-1]}
+        if not (request_data["corpus_type"] and request_data["corpus_type"] == CORPUS_TYPE["USER_UPLOAD"]):
             # existing dataset
-            corpus_info = {"name": file["filename"][3:], "dataset_id": file["dataset_id"], "file_id": file["id"]}
-            user_corpus.append(corpus_info)
+            corpus_info.update({"dataset_id": file["dataset_id"], "file_id": file["id"]})
+        user_corpus.append(corpus_info)
     if "testing" in data_file_info:
         for file in data_file_info["testing"]:
             nb_segments_testing += int(file["nbSegments"])
