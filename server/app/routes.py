@@ -604,6 +604,7 @@ def launch_v2():
     data_file_info = get_data_file_info(request_data, routes_config)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
+    image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
                                                                       routes_config)
@@ -631,7 +632,7 @@ def launch_v2():
         user_corpus["testing"] = {"corpus": user_testing_corpus, "nb_segments": nb_testing_segments}
 
     create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
-                         request_data=request_data, docker_info=content["docker"], creator=routes_config.creator,
+                         request_data=request_data, image_tag=image_tag, creator=routes_config.creator,
                          tasks=tasks_for_model, tags=tags, domain=domain, user_corpus=user_corpus)
 
     return flask.jsonify(tasks_creation_output["tasks_id"])
@@ -1030,7 +1031,7 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, input_name, request_data, docker_info, creator, tasks, tags, domain, user_corpus, state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain, user_corpus, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
@@ -1038,7 +1039,7 @@ def create_model_catalog(training_task_id, input_name, request_data, docker_info
         "source": source,
         "target": target,
         "parent_model": parent_model,
-        "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
+        "imageTag": image_tag,
         "tags": tags,
         "tasks": tasks,
         "domain": domain,
