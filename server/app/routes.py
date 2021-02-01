@@ -1182,30 +1182,6 @@ def get_evaluations():
     return cust_jsonify(evaluation_catalogs)
 
 
-@app.route("/model/predict", methods=["POST"])
-@filter_request("POST/model/predict", "train")
-def predict():
-    request_data = _parse_request_data_for_predict(request)
-
-    if len(request_data["text"]) > config.get_system_config()["predict"]["max_characters"]:
-        abort(flask.make_response(flask.jsonify(message="your input is too long"), 403))
-
-    model = request_data["model"]
-    deployment_info = mongo_client.get_deployment_info_of_model(model)
-    if not deployment_info:
-        abort(flask.make_response(flask.jsonify(message="Model has not been deployed: %s" % model), 400))
-    request_url = f"http://{deployment_info['resource']}:{deployment_info['serving_port']}/translate"
-    request_data = {"src": [{"text": request_data["text"]}]}
-    response = RequestUtils.post(request_url, request_data)
-    return response.json(), response.status_code
-
-
-@app.route("/model/inactive", methods=["POST"])
-@filter_request("POST/model/inactive", "train")
-def inactive_model():
-    pass
-
-
 def _parse_request_data_for_predict(current_request):
     # TODO: Validate request data
     request_data = current_request.form
@@ -1218,6 +1194,79 @@ def _parse_request_data_for_predict(current_request):
     }
 
 
+def _get_deployment_info_of_model(model):
+    serve_task_id = mongo_client.get_serve_task_id_of_model(model)
+    task_info = redis_db.hgetall(f"task:{serve_task_id}")
+
+    alloc_resource = task_info["alloc_resource"]
+    serving_port = json.loads(task_info["content"])["docker"]["command"][-1]
+    service = task_info["service"]
+    list_machines = config.get_service_config(mongo_client, service)["variables"]["server_pool"]
+    host = [machine["host"] for machine in list_machines if machine["name"] == task_info["alloc_resource"]][0]
+
+    return {"host": host, "port": serving_port}
+
+
+def _check_limit_deployed_model(model):
+    # filter list model of entity
+    entity_code = mongo_client.get_entity_code_of_model(model)
+    list_models = mongo_client.get_models_of_entity(entity_code)
+
+    count = 0
+    # count number of deployed model
+    for model in list_models:
+        tasks = model["tasks"]
+        for task_id in tasks:
+            if task_id.split("_")[-1] == "serve":
+                count += 1
+
+    if count >= config.get_system_config()["predict"]["limit_activate"]:
+        return True
+
+    return False
+
+
+@app.route("/model/predict", methods=["POST"])
+@filter_request("POST/model/predict", "train")
+def predict():
+    request_data = _parse_request_data_for_predict(request)
+
+    if len(request_data["text"]) > config.get_system_config()["predict"]["max_characters"]:
+        abort(flask.make_response(flask.jsonify(message="your input is too long!"), 403))
+
+    model = request_data["model"]
+    deployment_info = _get_deployment_info_of_model(model)
+    if not deployment_info:
+        abort(flask.make_response(flask.jsonify(message="Model has not been deployed: %s" % model), 400))
+
+    request_url = f"http://{deployment_info['host']}:{deployment_info['port']}/translate"
+    request_data = {"src": [{"text": request_data["text"]}]}
+    response = RequestUtils.post(request_url, request_data)
+    return response.json(), response.status_code
+
+
+@app.route("/model/inactive", methods=["POST"])
+@filter_request("POST/model/inactive", "train")
+def inactive_model():
+    request_data = _parse_request_data_for_deploy_model(request)
+    serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
+    if not serve_task_id:
+        abort(flask.make_response(flask.jsonify(message="The model has not been active!"), 400))
+
+    # terminate task
+    task.terminate(redis_db, serve_task_id, "inactive")
+
+    # release port (resource, port)
+    task_info = redis_db.hgetall(f"task:{serve_task_id}")
+    alloc_resource = task_info["alloc_resource"]
+    port = json.loads(task_info["content"])["docker"]["command"][-1]
+    redis_db.hdel(f"ports:{task_info['service']}:{alloc_resource}", port)
+
+    # remove serve task in mongodb
+    mongo_client.remove_serving_task_id(request_data["model"], serve_task_id)
+
+    return cust_jsonify({"message": "ok"})
+
 @app.route("/model/active", methods=["POST"])
 @filter_request("POST/model/active", "train")
 def active_model_local():
@@ -1225,19 +1274,26 @@ def active_model_local():
     deploy model on local machine for prediction (only for model studio lite)
     """
     request_data = _parse_request_data_for_deploy_model(request)
-    deployment_info = mongo_client.get_deployment_info_of_model(request_data["model"])
-    if deployment_info:
-        abort(flask.make_response(flask.jsonify(message="The model has been active!"), 400))
+
+    # check limit deployed model
+    if _check_limit_deployed_model(request_data["model"]):
+        abort(flask.make_response(flask.jsonify(message="the numbers of deployed model exceeded the limit number"), 403))
+
+    # check model's serve task existed
+    serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
+    if serve_task_id:
+        abort(flask.make_response(flask.jsonify(message="The model has been active!"), 403))
 
     service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
     # TODO: select resource for deployment
     resource = _select_resource_for_deploy_model(service_config)
     # TODO: select port for deployment
     port_to_deploy = 4000  # _select_port_for_deploy_model(resource)
-    if port_to_deploy is None:
-        abort(flask.make_response(flask.jsonify(message="Not available port to active"), 400))
 
-    create_serve_task(request_data["model"], GLOBAL_POOL_NAME, request_data["source"], request_data["target"],
+    if port_to_deploy is None:
+        abort(flask.make_response(flask.jsonify(message="Not available port to active"), 404))
+
+    _create_serve_task(request_data["model"], GLOBAL_POOL_NAME, request_data["source"], request_data["target"],
                       port_to_deploy, "auto")  # resource["host"]
 
     return cust_jsonify({"message": "ok"})
@@ -1288,7 +1344,7 @@ def _get_all_busy_port_of_resource(resource):
         return []
 
 
-def create_serve_task(model, service, source_language, target_language, exposed_port, resource):
+def _create_serve_task(model, service, source_language, target_language, exposed_port, resource):
     request_data = {
         "source": source_language,
         "target": target_language
@@ -1300,7 +1356,12 @@ def create_serve_task(model, service, source_language, target_language, exposed_
 
     serve_task = TaskServe(task_infos, model, exposed_port)
 
+    # gen auth token for callback url
+    _, _ = post_function('POST/task/launch_v2', [serve_task.task_id], [serve_task])
+
     serve_task.create(redis_db, taskfile_dir)
+
+    mongo_client.insert_serving_task(model, serve_task.task_id)
 
 
 def get_serve_task_config(service, request_data, routes_config):
@@ -1321,18 +1382,6 @@ def get_serve_task_config(service, request_data, routes_config):
     if request_data.get("iterations"):
         content["iterations"] = request_data["iterations"]
     return json.loads(json.dumps(content))
-
-
-# Notes: Call this function when deploy success
-def create_model_deployment_info(creator, model, resource_host, resource_port):
-    model_deployment_info = {
-        "model": model,
-        "resource": resource_host,
-        "port": resource_port,
-        "creator": creator
-    }
-
-    mongo_client.create_deployment_info(model_deployment_info)
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])

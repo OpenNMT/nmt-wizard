@@ -251,11 +251,11 @@ class TaskTranslate(TaskBase):
 
 class TaskServe(TaskBase):
     def __init__(self, task_infos, parent_task_id, serving_port):
+        """we set default 4000 for docker serving port"""
         self._task_suffix = "serve"
         self._task_type = "serve"
         self._parent_task_id = parent_task_id
         self._serving_port = serving_port
-        self._docker_container_port = "4000"
 
         task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
         task_infos.content["ngpus"] = 0
@@ -266,7 +266,7 @@ class TaskServe(TaskBase):
         task_infos.content["docker"]["command"] = ["-m", self._parent_task_id]
         task_infos.content["docker"]["command"].extend(["-ms", "pn9_model_catalog:"])
         task_infos.content["docker"]["command"].extend(["serve"])
-        task_infos.content["docker"]["command"].extend([self._docker_container_port + ':' + str(self._serving_port)])
+        task_infos.content["docker"]["command"].extend([str(self._serving_port)])
         change_parent_task(task_infos.content["docker"]["command"], parent_task_id)
 
         TaskBase.__init__(self, task_infos)

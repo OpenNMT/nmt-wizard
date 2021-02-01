@@ -174,6 +174,12 @@ class Worker(object):
                 if v == task_id:
                     lcpu.append(k)
             self._redis.hset(keyt, 'alloc_lcpu', ",".join(lcpu))
+
+            if task_id.split('_')[-1] == "serve":
+                key_port = "ports:%s:%s" % (service.name, resource)
+                serving_port = content['docker']['command'][-1]
+                self._redis.hset(key_port, serving_port, task_id)
+
             data = service.launch(
                 task_id,
                 content['options'],
@@ -234,16 +240,6 @@ class Worker(object):
                                   task_id, service.name)
                 task.terminate(self._redis, task_id, phase='exited')
             else:
-                # check serving status for serve tasks
-                if task_id.split('_')[-1] == "serve":
-                    model_name = json.loads(self._redis.hget(keyt, 'content'))["docker"]["command"][1]
-                    deployment_info = mongo_client.get_deployment_info_of_model(model_name)
-                    serving_status = RequestUtils.get(f"http://{deployment_info['resource']}:{deployment_info['serving_port']}/status")
-                    if json.loads(serving_status.text)["status"] == "ready":
-                        task.terminate(self._redis, task_id, phase='successful activation')
-                        # update serving status in mongodb
-                        mongo_client.update_document(model_name, {"serving_status": "running"})
-
                 task.work_queue(self._redis, task_id, service.name,
                                 delay=service.is_notifying_activity and 600 or 120)
         except Exception as e:
