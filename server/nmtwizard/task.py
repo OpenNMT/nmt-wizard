@@ -443,12 +443,14 @@ def list_active(redis, service):
 
 
 def get_task_deployment_info(redis, task_id):
-    """get deployment info of task: host, port"""
+    """get deployment info of task: model, alloc_resource, port"""
     task_info = redis.hgetall(f"task:{task_id}")
-    alloc_resource = task_info["alloc_resource"]
-    port = json.loads(task_info["content"])["docker"]["command"][-1]
+    content = json.loads(task_info["content"])
+    model = content["docker"]["command"][1]
+    alloc_resource = task_info["alloc_resource"]  # as trainer name, != host
+    port = content["docker"]["command"][-1]
 
-    return alloc_resource, port
+    return model, alloc_resource, port
 
 def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""

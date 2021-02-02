@@ -1196,13 +1196,12 @@ def _parse_request_data_for_predict(current_request):
 
 def _get_deployment_info_of_model(model):
     serve_task_id = mongo_client.get_serve_task_id_of_model(model)
-    task_info = redis_db.hgetall(f"task:{serve_task_id}")
 
-    alloc_resource = task_info["alloc_resource"]
-    serving_port = json.loads(task_info["content"])["docker"]["command"][-1]
-    service = task_info["service"]
+    _, alloc_resource, serving_port = task.get_task_deployment_info(redis_db, serve_task_id)
+
+    service = GLOBAL_POOL_NAME
     list_machines = config.get_service_config(mongo_client, service)["variables"]["server_pool"]
-    host = [machine["host"] for machine in list_machines if machine["name"] == task_info["alloc_resource"]][0]
+    host = [machine["host"] for machine in list_machines if machine["name"] == alloc_resource][0]
 
     return {"host": host, "port": serving_port}
 
@@ -1248,6 +1247,7 @@ def predict():
 @app.route("/model/inactive", methods=["POST"])
 @filter_request("POST/model/inactive", "train")
 def inactive_model():
+    service = GLOBAL_POOL_NAME
     request_data = _parse_request_data_for_deploy_model(request)
     serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
     if not serve_task_id:
@@ -1257,10 +1257,8 @@ def inactive_model():
     task.terminate(redis_db, serve_task_id, "inactive")
 
     # release port
-    task_info = redis_db.hgetall(f"task:{serve_task_id}")
-    alloc_resource = task_info["alloc_resource"]
-    port = json.loads(task_info["content"])["docker"]["command"][-1]
-    redis_db.hdel(f"ports:{task_info['service']}:{alloc_resource}", port)
+    _, alloc_resource, port = task.get_task_deployment_info(redis_db, serve_task_id)
+    redis_db.hdel(f"ports:{service}:{alloc_resource}", port)
 
     # remove serve task in mongodb
     mongo_client.remove_serving_task_id(request_data["model"], serve_task_id)
@@ -1958,10 +1956,11 @@ def terminate_internal(task_id):
 
     task.terminate(redis_db, task_id, phase=phase)
 
-    # release its port if it is a serve task
+    # release its port and serve task in mongodb if it is a serve task
     if task_id.split("_")[-1] == "serve":
-        alloc_resource, port = task.get_task_deployment_info(redis_db, task_id)
+        model, alloc_resource, port = task.get_task_deployment_info(redis_db, task_id)
         redis_db.hdel(f"ports:{GLOBAL_POOL_NAME}:{alloc_resource}", port)
+        mongo_client.remove_serving_task_id(model, task_id)
 
     return "terminating %s" % task_id, current_status
 
