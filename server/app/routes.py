@@ -31,6 +31,7 @@ from utils.storage_utils import StorageUtils
 from utils.request_utils import RequestUtils
 
 GLOBAL_POOL_NAME = "global_pool"
+global_service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -84,7 +85,7 @@ class RoutesConfiguration:
             'entity_code': user.entity.entity_code,
             'user_code': user.user_code
         }
-        self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
+        self.service_config = global_service_config
         self.entity_storages_config = self._get_entity_storages(self.creator['entity_code'])
         self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
                                                                                   mongo_client,
@@ -1199,8 +1200,8 @@ def _get_deployment_info_of_model(model):
 
     _, alloc_resource, serving_port = task.get_task_deployment_info(redis_db, serve_task_id)
 
-    service = GLOBAL_POOL_NAME
-    list_machines = config.get_service_config(mongo_client, service)["variables"]["server_pool"]
+    # default global service config
+    list_machines = global_service_config["variables"]["server_pool"]
     host = [machine["host"] for machine in list_machines if machine["name"] == alloc_resource][0]
 
     return {"host": host, "port": serving_port}
@@ -1282,7 +1283,7 @@ def active_model_local():
     if serve_task_id:
         abort(flask.make_response(flask.jsonify(message="The model has been active!"), 403))
 
-    service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
+    service_config = global_service_config
     # TODO: select resource for deployment
     resource = _select_resource_for_deploy_model(service_config)
     port_to_deploy = _select_port_for_deployed_model(resource)
@@ -1325,9 +1326,9 @@ def _select_port_for_deployed_model(resource_config):
     if len(busy_ports) == 0:
         return port_range_from
 
-    port = max(busy_ports) + 1
-    if port < port_range_to:
-        return port
+    for port in range(port_range_from, port_range_to + 1):
+        if port not in busy_ports:
+            return port
     return None
 
 
