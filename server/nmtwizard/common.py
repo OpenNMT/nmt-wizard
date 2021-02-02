@@ -310,7 +310,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
     # only for serve tasks
     if task_id.split("_")[-1] == "serve":
         serving_port = docker_command[-1]
-        cmd += "_o_-p_o_4000:{}".format(serving_port)
+        cmd += "_o_-p_o_{}:4000".format(serving_port)
         docker_command = docker_command[:-1]
 
     if 'mount' in docker_options:

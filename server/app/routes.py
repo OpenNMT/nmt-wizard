@@ -1256,7 +1256,7 @@ def inactive_model():
     # terminate task
     task.terminate(redis_db, serve_task_id, "inactive")
 
-    # release port (resource, port)
+    # release port
     task_info = redis_db.hgetall(f"task:{serve_task_id}")
     alloc_resource = task_info["alloc_resource"]
     port = json.loads(task_info["content"])["docker"]["command"][-1]
@@ -1287,8 +1287,7 @@ def active_model_local():
     service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
     # TODO: select resource for deployment
     resource = _select_resource_for_deploy_model(service_config)
-    # TODO: select port for deployment
-    port_to_deploy = 4000  # _select_port_for_deploy_model(resource)
+    port_to_deploy = _select_port_for_deployed_model(resource)
 
     if port_to_deploy is None:
         abort(flask.make_response(flask.jsonify(message="Not available port to active"), 404))
@@ -1319,8 +1318,8 @@ def _select_resource_for_deploy_model(service_config):
     return service_config["variables"]["server_pool"][0]
 
 
-def _select_port_for_deploy_model(resource_config):
-    busy_ports = _get_all_busy_port_of_resource(resource_config["host"])
+def _select_port_for_deployed_model(resource_config):
+    busy_ports = _get_all_busy_port_of_resource(GLOBAL_POOL_NAME, resource_config["name"])
     port_range = resource_config["serve_port_range"]
     port_range_from = port_range.get("from")
     port_range_to = port_range.get("to")
@@ -1328,17 +1327,16 @@ def _select_port_for_deploy_model(resource_config):
     if len(busy_ports) == 0:
         return port_range_from
 
-    for port in range(port_range_from, port_range_to + 1):
-        if port not in busy_ports:
-            return port
+    port = max(busy_ports) + 1
+    if port < port_range_to:
+        return port
     return None
 
 
-def _get_all_busy_port_of_resource(resource):
-    # TODO: change port type to list
-    deployment_of_resources = mongo_client.get_all_deployment_of_resource(resource)
-    if deployment_of_resources:
-        busy_ports = list(map(lambda deployment: deployment["serving_port"], deployment_of_resources))
+def _get_all_busy_port_of_resource(service, resource):
+    busy_ports = redis_db.hgetall(f"ports:{service}:{resource}")
+    if busy_ports:
+        busy_ports = list(map(int, list(busy_ports)))
         return busy_ports
     else:
         return []
@@ -1959,6 +1957,12 @@ def terminate_internal(task_id):
         return "problem while posting model: %s" % res, current_status
 
     task.terminate(redis_db, task_id, phase=phase)
+
+    # release its port if it is a serve task
+    if task_id.split("_")[-1] == "serve":
+        alloc_resource, port = task.get_task_deployment_info(redis_db, task_id)
+        redis_db.hdel(f"ports:{GLOBAL_POOL_NAME}:{alloc_resource}", port)
+
     return "terminating %s" % task_id, current_status
 
 

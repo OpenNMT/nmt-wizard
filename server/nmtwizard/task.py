@@ -442,6 +442,14 @@ def list_active(redis, service):
     return redis.smembers("active:" + service)
 
 
+def get_task_deployment_info(redis, task_id):
+    """get deployment info of task: host, port"""
+    task_info = redis.hgetall(f"task:{task_id}")
+    alloc_resource = task_info["alloc_resource"]
+    port = json.loads(task_info["content"])["docker"]["command"][-1]
+
+    return alloc_resource, port
+
 def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""
     keyt = "task:" + task_id
