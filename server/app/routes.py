@@ -1201,6 +1201,7 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
             "input_name": model.get("input_name", model["model"]) if model.get("type") != "base" else
             model["owner"]["entity"] + ' ' + model["domain"],
             "name": model["model"],
+            "type": model.get("type"),
             "tests": {},
             "tasks": model_task_map[model["model"]]
         }
