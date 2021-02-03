@@ -934,6 +934,7 @@ def get_final_training_config(request_data, training_corpus_infos):
             "sample_dist": sample_data[1]
         }
 
+        parent_config["product"] = "SYSTRAN ModelStudio Lite"
         return parent_config
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
