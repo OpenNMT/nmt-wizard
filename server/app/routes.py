@@ -1198,13 +1198,13 @@ def _parse_request_data_for_predict(current_request):
 def _get_deployment_info_of_model(model):
     serve_task_id = mongo_client.get_serve_task_id_of_model(model)
 
-    _, alloc_resource, serving_port = task.get_task_deployment_info(redis_db, serve_task_id)
+    deploy_info = task.get_task_deployment_info(redis_db, serve_task_id)
 
     # default global service config
     list_machines = global_service_config["variables"]["server_pool"]
-    host = [machine["host"] for machine in list_machines if machine["name"] == alloc_resource][0]
+    host = [machine["host"] for machine in list_machines if machine["name"] == deploy_info['alloc_resource']][0]
 
-    return {"host": host, "port": serving_port}
+    return {"host": host, "port": deploy_info['port']}
 
 
 def _check_limit_deployed_model(model):
@@ -1248,7 +1248,6 @@ def predict():
 @app.route("/model/inactive", methods=["POST"])
 @filter_request("POST/model/inactive", "train")
 def inactive_model():
-    service = GLOBAL_POOL_NAME
     request_data = _parse_request_data_for_deploy_model(request)
     serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
     if not serve_task_id:
@@ -1258,8 +1257,8 @@ def inactive_model():
     task.terminate(redis_db, serve_task_id, "inactive")
 
     # release port
-    _, alloc_resource, port = task.get_task_deployment_info(redis_db, serve_task_id)
-    redis_db.hdel(f"ports:{service}:{alloc_resource}", port)
+    deploy_info = task.get_task_deployment_info(redis_db, serve_task_id)
+    redis_db.hdel(f"ports:{deploy_info['service']}:{deploy_info['alloc_resource']}", deploy_info['port'])
 
     # remove serve task in mongodb
     mongo_client.remove_serving_task_id(request_data["model"], serve_task_id)
@@ -1276,23 +1275,15 @@ def active_model_local():
 
     # check limit deployed model
     if _check_limit_deployed_model(request_data["model"]):
-        abort(flask.make_response(flask.jsonify(message="the numbers of deployed model exceeded the limit number"), 403))
+        abort(flask.make_response(flask.jsonify(message="The numbers of deployed model exceeded the limit number"), 403))
 
     # check model's serve task existed
     serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
     if serve_task_id:
         abort(flask.make_response(flask.jsonify(message="The model has been active!"), 403))
 
-    service_config = global_service_config
-    # TODO: select resource for deployment
-    resource = _select_resource_for_deploy_model(service_config)
-    port_to_deploy = _select_port_for_deployed_model(resource)
-
-    if port_to_deploy is None:
-        abort(flask.make_response(flask.jsonify(message="Not available port to active"), 404))
-
-    _create_serve_task(request_data["model"], GLOBAL_POOL_NAME, request_data["source"], request_data["target"],
-                      port_to_deploy, "auto")  # resource["host"]
+    resource = "auto"
+    _create_serve_task(request_data["model"], GLOBAL_POOL_NAME, request_data["source"], request_data["target"], resource)
 
     return cust_jsonify({"message": "ok"})
 
@@ -1317,31 +1308,7 @@ def _select_resource_for_deploy_model(service_config):
     return service_config["variables"]["server_pool"][0]
 
 
-def _select_port_for_deployed_model(resource_config):
-    busy_ports = _get_all_busy_port_of_resource(GLOBAL_POOL_NAME, resource_config["name"])
-    port_range = resource_config["serve_port_range"]
-    port_range_from = port_range.get("from")
-    port_range_to = port_range.get("to")
-
-    if len(busy_ports) == 0:
-        return port_range_from
-
-    for port in range(port_range_from, port_range_to + 1):
-        if port not in busy_ports:
-            return port
-    return None
-
-
-def _get_all_busy_port_of_resource(service, resource):
-    busy_ports = redis_db.hgetall(f"ports:{service}:{resource}")
-    if busy_ports:
-        busy_ports = list(map(int, list(busy_ports)))
-        return busy_ports
-    else:
-        return []
-
-
-def _create_serve_task(model, service, source_language, target_language, exposed_port, resource):
+def _create_serve_task(model, service, source_language, target_language, resource):
     request_data = {
         "source": source_language,
         "target": target_language
@@ -1351,7 +1318,7 @@ def _create_serve_task(model, service, source_language, target_language, exposed
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service, resource=resource)
 
-    serve_task = TaskServe(task_infos, model, exposed_port)
+    serve_task = TaskServe(task_infos, model)
 
     # gen auth token for callback url
     _, _ = post_function('POST/task/launch_v2', [serve_task.task_id], [serve_task])
@@ -1959,9 +1926,9 @@ def terminate_internal(task_id):
 
     # release its port and serve task in mongodb if it is a serve task
     if task_id.split("_")[-1] == "serve":
-        model, alloc_resource, port = task.get_task_deployment_info(redis_db, task_id)
-        redis_db.hdel(f"ports:{GLOBAL_POOL_NAME}:{alloc_resource}", port)
-        mongo_client.remove_serving_task_id(model, task_id)
+        deploy_info = task.get_task_deployment_info(redis_db, task_id)
+        redis_db.hdel(f"ports:{deploy_info['service']}:{deploy_info['alloc_resource']}", deploy_info['port'])
+        mongo_client.remove_serving_task_id(deploy_info['model'], task_id)
 
     return "terminating %s" % task_id, current_status
 

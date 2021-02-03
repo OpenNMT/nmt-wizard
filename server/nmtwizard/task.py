@@ -250,12 +250,11 @@ class TaskTranslate(TaskBase):
 
 
 class TaskServe(TaskBase):
-    def __init__(self, task_infos, parent_task_id, serving_port):
-        """we set default 4000 for docker serving port"""
+    def __init__(self, task_infos, parent_task_id):
+        """we set default 4000 for docker serving port, so we set it when creating cmd"""
         self._task_suffix = "serve"
         self._task_type = "serve"
         self._parent_task_id = parent_task_id
-        self._serving_port = serving_port
 
         task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
         task_infos.content["ngpus"] = 0
@@ -266,7 +265,7 @@ class TaskServe(TaskBase):
         task_infos.content["docker"]["command"] = ["-m", self._parent_task_id]
         task_infos.content["docker"]["command"].extend(["-ms", "pn9_model_catalog:"])
         task_infos.content["docker"]["command"].extend(["serve"])
-        task_infos.content["docker"]["command"].extend([str(self._serving_port)])
+        # task_infos.content["docker"]["command"].extend([str(self._serving_port)])
         change_parent_task(task_infos.content["docker"]["command"], parent_task_id)
 
         TaskBase.__init__(self, task_infos)
@@ -443,14 +442,20 @@ def list_active(redis, service):
 
 
 def get_task_deployment_info(redis, task_id):
-    """get deployment info of task: model, alloc_resource, port"""
+    """get deployment info of task: service pool, model, alloc_resource, port"""
     task_info = redis.hgetall(f"task:{task_id}")
     content = json.loads(task_info["content"])
     model = content["docker"]["command"][1]
     alloc_resource = task_info["alloc_resource"]  # as trainer name, != host
     port = content["docker"]["command"][-1]
-
-    return model, alloc_resource, port
+    service = task_info["service"]
+    result = {
+        "service": service,
+        "model": model,
+        "alloc_resource": alloc_resource,
+        "port": port
+    }
+    return result
 
 def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""
