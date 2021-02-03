@@ -28,10 +28,8 @@ from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreproce
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
-from utils.request_utils import RequestUtils
 
 GLOBAL_POOL_NAME = "global_pool"
-global_service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -85,7 +83,7 @@ class RoutesConfiguration:
             'entity_code': user.entity.entity_code,
             'user_code': user.user_code
         }
-        self.service_config = global_service_config
+        self.service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
         self.entity_storages_config = self._get_entity_storages(self.creator['entity_code'])
         self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
                                                                                   mongo_client,
@@ -1181,171 +1179,6 @@ def get_evaluations():
     visible_entities = [g.user.entity.entity_code]
     evaluation_catalogs = list(mongo_client.get_evaluation_catalogs(visible_entities))
     return cust_jsonify(evaluation_catalogs)
-
-
-def _parse_request_data_for_predict(current_request):
-    # TODO: Validate request data
-    request_data = current_request.form
-    model = request_data.get("model")
-    text = request_data.get("text")
-
-    return {
-        "model": model,
-        "text": text
-    }
-
-
-def _get_deployment_info_of_model(model):
-    serve_task_id = mongo_client.get_serve_task_id_of_model(model)
-
-    deploy_info = task.get_task_deployment_info(redis_db, serve_task_id)
-
-    # default global service config
-    list_machines = global_service_config["variables"]["server_pool"]
-    host = [machine["host"] for machine in list_machines if machine["name"] == deploy_info['alloc_resource']][0]
-
-    return {"host": host, "port": deploy_info['port']}
-
-
-def _check_limit_deployed_model(model):
-    # filter list model of entity
-    entity_code = mongo_client.get_entity_code_of_model(model)
-    list_models = mongo_client.get_models_of_entity(entity_code)
-
-    count = 0
-    # count number of deployed model
-    for model in list_models:
-        tasks = model["tasks"]
-        for task_id in tasks:
-            if task_id.split("_")[-1] == "serve":
-                count += 1
-
-    if count >= config.get_system_config()["predict"]["limit_activate"]:
-        return True
-
-    return False
-
-
-@app.route("/model/predict", methods=["POST"])
-@filter_request("POST/model/predict", "train")
-def predict():
-    request_data = _parse_request_data_for_predict(request)
-
-    if len(request_data["text"]) > config.get_system_config()["predict"]["max_characters"]:
-        abort(flask.make_response(flask.jsonify(message="your input is too long!"), 403))
-
-    model = request_data["model"]
-    deployment_info = _get_deployment_info_of_model(model)
-    if not deployment_info:
-        abort(flask.make_response(flask.jsonify(message="Model has not been deployed: %s" % model), 400))
-
-    request_url = f"http://{deployment_info['host']}:{deployment_info['port']}/translate"
-    request_data = {"src": [{"text": request_data["text"]}]}
-    response = RequestUtils.post(request_url, request_data)
-    return response.json(), response.status_code
-
-
-@app.route("/model/inactive", methods=["POST"])
-@filter_request("POST/model/inactive", "train")
-def inactive_model():
-    request_data = _parse_request_data_for_deploy_model(request)
-    serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
-    if not serve_task_id:
-        abort(flask.make_response(flask.jsonify(message="The model has not been active!"), 400))
-
-    # terminate task
-    task.terminate(redis_db, serve_task_id, "inactive")
-
-    # release port
-    deploy_info = task.get_task_deployment_info(redis_db, serve_task_id)
-    redis_db.hdel(f"ports:{deploy_info['service']}:{deploy_info['alloc_resource']}", deploy_info['port'])
-
-    # remove serve task in mongodb
-    mongo_client.remove_serving_task_id(request_data["model"], serve_task_id)
-
-    return cust_jsonify({"message": "ok"})
-
-@app.route("/model/active", methods=["POST"])
-@filter_request("POST/model/active", "train")
-def active_model_local():
-    """
-    deploy model on local machine for prediction (only for model studio lite)
-    """
-    request_data = _parse_request_data_for_deploy_model(request)
-
-    # check limit deployed model
-    if _check_limit_deployed_model(request_data["model"]):
-        abort(flask.make_response(flask.jsonify(message="The numbers of deployed model exceeded the limit number"), 403))
-
-    # check model's serve task existed
-    serve_task_id = mongo_client.get_serve_task_id_of_model(request_data["model"])
-    if serve_task_id:
-        abort(flask.make_response(flask.jsonify(message="The model has been active!"), 403))
-
-    resource = "auto"
-    _create_serve_task(request_data["model"], GLOBAL_POOL_NAME, request_data["source"], request_data["target"], resource)
-
-    return cust_jsonify({"message": "ok"})
-
-
-def _parse_request_data_for_deploy_model(current_request):
-    # TODO: Validate request data
-    request_data = current_request.form
-    model = request_data.get("model")
-    language_pair = model.split('_')[1]
-    source_language = language_pair[:2]
-    target_language = language_pair[2:]
-
-    return {
-        "source": source_language,
-        "target": target_language,
-        "model": model
-    }
-
-
-def _select_resource_for_deploy_model(service_config):
-    # TODO: Select suitable resource for deploy
-    return service_config["variables"]["server_pool"][0]
-
-
-def _create_serve_task(model, service, source_language, target_language, resource):
-    request_data = {
-        "source": source_language,
-        "target": target_language
-    }
-    routes_config = RoutesConfiguration(flask.g, service)
-    content = get_serve_task_config(service=service, request_data=request_data, routes_config=routes_config)
-    task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
-                           service=service, resource=resource)
-
-    serve_task = TaskServe(task_infos, model)
-
-    # gen auth token for callback url
-    _, _ = post_function('POST/task/launch_v2', [serve_task.task_id], [serve_task])
-
-    serve_task.create(redis_db, taskfile_dir)
-
-    mongo_client.insert_serving_task(model, serve_task.task_id)
-
-
-def get_serve_task_config(service, request_data, routes_config):
-    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
-
-    content = {
-        "service": service,
-        "docker": {**docker_image_info},
-        "wait_after_launch": 2,
-        "creator": f"{routes_config.entity_owner}{routes_config.creator['user_code']}",
-        "options": {},
-    }
-
-    if request_data.get("ncpus"):
-        content["ncpus"] = request_data["ncpus"]
-    if request_data.get("priority"):
-        content["priority"] = request_data["priority"]
-    if request_data.get("iterations"):
-        content["iterations"] = request_data["iterations"]
-    return json.loads(json.dumps(content))
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
