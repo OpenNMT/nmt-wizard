@@ -565,6 +565,23 @@ def create_tasks_for_launch_v2(creation_infos):
     return creation_output
 
 
+def get_corpus_info(data_files):
+    user_corpus = []
+    nb_segments = 0
+    for file in data_files:
+        nb_segments += int(file["nbSegments"])
+        file_name = file["filename"]
+        corpus_data = {
+            "full_path": file_name,
+            "file_id": file["id"],
+            "nb_segments": int(file["nbSegments"])
+        }
+        if file.get("dataset_id"):
+            corpus_data["dataset_id"] = file["dataset_id"]
+        user_corpus.append(corpus_data)
+    return user_corpus, nb_segments
+
+
 @app.route("/v2/task/launch", methods=["POST"])
 @filter_request("POST/v2/task/launch", "train")
 def launch_v2():
@@ -576,11 +593,18 @@ def launch_v2():
 
     # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
     # default.json + other pool accessible (see /resource/list API)
+    domain = request_data.get('domain')
+    if domain is None:
+        abort(make_response(jsonify(message="unknown domain"), 400))
+    parent_model = request_data.get('parent_model')
+    if parent_model is None:
+        abort(make_response(jsonify(message="unknown parent model"), 400))
     routes_config = RoutesConfiguration(flask.g, service)
 
     data_file_info = get_data_file_info(request_data, routes_config)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
+    image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
                                                                       routes_config)
@@ -595,12 +619,21 @@ def launch_v2():
     tasks_creation_output = create_tasks_for_launch_v2(tasks_creation_infos)
 
     tasks_for_model = create_tasks_for_model(tasks_creation_output["tasks_id"])
-    domain = request_data.get('domain')
     tags = process_tags(request_data.get("tags"), g.user.entity.entity_code, g.user.user_code)
     input_name = content["name"] if "name" in content else None
+
+    user_training_corpus, nb_training_segments = get_corpus_info(data_file_info["training"])
+    user_corpus = {
+        "type": "USER_UPLOAD" if request_data.get("corpus_type") == CORPUS_TYPE["USER_UPLOAD"] else "EXISTS_CORPUS",
+        "training": {"corpus": user_training_corpus, "nb_segments": nb_training_segments}
+    }
+    if "testing" in data_file_info:
+        user_testing_corpus, nb_testing_segments = get_corpus_info(data_file_info["testing"])
+        user_corpus["testing"] = {"corpus": user_testing_corpus, "nb_segments": nb_testing_segments}
+
     create_model_catalog(training_task_id=tasks_creation_output["train_task_id"], input_name=input_name,
-                         request_data=request_data, docker_info=content["docker"], creator=routes_config.creator,
-                         tasks=tasks_for_model, tags=tags, domain=domain)
+                         request_data=request_data, image_tag=image_tag, creator=routes_config.creator,
+                         tasks=tasks_for_model, tags=tags, domain=domain, user_corpus=user_corpus)
 
     return flask.jsonify(tasks_creation_output["tasks_id"])
 
@@ -803,6 +836,8 @@ def get_exists_dataset_file_info(dataset_ids):
 
         training_files = files.get("train", [])
         testing_files = files.get("test", [])
+        for f in training_files:
+            f["dataset_id"] = str(dataset["_id"])
 
         result["training"].extend(training_files)
         result["testing"].extend(testing_files)
@@ -848,40 +883,12 @@ def get_test_folder_name(source, target):
     return f'{source}_{target}' if source < target else f'{target}_{source}'
 
 
-# TODO define and build real configuration
-def get_from_scratch_config(source, target, data):
-    return {
-        "tokenization": {
-            "source": {
-                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
-                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab32k.en",
-                "preserve_placeholders": True,
-                "mode": "aggressive",
-                "preserve_segmented_tokens": True,
-                "segment_numbers": True,
-                "segment_case": True,
-                "joiner_annotate": True
-            },
-            "target": {
-                "bpe_model": "${SHARED_DATA_DIR}/en_fr/vocab/joint-vocab34k.en_fr",
-                "vocabulary": "${SHARED_DATA_DIR}/en_fr/vocab/vocab34k.fr",
-                "preserve_placeholders": True,
-                "mode": "aggressive",
-                "preserve_segmented_tokens": True,
-                "segment_numbers": True,
-                "segment_case": True,
-                "joiner_annotate": True
-            }
-        },
-        "description": "apostrophe test",
-        "source": source,
-        "target": target,
-        "data": data,
-        "options": {
-            "auto_config": True,
-            "model": "${SHARED_DATA_DIR}/xx/transformer_mini.py"
-        }
-    }
+def format_training_folder(training_folder):
+    if not training_folder.startswith('/'):
+        training_folder = '/' + training_folder
+    if not training_folder.endswith('/'):
+        training_folder += '/'
+    return "${GLOBAL_DATA}" + training_folder
 
 
 def get_final_training_config(request_data, training_corpus_infos):
@@ -889,29 +896,64 @@ def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
 
     sample = 0
+    sample_by_path = {}
+
     for corpus_infos in training_corpus_infos:
         sample += int(corpus_infos["nbSegments"])
+        training_folder = os.path.dirname(corpus_infos.get("filename"))
+        training_folder_path = format_training_folder(training_folder)
+
+        if sample_by_path.get(training_folder_path) is None:
+            sample_by_path[training_folder_path] = int(corpus_infos["nbSegments"])
+        else:
+            sample_by_path[training_folder_path] += int(corpus_infos["nbSegments"])
+
     training_data_config = {
         "sample": sample,
         "sample_dist": list(map(lambda training_folder: {
-            "path": "${GLOBAL_DATA}" + f"{training_folder}/",
+            "path": format_training_folder(training_folder),
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
-    if "parent_model" not in request_data:
-        return get_from_scratch_config(request_data["source"], request_data["target"], training_data_config)
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        # Change batch size to settings value if specified
+        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"]\
+                and "batch_size" in parent_config["options"]["config"]["train"]:
+            batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
+            if batch_size:
+                parent_config["options"]["config"]["train"]["batch_size"] = batch_size
+
+        sample_data = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
+
         parent_config["data"] = {
-            "sample": training_data_config["sample"] + parent_config["data"]["sample"],
-            "sample_dist": training_data_config["sample_dist"] + parent_config["data"]["sample_dist"]
+            "sample": sample_data[0],
+            "sample_dist": sample_data[1]
         }
+
         return parent_config
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
+
+
+def get_sample_data(current_data, parent_data, sample_by_path):
+    current_sample_dists = current_data["sample_dist"]
+    sample_dists = parent_data["sample_dist"]
+    sample = parent_data["sample"]
+
+    for current_sample_dist in current_sample_dists:
+        duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
+
+        if len(duplicate) > 0:
+            continue
+
+        sample_dists.append(current_sample_dist)
+        sample += int(sample_by_path[current_sample_dist['path']])
+
+    return [sample, sample_dists]
 
 
 def get_default_test_data(storage_client, source, target):
@@ -988,20 +1030,19 @@ def process_tags(tags, entity_code, user_code):
     return final_tags
 
 
-def create_model_catalog(training_task_id, input_name, request_data, docker_info, creator, tasks, tags, domain,
-                         state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain, user_corpus, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
-
     config = {
         "source": source,
         "target": target,
         "parent_model": parent_model,
-        "imageTag": f'{docker_info["image"]}:{docker_info["tag"]}',
+        "imageTag": image_tag,
         "tags": tags,
         "tasks": tasks,
-        "domain": domain
+        "domain": domain,
+        "user_corpus": user_corpus
     }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
@@ -1119,7 +1160,8 @@ def parse_request_data_of_evaluation(current_request):
     models = request_data.getlist("models")
     evaluation_corpus = request_files.getlist("corpus")
 
-    language_pair = "en_fr"  # TODO: Get language_pair from model catalog
+    model_info = builtins.pn9model_db.catalog_get_info(models[0], True)
+    language_pair = model_info[1].get('lp')
     source_language = language_pair.split("_")[0]
     target_language = language_pair.split("_")[1]
 
@@ -1154,7 +1196,8 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
 
     for model in models_info:
         model_evaluation_info = {
-            "input_name": model.get("input_name", model["model"]),
+            "input_name": model.get("input_name", model["model"]) if model.get("type") != "base" else
+            model["owner"]["entity"] + ' ' + model["domain"],
             "name": model["model"],
             "tests": {},
             "tasks": model_task_map[model["model"]]
@@ -1271,20 +1314,20 @@ def launch(service):
             flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
                 service, ngpus, ncpus and str(ncpus) or "-")), 400))
 
-    if "to_translate" in content:
+    if "totranslate" in content:
         if exec_mode:
             abort(flask.make_response(
                 flask.jsonify(message="translate mode unavailable for exec cmd"), 400))
-        to_translate = content["to_translate"]
-        del content["to_translate"]
+        to_translate = content["totranslate"]
+        del content["totranslate"]
     else:
         to_translate = None
-    if "to_score" in content:
+    if "toscore" in content:
         if exec_mode:
             abort(flask.make_response(flask.jsonify(message="score mode unavailable for exec cmd"),
                                       400))
-        to_score = content["to_score"]
-        del content["to_score"]
+        to_score = content["toscore"]
+        del content["toscore"]
     else:
         to_score = None
     if "totuminer" in content:
@@ -1496,7 +1539,7 @@ def launch(service):
                     content_score["docker"] = {
                         "image": image_score,
                         "registry": get_registry(service_module, image_score),
-                        "tag": "2.1.0-beta1",
+                        "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
                                    option_lang + ['-f', "launcher:scores"]
                     }
@@ -1908,6 +1951,6 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
         for k, v in directories.items():
-            result[key].append({**v, **{"filename": k, "nbSegments": v.get("entries")}})
+            result[key].append({**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
