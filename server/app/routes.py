@@ -603,6 +603,10 @@ def launch_v2():
 
     if request_data.get("corpus_type") == CORPUS_TYPE["USER_UPLOAD"]:
         dataset_name = request_data.get("dataset_name")
+
+        if dataset_name is None:
+          abort(make_response(jsonify(message="unknown dataset"), 400))
+
         entity_code = routes_config.creator['entity_code']
 
         exists_dataset = get_dataset_by_name(entity_code, dataset_name)
