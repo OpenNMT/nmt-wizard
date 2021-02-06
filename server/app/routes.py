@@ -601,6 +601,19 @@ def launch_v2():
         abort(make_response(jsonify(message="unknown parent model"), 400))
     routes_config = RoutesConfiguration(flask.g, service)
 
+    if request_data.get("corpus_type") == CORPUS_TYPE["USER_UPLOAD"]:
+        dataset_name = request_data.get("dataset_name")
+
+        if dataset_name is None:
+          abort(make_response(jsonify(message="unknown dataset"), 400))
+
+        entity_code = routes_config.creator['entity_code']
+
+        exists_dataset = get_dataset_by_name(entity_code, dataset_name)
+
+        if exists_dataset:
+            return make_response(jsonify(message=f"Dataset is existed: {dataset_name}"), 400)
+
     data_file_info = get_data_file_info(request_data, routes_config)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
@@ -624,7 +637,6 @@ def launch_v2():
 
     user_training_corpus, nb_training_segments = get_corpus_info(data_file_info["training"])
     user_corpus = {
-        "type": "USER_UPLOAD" if request_data.get("corpus_type") == CORPUS_TYPE["USER_UPLOAD"] else "EXISTS_CORPUS",
         "training": {"corpus": user_training_corpus, "nb_segments": nb_training_segments}
     }
     if "testing" in data_file_info:
@@ -656,12 +668,14 @@ def parse_request_data(current_request):
     testing_data = request_files.getlist("testing_data")
     dataset = request_data.getlist("dataset")
     corpus_type = int(request_data.get("corpus_type"))
+    dataset_name = request_data.get("dataset_name")
 
     return {**request_data, **{"tags": json.loads(tags)}, **{
         "training_data": training_data,
         "testing_data": testing_data,
         "dataset": dataset,
-        "corpus_type": corpus_type
+        "corpus_type": corpus_type,
+        "dataset_name": dataset_name
     }}
 
 
@@ -798,26 +812,43 @@ def validate_file(corpus_type, corpus_config, training_data, testing_data, datas
                 raise Exception(f'Invalid dataset: {dataset_id}')
 
 
+def get_dataset_by_name(entity, dataset_name):
+    return builtins.pn9model_db.get_dataset_by_name(entity, dataset_name)
+
+
 def get_data_file_info(request_data, routes_config):
     corpus_type = request_data.get("corpus_type")
+
     if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
         training_data = request_data.get("training_data")
         testing_data = request_data.get("testing_data")
 
-        return get_user_upload_file_info(routes_config, training_data, testing_data)
+        return get_user_upload_file_info(routes_config, request_data, training_data, testing_data)
 
     dataset = request_data.get("dataset")
     dataset_ids = list(map(lambda ele: ObjectId(ele), dataset))
+
     return get_exists_dataset_file_info(dataset_ids)
 
 
-def get_user_upload_file_info(routes_config, training_data, testing_data):
-    data_file_info = {
-        "training": upload_user_files(routes_config, f"{routes_config.upload_path}/train/", training_data),
-        "testing": upload_user_files(routes_config, f"{routes_config.upload_path}/test/", testing_data)
-    }
+def get_user_upload_file_info(routes_config, request_data, training_data, testing_data):
+    entity_code = routes_config.creator['entity_code']
+    dataset_name = request_data.get('dataset_name')
 
-    return data_file_info
+    training_data_path = os.path.join(entity_code, dataset_name, "train") + os.path.sep
+    testing_data_path = os.path.join(entity_code, dataset_name, "test") + os.path.sep
+
+    data_training = upload_user_files(routes_config, training_data_path, training_data)
+    data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
+
+    create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
+
+    dataset = get_dataset_by_name(entity_code, dataset_name)
+
+    return {
+        'training': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_training)),
+        'testing': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_testing))
+    }
 
 
 def get_exists_dataset_file_info(dataset_ids):
@@ -1030,6 +1061,24 @@ def process_tags(tags, entity_code, user_code):
     final_tags.extend(exists_tags_by_value)
 
     return final_tags
+
+
+def create_model_dataset(routes_config, request_data, service):
+    source_language = request_data.get("source")
+    target_language = request_data.get("target")
+
+    item = {
+        "creator": routes_config.creator,
+        "entity": routes_config.creator['entity_code'],
+        "name": request_data.get('dataset_name'),
+        "service": service,
+        "source_language": source_language,
+        "target_language": target_language,
+        "lp": f"{source_language}_{target_language}",
+        "created_at": time.time()
+    }
+
+    return builtins.pn9model_db.insert_dataset(item)
 
 
 def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain, user_corpus, state="creating"):
