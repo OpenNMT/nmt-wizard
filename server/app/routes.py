@@ -558,11 +558,52 @@ def create_tasks_for_launch_v2(creation_infos):
     for tc in task_to_create:
         tc.other_task_info["model"] = train_task_id
         tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
+
     creation_output = {
         "tasks_id": tasks_id,
         "train_task_id": train_task_id
     }
+    
+    # Create tasks for parent model
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if '/test/' in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if '/test/' in corpus[0]]
+    
+    create_trans_score_tasks_for_parent_model(creation_infos.task_infos.request_data.get("parent_model"),
+                                              to_translate_corpus_for_parent_model,
+                                              to_score_corpus_for_parent_model,
+                                              creation_infos.task_infos.request_data)
+
     return creation_output
+
+
+def create_tasks_for_parent_model(creation_infos, model, docker_content):
+    tasks_id = []
+    tasks_to_create = []
+    ok, _ = builtins.pn9model_db.catalog_get_info(model, True)
+    if not ok:
+        abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
+
+    creation_infos.task_infos.content["docker"] = docker_content
+    creation_infos.task_infos.content["ncpus"] = 4
+    task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                   parent_task_id=model,
+                                   to_translate=creation_infos.to_translate_corpus)
+    tasks_to_create.append(task_translate)
+    tasks_id.append(task_translate.task_id)
+
+    task_scoring = TaskScoring(task_infos=creation_infos.task_infos,
+                               parent_task_id=task_translate.task_id,
+                               model=model,
+                               to_score=creation_infos.to_score_corpus)
+    tasks_to_create.append(task_scoring)
+    tasks_id.append(task_scoring.task_id)
+
+    (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id,
+                                                                    tasks_to_create)
+    tasks_to_create.extend(tasks_to_create)
+
+    for tc in tasks_to_create:
+        tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
 
 
 def get_corpus_info(data_files):
@@ -1201,6 +1242,33 @@ def create_evaluation():
                               model_task_map)
 
     return flask.jsonify(model_task_map)
+
+def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_score_corpus, request_data):
+    service = GLOBAL_POOL_NAME
+    routes_config = RoutesConfiguration(flask.g, service)
+    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+    docker_content = {**docker_image_info, **{"command": []}}
+    content = {
+        "docker": {},
+        'wait_after_launch': 2,
+        'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
+        'ncpus': 1,
+        'ngpus': 0,
+        'iterations': request_data.get("iterations", 1),
+        'service': service,
+        "options": {},
+        'support_statistics': True
+    }
+
+    task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
+                           service=service, resource="auto")
+
+    tasks_creation_infos = TasksCreationInfos(task_infos=task_infos,
+                                              to_translate_corpus=to_translate_corpus,
+                                              to_score_corpus=to_score_corpus)
+
+    create_tasks_for_parent_model(creation_infos=tasks_creation_infos, model=model,
+                                                              docker_content=docker_content)
 
 
 def parse_request_data_of_evaluation(current_request):
