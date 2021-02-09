@@ -1120,8 +1120,8 @@ def create_evaluation():
 
     models = request_data.get("models")
 
-    testing_info = upload_user_files(routes_config, f"{routes_config.upload_path}/test/", request_data.get('corpus'))
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False)
+    testing_info = []
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, True)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
     docker_content = {**docker_image_info, **{"command": []}}
