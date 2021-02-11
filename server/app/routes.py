@@ -43,6 +43,11 @@ CORPUS_TYPE = {
     "EXISTS_CORPUS": 2
 }
 
+TEST_TYPE = {
+    'TEST_FROM_USER': '/test/',
+    'TEST_FROM_SYSTRAN': 'shared_testdata'
+}
+
 
 class StorageId:
     @staticmethod
@@ -565,8 +570,8 @@ def create_tasks_for_launch_v2(creation_infos):
     }
     
     # Create tasks for parent model
-    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if '/test/' in corpus[0]]
-    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if '/test/' in corpus[0]]
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if TEST_TYPE['TEST_FROM_SYSTRAN'] not in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if TEST_TYPE['TEST_FROM_SYSTRAN'] not in corpus[0]]
     
     create_trans_score_tasks_for_parent_model(creation_infos.task_infos.request_data.get("parent_model"),
                                               to_translate_corpus_for_parent_model,
@@ -584,7 +589,6 @@ def create_tasks_for_parent_model(creation_infos, model, docker_content):
         abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
 
     creation_infos.task_infos.content["docker"] = docker_content
-    creation_infos.task_infos.content["ncpus"] = 4
     task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
                                    parent_task_id=model,
                                    to_translate=creation_infos.to_translate_corpus)
