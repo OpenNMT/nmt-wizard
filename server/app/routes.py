@@ -1231,6 +1231,19 @@ def validate_request_data_of_evaluation(current_request):
     return
 
 
+def get_input_name(model):
+    if model.get("input_name"):
+        return model.get("input_name")
+    if model.get("type") == "base":
+        name = model["owner"]["entity"] + ' ' + model["domain"]
+        if model.get("push") and model.get("push")[-1] and model.get("push")[-1].get("size"):
+            size = model.get("push")[-1].get("size")
+            if size and size != "M":
+                name += " (" + size + ")"
+        return name
+    return model["model"]
+
+
 def create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map):
     source_language = request_data.get("source")
     target_language = request_data.get("target")
@@ -1247,8 +1260,7 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
 
     for model in models_info:
         model_evaluation_info = {
-            "input_name": model.get("input_name", model["model"]) if model.get("type") != "base" else
-            model["owner"]["entity"] + ' ' + model["domain"],
+            "input_name": get_input_name(model),
             "name": model["model"],
             "type": model.get("type"),
             "tests": {},
