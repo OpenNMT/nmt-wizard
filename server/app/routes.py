@@ -580,25 +580,45 @@ def create_tasks_for_launch_v2(creation_infos):
 
     return creation_output
 
+def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
+    result_to_translate_corpus = []
+    result_to_score_corpus = []
+
+    for ttc, tsc in zip(to_translate_corpus, to_score_corpus):
+        is_new_corpus = True
+        for test in model_tests:
+            corpus_path = test.split('/')[1:]
+            if any(corpus_path in ttc_path for ttc_path in ttc):
+                is_new_corpus = False
+                break
+        if is_new_corpus:
+            result_to_translate_corpus.append(ttc)
+            result_to_score_corpus.append(tsc)
+
+    return result_to_translate_corpus, result_to_score_corpus
 
 def create_tasks_for_parent_model(creation_infos, model, docker_content):
     tasks_id = []
     tasks_to_create = []
-    ok, _ = builtins.pn9model_db.catalog_get_info(model, True)
+    ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
     if not ok:
         abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
+
+    to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
+    if model_info.get('tests'):
+        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus, to_score_corpus)
 
     creation_infos.task_infos.content["docker"] = docker_content
     task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
                                    parent_task_id=model,
-                                   to_translate=creation_infos.to_translate_corpus)
+                                   to_translate=to_translate_corpus)
     tasks_to_create.append(task_translate)
     tasks_id.append(task_translate.task_id)
 
     task_scoring = TaskScoring(task_infos=creation_infos.task_infos,
                                parent_task_id=task_translate.task_id,
                                model=model,
-                               to_score=creation_infos.to_score_corpus)
+                               to_score=to_score_corpus)
     tasks_to_create.append(task_scoring)
     tasks_id.append(task_scoring.task_id)
 
