@@ -587,7 +587,7 @@ def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
     for ttc, tsc in zip(to_translate_corpus, to_score_corpus):
         is_new_corpus = True
         for test in model_tests:
-            corpus_path = test.split('/')[1:]
+            corpus_path = '/'.join(test.split('/')[1:])
             if any(corpus_path in ttc_path for ttc_path in ttc):
                 is_new_corpus = False
                 break
