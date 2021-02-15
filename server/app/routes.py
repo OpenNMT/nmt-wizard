@@ -1118,7 +1118,6 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "eval_model": model
         }
         creation_infos.task_infos.content["docker"] = docker_content
-        creation_infos.task_infos.content["ncpus"] = 4
         task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
                                        parent_task_id=model,
                                        to_translate=creation_infos.to_translate_corpus)
@@ -1178,7 +1177,6 @@ def create_evaluation():
         "docker": {},
         'wait_after_launch': 2,
         'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
-        'ncpus': 1,
         'ngpus': 0,
         'iterations': request_data.get("iterations", 1),
         'service': service,
