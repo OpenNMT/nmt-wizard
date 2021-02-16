@@ -30,6 +30,7 @@ from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
+SYSTRAN_BASE_STORAGE = "shared_testdata"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -41,11 +42,6 @@ if max_log_size is not None:
 CORPUS_TYPE = {
     "USER_UPLOAD": 1,
     "EXISTS_CORPUS": 2
-}
-
-TEST_TYPE = {
-    'TEST_FROM_USER': '/test/',
-    'TEST_FROM_SYSTRAN': 'shared_testdata'
 }
 
 
@@ -570,8 +566,8 @@ def create_tasks_for_launch_v2(creation_infos):
     }
     
     # Create tasks for parent model
-    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if TEST_TYPE['TEST_FROM_SYSTRAN'] not in corpus[0]]
-    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if TEST_TYPE['TEST_FROM_SYSTRAN'] not in corpus[0]]
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
     
     create_trans_score_tasks_for_parent_model(creation_infos.task_infos.request_data.get("parent_model"),
                                               to_translate_corpus_for_parent_model,
@@ -964,13 +960,13 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
     if default_test_data:
         for corpus_name in default_test_data:
             to_translate_corpus.append([
-                f'shared_testdata:{corpus_name}',
-                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
+                f'{SYSTRAN_BASE_STORAGE}:{corpus_name}',
+                f'pn9_testtrans:<MODEL>/{SYSTRAN_BASE_STORAGE}/{corpus_name}.{target}'
             ])
             target_corpus = corpus_name[:-3] + "." + target
             to_score_corpus.append([
-                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
-                f'shared_testdata:{target_corpus}'
+                f'pn9_testtrans:<MODEL>/{SYSTRAN_BASE_STORAGE}/{corpus_name}.{target}',
+                f'{SYSTRAN_BASE_STORAGE}:{target_corpus}'
             ])
 
     return to_translate_corpus, to_score_corpus
@@ -1057,7 +1053,7 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 def get_default_test_data(storage_client, source, target):
     result = []
     test_folder_name = get_test_folder_name(source, target)
-    listdir = storage_client.listdir(f'shared_testdata:{test_folder_name}/')
+    listdir = storage_client.listdir(f'{SYSTRAN_BASE_STORAGE}:{test_folder_name}/')
     for corpus_name in listdir:
         if not listdir[corpus_name].get("is_dir", False):
             if corpus_name.endswith(f'.{source}'):
