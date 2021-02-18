@@ -1158,7 +1158,7 @@ def create_evaluation():
     # TODO: Create new function to get service and user info
     evaluation_id = ObjectId()
     entity_code = g.user.entity.entity_code
-    upload_path = f"/{entity_code}/evaluation/{evaluation_id}"
+    upload_path = f"/{entity_code}/{evaluation_id}"
 
     try:
         request_data = parse_request_data_of_evaluation(request)
