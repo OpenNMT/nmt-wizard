@@ -1157,6 +1157,8 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
 def create_evaluation():
     # TODO: Create new function to get service and user info
     evaluation_id = ObjectId()
+    entity_code = g.user.entity.entity_code
+    upload_path = f"/{entity_code}/evaluation/{evaluation_id}"
 
     try:
         request_data = parse_request_data_of_evaluation(request)
@@ -1168,7 +1170,7 @@ def create_evaluation():
 
     models = request_data.get("models")
 
-    testing_info = upload_user_files(routes_config, f"{routes_config.upload_path}/test/", request_data.get('corpus'))
+    testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
