@@ -8,7 +8,7 @@ import semver
 from copy import deepcopy
 from enum import Enum
 from nmtwizard.capacity import Capacity
-from nmtwizard.helper import build_task_id, get_cpu_count, get_registry, change_parent_task
+from nmtwizard.helper import build_task_id, get_cpu_count, get_gpu_count, get_registry, change_parent_task
 
 import six
 
@@ -187,9 +187,8 @@ class TaskPreprocess(TaskBase):
         self._parent_task_id = None
         # launch preprocess task on cpus only
         task_infos.content["ngpus"] = 0
-        if "ncpus" not in task_infos.content:
-            task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
-                                                        task_infos.content["ngpus"], "preprocess")
+        task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                    task_infos.content["ngpus"], "preprocess")
 
         idx = 0
         preprocess_command = []
@@ -214,10 +213,9 @@ class TaskTrain(TaskBase):
         self._task_type = "train"
         self._parent_task_id = parent_task_id
 
-        task_infos.content["ngpus"] = 1
-        if "ncpus" not in task_infos.content:
-            task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
-                                                        task_infos.content["ngpus"], "train")
+        task_infos.content["ngpus"] = get_gpu_count(task_infos.routes_configuration.service_config, "train")
+        task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                    task_infos.content["ngpus"], "train")
 
         TaskBase.__init__(self, task_infos, must_patch_config_name=True)
 
@@ -230,9 +228,8 @@ class TaskTranslate(TaskBase):
 
         task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
         task_infos.content["ngpus"] = 0
-        if "ncpus" not in task_infos.content:
-            task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
-                                                        task_infos.content["ngpus"], "trans")
+        task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                    task_infos.content["ngpus"], "trans")
 
         task_infos.content["docker"]["command"] = ["trans"]
         task_infos.content["docker"]["command"].append("--as_release")

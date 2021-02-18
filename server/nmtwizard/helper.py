@@ -224,6 +224,12 @@ def get_cpu_count(config, ngpus, task):
     return 2
 
 
+def get_gpu_count(config, task):
+    if "gpu_allocation" in config:
+        return config["gpu_allocation"].get("%s_task" % task, 1)
+    return 1
+
+
 def get_params(lparam, listcmd):
     res = []
     idx = 0
