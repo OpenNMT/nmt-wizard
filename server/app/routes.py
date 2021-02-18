@@ -876,7 +876,7 @@ def get_exists_dataset_file_info(dataset_ids):
     return result
 
 
-def get_translate_score_corpus(testing_data_infos, request_data, routes_config, with_default_test=True):
+def get_translate_score_corpus(testing_data_infos, request_data, routes_config, with_default_test=True, output_path=''):
     source = request_data["source"]
     target = request_data["target"]
     default_test_data = get_default_test_data(routes_config.storage_client, source, target) if with_default_test else []
@@ -889,10 +889,10 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
             corpus_path = corpus_path[1:]
         to_translate_corpus.append([
             f'{routes_config.global_storage_name}:{corpus_path}.{source}',
-            f'pn9_testtrans:<MODEL>/{routes_config.global_storage_name}/{corpus_path}.{source}.{target}'
+            f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{source}.{target}'
         ])
         to_score_corpus.append([
-            f'pn9_testtrans:<MODEL>/{routes_config.global_storage_name}/{corpus_path}.{source}.{target}',
+            f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{source}.{target}',
             f'{routes_config.global_storage_name}:{corpus_path}.{target}'
         ])
 
@@ -1159,6 +1159,7 @@ def create_evaluation():
     evaluation_id = ObjectId()
     entity_code = g.user.entity.entity_code
     upload_path = f"/{entity_code}/{evaluation_id}"
+    output_path = f"evaluation/{evaluation_id}/"
 
     try:
         request_data = parse_request_data_of_evaluation(request)
@@ -1171,7 +1172,7 @@ def create_evaluation():
     models = request_data.get("models")
 
     testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False, output_path)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
     docker_content = {**docker_image_info, **{"command": []}}
