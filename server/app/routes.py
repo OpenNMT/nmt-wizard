@@ -576,6 +576,7 @@ def create_tasks_for_launch_v2(creation_infos):
 
     return creation_output
 
+
 def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
     result_to_translate_corpus = []
     result_to_score_corpus = []
@@ -593,6 +594,7 @@ def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
 
     return result_to_translate_corpus, result_to_score_corpus
 
+
 def create_tasks_for_parent_model(creation_infos, model, docker_content):
     tasks_id = []
     tasks_to_create = []
@@ -604,6 +606,8 @@ def create_tasks_for_parent_model(creation_infos, model, docker_content):
     if model_info.get('tests'):
         to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus, to_score_corpus)
 
+    if not to_translate_corpus:
+        return
     creation_infos.task_infos.content["docker"] = docker_content
     task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
                                    parent_task_id=model,
@@ -618,8 +622,7 @@ def create_tasks_for_parent_model(creation_infos, model, docker_content):
     tasks_to_create.append(task_scoring)
     tasks_id.append(task_scoring.task_id)
 
-    (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id,
-                                                                    tasks_to_create)
+    (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id, tasks_to_create)
     tasks_to_create.extend(tasks_to_create)
 
     for tc in tasks_to_create:
@@ -652,8 +655,6 @@ def launch_v2():
     except Exception:
         raise Exception("Cannot parse request data in launch_v2")
 
-    # Todo review this hard-code, actually we get only storage in THIS service, we should get all storage from
-    # default.json + other pool accessible (see /resource/list API)
     domain = request_data.get('domain')
     if domain is None:
         abort(make_response(jsonify(message="unknown domain"), 400))
@@ -673,7 +674,7 @@ def launch_v2():
         exists_dataset = get_dataset_by_name(entity_code, dataset_name)
 
         if exists_dataset:
-            return make_response(jsonify(message=f"Dataset is existed: {dataset_name}"), 400)
+            return make_response(jsonify(message=f"Dataset \"{dataset_name}\" is already existed"), 400)
 
     data_file_info = get_data_file_info(request_data, routes_config)
 
@@ -1261,6 +1262,7 @@ def create_evaluation():
 
     return flask.jsonify(model_task_map)
 
+
 def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_score_corpus, request_data):
     service = GLOBAL_POOL_NAME
     routes_config = RoutesConfiguration(flask.g, service)
@@ -1270,9 +1272,7 @@ def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_sco
         "docker": {},
         'wait_after_launch': 2,
         'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
-        'ncpus': 1,
         'ngpus': 0,
-        'iterations': request_data.get("iterations", 1),
         'service': service,
         "options": {},
         'support_statistics': True
@@ -1285,8 +1285,7 @@ def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_sco
                                               to_translate_corpus=to_translate_corpus,
                                               to_score_corpus=to_score_corpus)
 
-    create_tasks_for_parent_model(creation_infos=tasks_creation_infos, model=model,
-                                                              docker_content=docker_content)
+    create_tasks_for_parent_model(creation_infos=tasks_creation_infos, model=model, docker_content=docker_content)
 
 
 def parse_request_data_of_evaluation(current_request):
