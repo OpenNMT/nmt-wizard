@@ -91,7 +91,6 @@ class RoutesConfiguration:
                                                                                   redis_db,
                                                                                   has_ability,
                                                                                   g)
-        self.upload_path = f"/{self.creator['entity_code']}/{uuid.uuid4().hex}"
 
         if self._service is not GLOBAL_POOL_NAME:
             self.service_config = config.get_service_config(mongo_client, self._service)
@@ -1217,7 +1216,6 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
 @app.route("/evaluations", methods=["POST"])
 @filter_request("POST/evaluations", "train")
 def create_evaluation():
-    # TODO: Create new function to get service and user info
     evaluation_id = ObjectId()
     entity_code = g.user.entity.entity_code
     upload_path = f"/{entity_code}/{evaluation_id}"
@@ -1243,7 +1241,6 @@ def create_evaluation():
         'wait_after_launch': 2,
         'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
         'ngpus': 0,
-        'iterations': request_data.get("iterations", 1),
         'service': service,
         "options": {},
         'support_statistics': True
