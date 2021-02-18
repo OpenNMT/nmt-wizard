@@ -30,6 +30,7 @@ from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
+SYSTRAN_BASE_STORAGE = "shared_testdata"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -558,11 +559,71 @@ def create_tasks_for_launch_v2(creation_infos):
     for tc in task_to_create:
         tc.other_task_info["model"] = train_task_id
         tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
+
     creation_output = {
         "tasks_id": tasks_id,
         "train_task_id": train_task_id
     }
+    
+    # Create tasks for parent model
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
+    
+    create_trans_score_tasks_for_parent_model(creation_infos.task_infos.request_data.get("parent_model"),
+                                              to_translate_corpus_for_parent_model,
+                                              to_score_corpus_for_parent_model,
+                                              creation_infos.task_infos.request_data)
+
     return creation_output
+
+def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
+    result_to_translate_corpus = []
+    result_to_score_corpus = []
+
+    for ttc, tsc in zip(to_translate_corpus, to_score_corpus):
+        is_new_corpus = True
+        for test in model_tests:
+            corpus_path = '/'.join(test.split('/')[1:])
+            if any(corpus_path in ttc_path for ttc_path in ttc):
+                is_new_corpus = False
+                break
+        if is_new_corpus:
+            result_to_translate_corpus.append(ttc)
+            result_to_score_corpus.append(tsc)
+
+    return result_to_translate_corpus, result_to_score_corpus
+
+def create_tasks_for_parent_model(creation_infos, model, docker_content):
+    tasks_id = []
+    tasks_to_create = []
+    ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
+    if not ok:
+        abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
+
+    to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
+    if model_info.get('tests'):
+        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus, to_score_corpus)
+
+    creation_infos.task_infos.content["docker"] = docker_content
+    task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                   parent_task_id=model,
+                                   to_translate=to_translate_corpus)
+    tasks_to_create.append(task_translate)
+    tasks_id.append(task_translate.task_id)
+
+    task_scoring = TaskScoring(task_infos=creation_infos.task_infos,
+                               parent_task_id=task_translate.task_id,
+                               model=model,
+                               to_score=to_score_corpus)
+    tasks_to_create.append(task_scoring)
+    tasks_id.append(task_scoring.task_id)
+
+    (tasks_id, tasks_to_create) = post_function('POST/task/launch_v2', tasks_id,
+                                                                    tasks_to_create)
+    tasks_to_create.extend(tasks_to_create)
+
+    for tc in tasks_to_create:
+        tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
 
 
 def get_corpus_info(data_files):
@@ -899,13 +960,13 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
     if default_test_data:
         for corpus_name in default_test_data:
             to_translate_corpus.append([
-                f'shared_testdata:{corpus_name}',
-                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}'
+                f'{SYSTRAN_BASE_STORAGE}:{corpus_name}',
+                f'pn9_testtrans:<MODEL>/{SYSTRAN_BASE_STORAGE}/{corpus_name}.{target}'
             ])
             target_corpus = corpus_name[:-3] + "." + target
             to_score_corpus.append([
-                f'pn9_testtrans:<MODEL>/shared_testdata/{corpus_name}.{target}',
-                f'shared_testdata:{target_corpus}'
+                f'pn9_testtrans:<MODEL>/{SYSTRAN_BASE_STORAGE}/{corpus_name}.{target}',
+                f'{SYSTRAN_BASE_STORAGE}:{target_corpus}'
             ])
 
     return to_translate_corpus, to_score_corpus
@@ -992,7 +1053,7 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 def get_default_test_data(storage_client, source, target):
     result = []
     test_folder_name = get_test_folder_name(source, target)
-    listdir = storage_client.listdir(f'shared_testdata:{test_folder_name}/')
+    listdir = storage_client.listdir(f'{SYSTRAN_BASE_STORAGE}:{test_folder_name}/')
     for corpus_name in listdir:
         if not listdir[corpus_name].get("is_dir", False):
             if corpus_name.endswith(f'.{source}'):
@@ -1199,6 +1260,33 @@ def create_evaluation():
                               model_task_map)
 
     return flask.jsonify(model_task_map)
+
+def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_score_corpus, request_data):
+    service = GLOBAL_POOL_NAME
+    routes_config = RoutesConfiguration(flask.g, service)
+    docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+    docker_content = {**docker_image_info, **{"command": []}}
+    content = {
+        "docker": {},
+        'wait_after_launch': 2,
+        'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
+        'ncpus': 1,
+        'ngpus': 0,
+        'iterations': request_data.get("iterations", 1),
+        'service': service,
+        "options": {},
+        'support_statistics': True
+    }
+
+    task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
+                           service=service, resource="auto")
+
+    tasks_creation_infos = TasksCreationInfos(task_infos=task_infos,
+                                              to_translate_corpus=to_translate_corpus,
+                                              to_score_corpus=to_score_corpus)
+
+    create_tasks_for_parent_model(creation_infos=tasks_creation_infos, model=model,
+                                                              docker_content=docker_content)
 
 
 def parse_request_data_of_evaluation(current_request):
