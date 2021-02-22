@@ -417,19 +417,19 @@ class Worker(object):
             if br_remaining_xpus.ncpus != -1 and not better_cpu_usage:
                 return None
 
-            idx = 1
+            gpu_idx = 0
             for i in range(task_asked_capacity.ngpus):
-                while self._redis.hget(keygr, str(idx)) is not None:
-                    idx += 1
-                    assert idx <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
-                self._logger.debug('reserve GPU idx = %d', idx)
-                self._redis.hset(keygr, str(idx), task_id)
+                while self._redis.hget(keygr, str(gpu_idx)) is not None:
+                    gpu_idx += 1
+                    assert gpu_idx + 1 <= capacity.ngpus, "invalid gpu alloc for %s" % keygr
+                self._logger.debug('reserve GPU idx = %d', gpu_idx)
+                self._redis.hset(keygr, str(gpu_idx), task_id)
 
             cpu_idx = 0
             for i in range(task_asked_capacity.ncpus):
                 while self._redis.hget(keycr, str(cpu_idx)) is not None:
                     cpu_idx += 1
-                    assert cpu_idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
+                    assert cpu_idx + 1 <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
                 self._logger.debug('reserve CPU idx = %d', cpu_idx)
                 self._redis.hset(keycr, str(cpu_idx), task_id)
 
