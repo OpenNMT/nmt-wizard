@@ -1032,11 +1032,34 @@ def get_final_training_config(request_data, training_corpus_infos):
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
 
+def adapt_distribution_proportions(distribution, get_new_value, new_val, isParent=True):
+    for storage_block in distribution:
+        if storage_block.get('distribution'):
+            for sampling_rule in storage_block.get('distribution'):
+                sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if isParent else get_new_value(new_val)
+    return distribution
+
+def get_parent_formula_distribution_proportions(old_weight, client_ratio):
+    if not isinstance(old_weight, float):
+        return old_weight
+
+    parent_ratio = float(100 - client_ratio) / 100.0
+    return round(old_weight * parent_ratio, 4)
+
+def get_client_formula_distribution_proportions(client_weight):
+    return "*{}".format(client_weight)
+
+def get_client_weight(sample_size, client_ratio, client_volume):
+    proportion = float(client_ratio) / 100.0
+    result = int(round(sample_size * proportion / client_volume, 0))
+    return result if result > 0 else 1
 
 def get_sample_data(current_data, parent_data, sample_by_path):
+    client_ratio = app.get_other_config(['training_options', 'client_ratio'], fallback=12)
     current_sample_dists = current_data["sample_dist"]
     sample_dists = parent_data["sample_dist"]
-    sample = parent_data["sample"]
+    new_sample_dists = []
+    client_sample = 0
 
     for current_sample_dist in current_sample_dists:
         duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
@@ -1044,10 +1067,17 @@ def get_sample_data(current_data, parent_data, sample_by_path):
         if len(duplicate) > 0:
             continue
 
-        sample_dists.append(current_sample_dist)
-        sample += int(sample_by_path[current_sample_dist['path']])
+        new_sample_dists.append(current_sample_dist)
+        client_sample += int(sample_by_path[current_sample_dist['path']])
 
-    return [sample, sample_dists]
+    new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
+    client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
+    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions, client_ratio)
+    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, isParent=False)
+
+    sample_dists.extend(new_sample_dists)
+
+    return [new_sample_size, sample_dists]
 
 
 def get_default_test_data(storage_client, source, target):
