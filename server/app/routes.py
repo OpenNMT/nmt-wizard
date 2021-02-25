@@ -1034,17 +1034,14 @@ def get_final_training_config(request_data, training_corpus_infos):
 
 
 def adapt_distribution_proportions(distribution, get_new_value, new_val, is_parent=True):
-    for storage_block in distribution:
-        if storage_block.get('distribution'):
-             storage_block['distribution'] = apply_new_weight(storage_block.get('distribution'), get_new_value, new_val, is_parent)
-    return distribution
-
-
-def apply_new_weight(distribution, get_new_value, new_val, is_parent):
     def apply(sampling_rule):
         sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
         return sampling_rule
-    return list(map(apply, distribution))
+
+    for storage_block in distribution:
+        if storage_block.get('distribution'):
+             storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+    return distribution
 
 
 def get_parent_formula_distribution_proportions(old_weight, client_ratio):
