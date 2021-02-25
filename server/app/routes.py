@@ -1044,7 +1044,7 @@ def apply_new_weight(distribution, get_new_value, new_val, is_parent):
     def apply(sampling_rule):
         sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
         return sampling_rule
-    return map(apply, distribution)
+    return list(map(apply, distribution))
 
 
 def get_parent_formula_distribution_proportions(old_weight, client_ratio):
