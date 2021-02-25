@@ -1019,11 +1019,11 @@ def get_final_training_config(request_data, training_corpus_infos):
             if batch_size:
                 parent_config["options"]["config"]["train"]["batch_size"] = batch_size
 
-        sample_data = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
+        sample_size, sample_dist = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
 
         parent_config["data"] = {
-            "sample": sample_data[0],
-            "sample_dist": sample_data[1]
+            "sample": sample_size,
+            "sample_dist": sample_dist
         }
 
         parent_config["product"] = "SYSTRAN ModelStudio Lite"
