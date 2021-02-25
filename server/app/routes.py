@@ -1032,12 +1032,20 @@ def get_final_training_config(request_data, training_corpus_infos):
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
 
+
 def adapt_distribution_proportions(distribution, get_new_value, new_val, is_parent=True):
     for storage_block in distribution:
         if storage_block.get('distribution'):
-            for sampling_rule in storage_block.get('distribution'):
-                sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
+             storage_block['distribution'] = apply_new_weight(storage_block.get('distribution'), get_new_value, new_val, is_parent)
     return distribution
+
+
+def apply_new_weight(distribution, get_new_value, new_val, is_parent):
+    def apply(sampling_rule):
+        sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
+        return sampling_rule
+    return map(apply, distribution)
+
 
 def get_parent_formula_distribution_proportions(old_weight, client_ratio):
     if not isinstance(old_weight, float):
@@ -1046,13 +1054,16 @@ def get_parent_formula_distribution_proportions(old_weight, client_ratio):
     parent_ratio = float(100 - client_ratio) / 100.0
     return round(old_weight * parent_ratio, 4)
 
+
 def get_client_formula_distribution_proportions(client_weight):
     return "*{}".format(client_weight)
+
 
 def get_client_weight(sample_size, client_ratio, client_volume):
     proportion = float(client_ratio) / 100.0
     result = int(round(sample_size * proportion / client_volume, 0))
     return result if result > 0 else 1
+
 
 def get_sample_data(current_data, parent_data, sample_by_path):
     client_ratio = app.get_other_config(['training_options', 'client_ratio'], fallback=12)
