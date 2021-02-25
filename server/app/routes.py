@@ -1084,7 +1084,7 @@ def get_sample_data(current_data, parent_data, sample_by_path):
     new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, is_parent=False)
 
     new_sample_dists.extend(sample_dists)
-    return [new_sample_size, new_sample_dists]
+    return new_sample_size, new_sample_dists
 
 
 def get_default_test_data(storage_client, source, target):
