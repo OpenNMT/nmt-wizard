@@ -1032,11 +1032,11 @@ def get_final_training_config(request_data, training_corpus_infos):
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
 
-def adapt_distribution_proportions(distribution, get_new_value, new_val, isParent=True):
+def adapt_distribution_proportions(distribution, get_new_value, new_val, is_parent=True):
     for storage_block in distribution:
         if storage_block.get('distribution'):
             for sampling_rule in storage_block.get('distribution'):
-                sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if isParent else get_new_value(new_val)
+                sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
     return distribution
 
 def get_parent_formula_distribution_proportions(old_weight, client_ratio):
@@ -1073,7 +1073,7 @@ def get_sample_data(current_data, parent_data, sample_by_path):
     new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
     sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions, client_ratio)
-    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, isParent=False)
+    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, is_parent=False)
 
     sample_dists.extend(new_sample_dists)
 
