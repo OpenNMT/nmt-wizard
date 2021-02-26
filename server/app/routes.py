@@ -345,6 +345,22 @@ def filter_request(route, ability=None):
     return wrapper
 
 
+def filter_mode(required_mode=['lite']):
+    def wrapper(func):
+        """generic request filter system for customization"""
+
+        @wraps(func)
+        def func_wrapper(*args, **kwargs):
+            required_mode.append('admin')
+            if g.session['mode'] in required_mode:
+                return func(*args, **kwargs)
+            abort(make_response(jsonify(message="your account does not allow to access this page"), 403))
+
+        return func_wrapper
+
+    return wrapper
+
+
 def has_ability(flask_global, ability, entity):
     for f in has_ability_funcs:
         if not f(flask_global, ability, entity):
@@ -500,7 +516,7 @@ def server_disable(service, resource):
     return flask.jsonify("ok")
 
 
-@app.route("/service/check/<string:service>", methods=["GET"])
+@app.route("/service/check/<string:service>", methods=["GET", "POST"])
 @filter_request("GET/service/check")
 def check(service):
     service_options = flask.request.get_json() if flask.request.is_json else None
