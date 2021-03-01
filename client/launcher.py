@@ -159,7 +159,7 @@ exec_arguments = [
                          "help": 'options selected to run the service'}],
     ['-r', '--resource',
      {"help": "alternatively to `options`, resource name to use"}],
-    ['-g', '--gpus', {"type": int, "default": 1, "help": 'number of gpus'}],
+    ['-g', '--gpus', {"type": int, "default": 0, "help": 'number of gpus'}],
     ['-c', '--cpus', {"type": int,
                       "help": 'number of cpus - if not provided, will be obtained '
                               'from pool config'}],
@@ -208,7 +208,7 @@ parser_launch.add_argument('-o', '--options', default='{}',
                            help='options selected to run the service')
 parser_launch.add_argument('-r', '--resource',
                            help="alternatively to `options`, resource name to use")
-parser_launch.add_argument('-g', '--gpus', type=int, default=1,
+parser_launch.add_argument('-g', '--gpus', type=int, default=0,
                            help='number of gpus')
 parser_launch.add_argument('-c', '--cpus', type=int, help='number of cpus - if not provided, '
                                                           'will be obtained from pool config')
