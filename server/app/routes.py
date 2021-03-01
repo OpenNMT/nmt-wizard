@@ -1622,7 +1622,6 @@ def launch(service):
             if task_type == "trans" and can_trans_as_release:
                 if "--as_release" not in content["docker"]["command"] and trans_as_release:
                     content["docker"]["command"].append("--as_release")
-                    content["ngpus"] = ngpus = 0
 
             task_resource = service_module.select_resource_from_capacity(
                 resource, Capacity(content["ngpus"],
