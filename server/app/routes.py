@@ -453,10 +453,10 @@ def post_admin_request(app, service, action, value="1"):
 
 
 @app.route("/service/configs/<string:service>", methods=["POST"])
-@filter_request("GET/service/configs", "edit_config")
+@filter_request("POST/service/configs", "edit_config")
 def set_service_config(service):
     check_permission(service, "edit_config")
-    request_body = flask.request.form.get('config')
+    request_body = flask.request.form.get('config') or flask.request.json.get('config')
     try:
         update_config = json.loads(request_body)
         update_config["updated_at"] = time.time()
@@ -2020,7 +2020,7 @@ def get_log(task_id):
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))
-    response = flask.make_response(content)
+    response = flask.jsonify(content)
     return response
 
 
