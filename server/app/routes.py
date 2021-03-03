@@ -2020,7 +2020,7 @@ def get_log(task_id):
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find log for task %s" % task_id), 404))
-    response = flask.jsonify(content)
+    response = flask.make_response(content)
     return response
 
 
