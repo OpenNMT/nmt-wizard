@@ -352,6 +352,15 @@ def filter_mode(required_mode=['lite']):
         @wraps(func)
         def func_wrapper(*args, **kwargs):
             required_mode.append('admin')
+            if g.get('session') is None:
+                mode = app.get_other_config(["authentication", "mode"])
+                redirect_url = '/signin/local'
+
+                if mode == 'systran':
+                    redirect_url = '/signin'
+
+                return flask.redirect(redirect_url)
+
             if g.session['mode'] in required_mode:
                 return func(*args, **kwargs)
             abort(make_response(jsonify(message="your account does not allow to access this page"), 403))
