@@ -345,7 +345,7 @@ def filter_request(route, ability=None):
     return wrapper
 
 
-def filter_mode(required_mode=['lite']):
+def filter_mode(required_mode=[]):
     def wrapper(func):
         """generic request filter system for customization"""
 
