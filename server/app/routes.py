@@ -1019,6 +1019,7 @@ def get_final_training_config(request_data, training_corpus_infos):
             if batch_size:
                 parent_config["options"]["config"]["train"]["batch_size"] = batch_size
 
+        parent_config = delete_nfa_feature_from_config(parent_config)
         sample_size, sample_dist = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
 
         parent_config["data"] = {
@@ -1031,6 +1032,29 @@ def get_final_training_config(request_data, training_corpus_infos):
     else:
         abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
                                                         request_data["parent_model"]), 400))
+
+
+def delete_nfa_feature_from_config(config):
+    if 'supported_features' in config and 'NFA' in config.get('supported_features'):
+        config['supported_features']['NFA'] = 'false'
+
+    def apply(sampling_rule):
+        if len(sampling_rule) > 2 and sampling_rule[2].get("bpreprocess"):
+            bpreprocess = sampling_rule[2].get("bpreprocess")
+            if bpreprocess.get("tm") and len(bpreprocess) > 1:
+                del sampling_rule[2]["bpreprocess"]["tm"]
+            elif bpreprocess.get("tm"):
+                del sampling_rule[2]["bpreprocess"]
+                if not sampling_rule[2]:
+                    del sampling_rule[2]
+        return sampling_rule
+
+    sample_dist = config.get('data').get('sample_dist')
+    for storage_block in sample_dist:
+        if storage_block.get('distribution'):
+            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+
+    return config
 
 
 def adapt_distribution_proportions(distribution, get_new_value, new_val, is_parent=True):
