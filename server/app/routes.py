@@ -465,7 +465,7 @@ def post_admin_request(app, service, action, value="1"):
 @filter_request("POST/service/configs", "edit_config")
 def set_service_config(service):
     check_permission(service, "edit_config")
-    request_body = flask.request.form.get('config') or flask.request.json.get('config')
+    request_body = flask.request.form.get('config')
     try:
         update_config = json.loads(request_body)
         update_config["updated_at"] = time.time()
