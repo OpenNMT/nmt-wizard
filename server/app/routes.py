@@ -594,7 +594,7 @@ def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
     return result_to_translate_corpus, result_to_score_corpus
 
 
-def create_trans_score_tasks(creation_infos, model, docker_content):
+def create_trans_score_tasks(creation_infos, model, docker_content, parent_model):
     tasks_id = []
     tasks_to_create = []
     ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
@@ -625,7 +625,8 @@ def create_trans_score_tasks(creation_infos, model, docker_content):
     tasks_to_create.extend(tasks_to_create)
 
     for tc in tasks_to_create:
-        tc.other_task_info["model"] = model
+        if not parent_model:
+            tc.other_task_info["model"] = model
         tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
 
 
@@ -1301,13 +1302,12 @@ def create_evaluation():
     return flask.jsonify(model_task_map)
 
 
-def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corpus, request_data):
+def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corpus, request_data, parent_model=True):
     service = GLOBAL_POOL_NAME
     routes_config = RoutesConfiguration(flask.g, service)
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
     docker_content = {**docker_image_info, **{"command": []}}
     content = {
-        "name": request_data["model_name"],
         "docker": {},
         'wait_after_launch': 2,
         'trainer_id': f'{routes_config.creator["entity_code"]}{routes_config.creator["user_code"]}',
@@ -1324,7 +1324,8 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
                                               to_translate_corpus=to_translate_corpus,
                                               to_score_corpus=to_score_corpus)
 
-    create_trans_score_tasks(creation_infos=tasks_creation_infos, model=model, docker_content=docker_content)
+    create_trans_score_tasks(creation_infos=tasks_creation_infos, model=model, docker_content=docker_content,
+                             parent_model=parent_model)
 
 
 def parse_request_data_of_evaluation(current_request):
