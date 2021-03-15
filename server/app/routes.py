@@ -568,7 +568,7 @@ def create_tasks_for_launch_v2(creation_infos):
     to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
     to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
     
-    create_trans_score_tasks_for_parent_model(creation_infos.task_infos.request_data.get("parent_model"),
+    create_trans_score_tasks_for_model(creation_infos.task_infos.request_data.get("parent_model"),
                                               to_translate_corpus_for_parent_model,
                                               to_score_corpus_for_parent_model,
                                               creation_infos.task_infos.request_data)
@@ -594,7 +594,7 @@ def get_only_new_test_corpus(model_tests, to_translate_corpus, to_score_corpus):
     return result_to_translate_corpus, result_to_score_corpus
 
 
-def create_tasks_for_parent_model(creation_infos, model, docker_content):
+def create_trans_score_tasks(creation_infos, model, docker_content, parent_model):
     tasks_id = []
     tasks_to_create = []
     ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
@@ -625,6 +625,8 @@ def create_tasks_for_parent_model(creation_infos, model, docker_content):
     tasks_to_create.extend(tasks_to_create)
 
     for tc in tasks_to_create:
+        if not parent_model:
+            tc.other_task_info["model"] = model
         tc.create(redis_db=redis_db, taskfile_dir=taskfile_dir)
 
 
@@ -1324,7 +1326,7 @@ def create_evaluation():
     return flask.jsonify(model_task_map)
 
 
-def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_score_corpus, request_data):
+def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corpus, request_data, parent_model=True):
     service = GLOBAL_POOL_NAME
     routes_config = RoutesConfiguration(flask.g, service)
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
@@ -1346,7 +1348,8 @@ def create_trans_score_tasks_for_parent_model(model, to_translate_corpus, to_sco
                                               to_translate_corpus=to_translate_corpus,
                                               to_score_corpus=to_score_corpus)
 
-    create_tasks_for_parent_model(creation_infos=tasks_creation_infos, model=model, docker_content=docker_content)
+    create_trans_score_tasks(creation_infos=tasks_creation_infos, model=model, docker_content=docker_content,
+                             parent_model=parent_model)
 
 
 def parse_request_data_of_evaluation(current_request):
