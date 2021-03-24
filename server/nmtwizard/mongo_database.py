@@ -100,6 +100,20 @@ class MongoDatabase:
         }
         the_table.replace_one(query, config_data, upsert=True)
 
+    def update_entity_config(self, service_name, entity_code, entity_config, views=None):
+        the_table = self.get("configs")
+        if views is None:
+            views = {
+                "_id": 0
+            }
+        query = {
+            "name": service_name
+        }
+        service_config = the_table.find_one(query, views)
+        service_config["entities"][entity_code] = entity_config
+
+        the_table.replace_one(query, service_config, upsert=True)
+
     def get_service_configs(self, services, views=None):
         the_table = self.get("configs")
         if views is None:
