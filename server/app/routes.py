@@ -85,7 +85,6 @@ class RoutesConfiguration:
             'user_code': user.user_code
         }
         self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
-        self.entity_storages_config = self._get_entity_storages(self.creator['entity_code'])
         self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
                                                                                   mongo_client,
                                                                                   redis_db,
@@ -99,12 +98,6 @@ class RoutesConfiguration:
         self.entity_owner = self._get_entity_owner()
         self.trainer_entities = RoutesConfiguration.get_entities_by_permission("train")
         assert self.trainer_entities  # Here: almost sure you are trainer
-
-    def _get_entity_storages(self, entity_code):
-        if config.is_polyentity_config(self.service_config):
-            entity_config = self.service_config["entities"][entity_code]
-            return entity_config["storages"]
-        return self.service_config["storages"]
 
     def _get_entity_owner(self):
         return RoutesConfiguration.get_entity_owner(self.service_entities, self._service)
