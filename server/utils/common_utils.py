@@ -4,7 +4,7 @@ from flask import g
 from app import app
 
 
-def is_allow_access_train_restricted(path, permission):
+def verify_resource_train_restricted(path, permission):
     if not is_resource_train_restricted(path):
         return True
 
@@ -32,7 +32,6 @@ def check_permission_access_train_restricted(permission):
 
 
 def is_resource_train_restricted(path):
-    regex_resource = '^shared_data:[a-z]{2}_[a-z]{2}\/train_restricted(\/.*)*$'
-    regex_config = '^\$\{SHARED_DATA_TRAIN_DIR\}/[a-z]{2}_[a-z]{2}\/train_restricted(\/.*)*$'
+    regex_pattern = '\/train_restricted(\/.*)*$'
 
-    return re.search(regex_resource, path) or re.search(regex_config, path)
+    return re.search(regex_pattern, path)
