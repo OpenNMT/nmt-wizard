@@ -693,7 +693,7 @@ def launch_v2():
         exists_dataset = get_dataset_by_name(entity_code, dataset_name)
 
         if exists_dataset:
-            return make_response(jsonify(message=f"Dataset \"{dataset_name}\" is already existed"), 400)
+            return make_response(jsonify(message=f"Dataset \"{dataset_name}\" already exists"), 400)
 
     data_file_info = get_data_file_info(request_data, routes_config)
 
@@ -747,15 +747,21 @@ def parse_request_data(current_request):
 
     training_data = request_files.getlist("training_data")
     testing_data = request_files.getlist("testing_data")
+    model_data = request_files.getlist("model_data")
     dataset = request_data.getlist("dataset")
     corpus_type = int(request_data.get("corpus_type"))
     dataset_name = request_data.get("dataset_name")
+    testing_percent = request_data.get("testing_percent")
+    if testing_percent is not None:
+        testing_percent = int(testing_percent)
 
     return {**request_data, **{"tags": json.loads(tags)}, **{
         "training_data": training_data,
         "testing_data": testing_data,
+        "model_data": model_data,
         "dataset": dataset,
         "corpus_type": corpus_type,
+        "testing_percent": testing_percent,
         "dataset_name": dataset_name
     }}
 
@@ -775,8 +781,9 @@ def validate_request_data(current_request):
     validate_priority(request_data.get("priority"))
     validate_iteration(request_data.get("num_of_iteration"))
 
-    validate_file(request_data.get("corpus_type"), corpus_config, request_files.getlist("training_data"),
-                  request_files.getlist("testing_data"), request_data.getlist("dataset"))
+    validate_file(request_data.get("corpus_type"), request_data.get("testing_percent"), corpus_config,
+                  request_files.getlist("training_data"), request_files.getlist("testing_data"),
+                  request_files.getlist("model_data"), request_data.getlist("dataset"))
 
 
 def validate_tags(tags):
@@ -879,12 +886,34 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def validate_file(corpus_type, corpus_config, training_data, testing_data, dataset):
+def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_percent):
+    training_push_infos_list = []
+    testing_push_infos_list = []
+    for file in files:
+        push_infos = routes_config.storage_client.partition_auto(file,
+                                                                 training_path,
+                                                                 testing_path,
+                                                                 remote_path=training_path,
+                                                                 storage_id=routes_config.global_storage_name,
+                                                                 percent=testing_percent)
+
+        assert push_infos and push_infos['files'] and len(push_infos['files']) == 2
+        training_file_info = push_infos['files'][0]
+        testing_file_info = push_infos['files'][1]
+        assert training_file_info['nbSegments'] and testing_file_info['nbSegments']
+        training_push_infos_list.append(training_file_info)
+        testing_push_infos_list.append(testing_file_info)
+    return training_push_infos_list, testing_push_infos_list
+
+
+def validate_file(corpus_type, testing_percent, corpus_config, training_data, testing_data, model_data, dataset):
     if not corpus_type or not corpus_type.isnumeric() or int(corpus_type) not in CORPUS_TYPE.values():
         raise Exception('Invalid corpus_type')
-    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"]:
+    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent is None:
         validate_training_data(training_data, corpus_config)
         validate_testing_data(testing_data, corpus_config)
+    elif int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent is not None:
+        validate_training_data(model_data, corpus_config)
     else:
         if len(dataset) == 0:
             raise Exception('Num of dataset must greater than 0')
@@ -899,9 +928,13 @@ def get_dataset_by_name(entity, dataset_name):
 
 def get_data_file_info(request_data, routes_config):
     corpus_type = request_data.get("corpus_type")
+    testing_percent = request_data.get("testing_percent")
 
     if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
-        training_data = request_data.get("training_data")
+        if testing_percent is not None:
+            training_data = request_data.get("model_data")
+        else:
+            training_data = request_data.get("training_data")
         testing_data = request_data.get("testing_data")
 
         return get_user_upload_file_info(routes_config, request_data, training_data, testing_data)
@@ -915,13 +948,18 @@ def get_data_file_info(request_data, routes_config):
 def get_user_upload_file_info(routes_config, request_data, training_data, testing_data):
     entity_code = routes_config.creator['entity_code']
     dataset_name = request_data.get('dataset_name')
+    testing_percent = request_data.get("testing_percent")
 
     training_data_path = os.path.join(entity_code, dataset_name, "train") + os.path.sep
     testing_data_path = os.path.join(entity_code, dataset_name, "test") + os.path.sep
 
-    data_training = upload_user_files(routes_config, training_data_path, training_data)
-    data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
-
+    if (testing_percent is None):
+        data_training = upload_user_files(routes_config, training_data_path, training_data)
+        data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
+    else:
+        training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
+        testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
+        data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path, testing_data_path, training_data, testing_percent)
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
