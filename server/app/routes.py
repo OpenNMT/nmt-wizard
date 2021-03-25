@@ -28,6 +28,7 @@ from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreproce
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
+from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
@@ -1447,6 +1448,39 @@ def get_evaluations():
     return cust_jsonify(evaluation_catalogs)
 
 
+def get_json_config(command):
+    idx = 0
+    while idx < len(command):
+        if (command[idx] == '-c' or command[idx] == '--config'):
+            return idx + 1, command[idx + 1]
+        idx += 1
+    return None, ''
+
+
+def add_train_restricted_config(json_config, parent_task_id):
+    config = json.loads(json_config)
+
+    if not config.get("data") or not config["data"]["sample_dist"]:
+        return json_config
+
+    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_task_id, False)
+
+    if not ok:
+        return json_config
+
+    sample_dist = config["data"]["sample_dist"]
+    parent_sample_dist = parent_config["data"]["sample_dist"]
+
+    for item in parent_sample_dist:
+        # hide train_restricted path
+        if not is_resource_train_restricted(item['path']):
+            continue
+        sample_dist.append(item)
+
+    config["data"]["sample_dist"] = sample_dist
+    return json.dumps(config)
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
@@ -1591,6 +1625,13 @@ def launch(service):
         if (parent_task_type == "trans" or parent_task_type == "relea" or
                 (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
             abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % parent_task_type), 400))
+
+    if task_type == 'train' and not check_permission_access_train_restricted('read'):
+        json_idx, json_config = get_json_config(content["docker"]["command"])
+
+        if json_idx is not None:
+            configuration = add_train_restricted_config(json_config, parent_task_id)
+            content["docker"]["command"][json_idx] = configuration
 
     task_ids = []
     task_create = []
