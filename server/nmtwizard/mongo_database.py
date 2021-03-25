@@ -100,22 +100,6 @@ class MongoDatabase:
         }
         the_table.replace_one(query, config_data, upsert=True)
 
-    def update_entity_config(self, service_name, entity_code):
-        """
-        insert default entity config into MongoDB
-        """
-        entity_config = {
-            "occup_weight": 2,
-            "storages": {}
-        }
-        the_table = self.get("configs")
-        query = {
-            "name": service_name
-        }
-        service_config = the_table.find_one(query)
-        service_config["entities"][entity_code] = entity_config
-
-        the_table.replace_one(query, service_config, upsert=True)
 
     def get_service_configs(self, services, views=None):
         the_table = self.get("configs")
