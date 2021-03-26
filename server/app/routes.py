@@ -752,7 +752,7 @@ def parse_request_data(current_request):
     corpus_type = int(request_data.get("corpus_type"))
     dataset_name = request_data.get("dataset_name")
     testing_percent = request_data.get("testing_percent")
-    if testing_percent is not None:
+    if testing_percent:
         testing_percent = int(testing_percent)
 
     return {**request_data, **{"tags": json.loads(tags)}, **{
@@ -912,7 +912,7 @@ def validate_file(corpus_type, testing_percent, corpus_config, training_data, te
     if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent is None:
         validate_training_data(training_data, corpus_config)
         validate_testing_data(testing_data, corpus_config)
-    elif int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent is not None:
+    elif int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent:
         validate_training_data(model_data, corpus_config)
     else:
         if len(dataset) == 0:
@@ -931,7 +931,7 @@ def get_data_file_info(request_data, routes_config):
     testing_percent = request_data.get("testing_percent")
 
     if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
-        if testing_percent is not None:
+        if testing_percent:
             training_data = request_data.get("model_data")
         else:
             training_data = request_data.get("training_data")
@@ -953,13 +953,13 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     training_data_path = os.path.join(entity_code, dataset_name, "train") + os.path.sep
     testing_data_path = os.path.join(entity_code, dataset_name, "test") + os.path.sep
 
-    if (testing_percent is None):
-        data_training = upload_user_files(routes_config, training_data_path, training_data)
-        data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
-    else:
+    if testing_percent:
         training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
         testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
         data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path, testing_data_path, training_data, testing_percent)
+    else:
+        data_training = upload_user_files(routes_config, training_data_path, training_data)
+        data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
