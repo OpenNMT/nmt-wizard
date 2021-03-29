@@ -187,6 +187,7 @@ parser_exec = subparsers.add_parser('exec', help='execute a generic docker-utili
 for arg in exec_arguments:
     parser_exec.add_argument(*arg[:-1], **arg[-1])
 parser_exec.add_argument('docker_command', type=str, nargs='*', help='Docker command')
+parser_exec.add_argument('-e', '--entity_owner', help='entity owner')
 
 parser_launch = subparsers.add_parser('launch',
                                       help='launch a task on the service associated'
