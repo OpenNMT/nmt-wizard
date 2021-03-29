@@ -149,6 +149,7 @@ class SSHService(Service):
                support_statistics):
         options['server'] = resource
         params = _get_params(self._config, options)
+
         client = self._get_client(params=params)
         try:
             callback_url = self._config.get('callback_url')

@@ -6,7 +6,8 @@ tables = {
     "tags": "pn9-tag",
     "dockers": "pn9-docker",
     "evaluations": "pn9-evaluation",
-    "dataset": "pn9-dataset"
+    "dataset": "pn9-dataset",
+    "models": "pn9-model"
 }
 
 
@@ -181,3 +182,62 @@ class MongoDatabase:
             "$in": dataset_ids
         }})
         return dataset
+
+    def create_deployment_info(self, deployment_info):
+        the_table = self.get("serving_models")
+        the_table.insert(deployment_info)
+
+    def insert_serving_task(self, model, task_id):
+        the_table = self.get("models")
+        query = {
+            "model": model
+        }
+        update = {
+            "$push": {"tasks": task_id}
+        }
+        the_table.update_one(query, update)
+
+    def get_serve_task_id_of_model(self, model):
+        the_table = self.get("models")
+        query = {
+            "model": model
+        }
+        model_info = the_table.find_one(query)
+        tasks = model_info.get("tasks")
+        for task_id in tasks:
+            if task_id.split("_")[-1] == "serve":
+                return task_id
+
+        return None
+
+    def remove_serving_task_id(self, model, task_id):
+        the_table = self.get("models")
+        query = {
+            "model": model
+        }
+
+        update = {
+            "$pull": {"tasks": task_id}
+        }
+
+        the_table.update_one(query, update)
+
+    def get_entity_code_of_model(self, model):
+        the_table = self.get("models")
+        query = {
+            "model": model
+        }
+
+        return the_table.find_one(query)["owner"]["entity_code"]
+
+    def get_models_of_entity(self, entity_code):
+        """get all models of the entity"""
+        the_table = self.get("models")
+
+        query = {
+            "type": None,
+            "owner": {"entity_code": entity_code}
+        }
+
+        return the_table.find(query)
+

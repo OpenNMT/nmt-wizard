@@ -24,7 +24,7 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker
     get_cpu_count, get_params, boolean_param, change_parent_task, remove_config_option, model_name_analysis
 from nmtwizard.capacity import Capacity
 from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
-    TaskScoring, TASK_RELEASE_TYPE
+    TaskScoring, TaskServe, TASK_RELEASE_TYPE
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
@@ -84,7 +84,7 @@ class RoutesConfiguration:
             'entity_code': user.entity.entity_code,
             'user_code': user.user_code
         }
-        self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
+        self.service_config = config.get_service_config(mongo_client, GLOBAL_POOL_NAME)
         self.entity_storages_config = self._get_entity_storages(self.creator['entity_code'])
         self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
                                                                                   mongo_client,
@@ -943,7 +943,6 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
     source = request_data["source"]
     target = request_data["target"]
     default_test_data = get_default_test_data(routes_config.storage_client, source, target) if with_default_test else []
-
     to_translate_corpus = []
     to_score_corpus = []
     for corpus in testing_data_infos:
@@ -1754,7 +1753,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                        option_lang + ['-f', "launcher:scores"]
+                                   option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1809,7 +1808,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                        in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
@@ -2012,6 +2011,13 @@ def terminate_internal(task_id):
         return "problem while posting model: %s" % res, current_status
 
     task.terminate(redis_db, task_id, phase=phase)
+
+    # release its port and serve task in mongodb if it is a serve task
+    if task_id.split("_")[-1] == "serve":
+        deploy_info = task.get_task_deployment_info(redis_db, task_id)
+        redis_db.hdel(f"ports:{deploy_info['service']}:{deploy_info['alloc_resource']}", deploy_info['port'])
+        mongo_client.remove_serving_task_id(deploy_info['model'], task_id)
+
     return "terminating %s" % task_id, current_status
 
 

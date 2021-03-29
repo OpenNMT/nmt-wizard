@@ -9,6 +9,8 @@ import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
+from utils.request_utils import RequestUtils
+from app import mongo_client
 
 
 def _compatible_resource(resource, request_resource):
@@ -172,6 +174,12 @@ class Worker(object):
                 if v == task_id:
                     lcpu.append(k)
             self._redis.hset(keyt, 'alloc_lcpu', ",".join(lcpu))
+
+            if task_id.split('_')[-1] == "serve":
+                key_port = "ports:%s:%s" % (service.name, resource)
+                serving_port = content['docker']['command'][-1]
+                self._redis.hset(key_port, serving_port, task_id)
+
             data = service.launch(
                 task_id,
                 content['options'],
@@ -210,11 +218,13 @@ class Worker(object):
             task.terminate(self._redis, task_id, phase='launch_error')
             self._logger.info(traceback.format_exc())
             return
+
         self._logger.info('%s: task started on %s', task_id, service.name)
         self._redis.hset(keyt, 'job', json.dumps(data))
         task.set_status(self._redis, keyt, 'running')
         # For services that do not notify their activity, we should
         # poll the task status more regularly.
+
         task.work_queue(self._redis, task_id, service.name,
                         delay=service.is_notifying_activity and 120 or 30)
 
@@ -277,6 +287,28 @@ class Worker(object):
         keyb = 'busy:%s:%s' % (service.name, resource)
         self._redis.set(keyb, err)
         self._redis.expire(keyb, self._quarantine_time)
+
+    def _select_port_for_deployed_model(self, resource_config):
+        busy_ports = self._get_all_busy_port_of_resource(self._service, resource_config["name"])
+        port_range = resource_config["serve_port_range"]
+        port_range_from = port_range.get("from")
+        port_range_to = port_range.get("to")
+
+        if len(busy_ports) == 0:
+            return port_range_from
+
+        for port in range(port_range_from, port_range_to + 1):
+            if port not in busy_ports:
+                return port
+        return None
+
+    def _get_all_busy_port_of_resource(self, service, resource):
+        busy_ports = self._redis.hgetall(f"ports:{service}:{resource}")
+        if busy_ports:
+            busy_ports = list(map(int, list(busy_ports)))
+            return busy_ports
+        else:
+            return []
 
     def _allocate_resource(self, task_id, request_resource, service, task_expected_capacity):
         """Allocates a resource for task_id and returns the name of the resource
@@ -668,8 +700,21 @@ class Worker(object):
                     request_resource = self._redis.hget(keyt, 'resource')
                     allocated_resource = self._allocate_resource(task_id, request_resource, service, nxpus)
                     if allocated_resource is not None:
+                        # allocate port if it is a serve task
+                        if task_id.split("_")[-1] == "serve":
+                            alloc_resource_config = self._services[self._service]._machines[allocated_resource]
+                            alloc_port = self._select_port_for_deployed_model(alloc_resource_config)
+                            if alloc_port is None:
+                                self._logger.info('%s: there is no port available in resource %s', task_id, allocated_resource)
+                                break
+                            # save port to task content in redis
+                            task_content = json.loads(self._redis.hget(keyt, "content"))
+                            task_content["docker"]["command"].append(alloc_port)
+                            self._redis.hset(keyt, "content", json.dumps(task_content))
+
                         self._logger.info('%s: resource %s reserved %s', task_id, allocated_resource, nxpus)
                         self._redis.hset(keyt, 'alloc_resource', allocated_resource)
+
                         task.set_status(self._redis, keyt, 'allocated')
                         task.work_queue(self._redis, task_id, service.name)
                         self._redis.lrem(queue, 0, task_id)

@@ -245,6 +245,28 @@ class TaskTranslate(TaskBase):
         TaskBase.__init__(self, task_infos)
 
 
+class TaskServe(TaskBase):
+    def __init__(self, task_infos, parent_task_id):
+        """we set default 4000 for docker serving port, so we set it when creating cmd"""
+        self._task_suffix = "serve"
+        self._task_type = "serve"
+        self._parent_task_id = parent_task_id
+
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
+        task_infos.content["ngpus"] = 0
+        if "ncpus" not in task_infos.content:
+            task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                        task_infos.content["ngpus"], "trans")
+
+        task_infos.content["docker"]["command"] = ["-m", self._parent_task_id]
+        task_infos.content["docker"]["command"].extend(["-ms", "pn9_model_catalog:"])
+        task_infos.content["docker"]["command"].extend(["serve"])
+        # task_infos.content["docker"]["command"].extend([str(self._serving_port)])
+        change_parent_task(task_infos.content["docker"]["command"], parent_task_id)
+
+        TaskBase.__init__(self, task_infos)
+
+
 class TaskScoring(TaskBase):
     def __init__(self, task_infos, parent_task_id, model, to_score):
         self._task_suffix = "score"
@@ -361,7 +383,7 @@ def terminate(redis, task_id, phase):
     # remove from service queue if it was there
     service = redis.hget(keyt, "service")
     if service is not None:
-        redis.lrem('queued:'+service, 0, task_id)
+        redis.lrem('queued:' + service, 0, task_id)
 
     redis.hset(keyt, "message", phase)
     set_status(redis, keyt, "terminating")
@@ -370,50 +392,66 @@ def terminate(redis, task_id, phase):
 
 def work_queue(redis, task_id, service=None, delay=0):
     if service is None:
-        service = redis.hget('task:'+task_id, 'service')
+        service = redis.hget('task:' + task_id, 'service')
     # Queues the task in the work queue with a delay.
     if delay == 0:
         with redis.acquire_lock(f'work_queue:{task_id}', acquire_timeout=1, expire_time=10):
             if task_id not in redis.lrange(f'work:{service}', 0, -1):
-                redis.lpush('work:'+service, task_id)
-        redis.delete('queue:'+task_id)
+                redis.lpush('work:' + service, task_id)
+        redis.delete('queue:' + task_id)
     else:
-        redis.set('queue:'+task_id, delay)
-        redis.expire('queue:'+task_id, int(delay))
+        redis.set('queue:' + task_id, delay)
+        redis.expire('queue:' + task_id, int(delay))
 
 
 def work_unqueue(redis, service):
     """Pop a task from the work queue."""
-    return redis.rpop('work:'+service)
+    return redis.rpop('work:' + service)
 
 
 def service_queue(redis, task_id, service):
     """Queue the task on the service queue."""
-    with redis.acquire_lock('service:'+service):
-        redis.lrem('queued:'+service, 0, task_id)
-        redis.lpush('queued:'+service, task_id)
-        redis.delete('queue:'+task_id)
+    with redis.acquire_lock('service:' + service):
+        redis.lrem('queued:' + service, 0, task_id)
+        redis.lpush('queued:' + service, task_id)
+        redis.delete('queue:' + task_id)
 
 
 def enable(redis, task_id, service=None):
     if service is None:
-        service = redis.hget('task:'+task_id, 'service')
+        service = redis.hget('task:' + task_id, 'service')
     # Marks a task as enabled.
-    redis.sadd("active:"+service, task_id)
+    redis.sadd("active:" + service, task_id)
 
 
 def disable(redis, task_id, service=None):
     if service is None:
-        service = redis.hget('task:'+task_id, 'service')
+        service = redis.hget('task:' + task_id, 'service')
     # Marks a task as disabled.
-    redis.srem("active:"+service, task_id)
-    redis.delete("beat:"+task_id)
+    redis.srem("active:" + service, task_id)
+    redis.delete("beat:" + task_id)
 
 
 def list_active(redis, service):
     """Returns all active tasks (i.e. non stopped)."""
-    return redis.smembers("active:"+service)
+    return redis.smembers("active:" + service)
 
+
+def get_task_deployment_info(redis, task_id):
+    """get deployment info of task: service pool, model, alloc_resource, port"""
+    task_info = redis.hgetall(f"task:{task_id}")
+    content = json.loads(task_info["content"])
+    model = content["docker"]["command"][1]
+    alloc_resource = task_info["alloc_resource"]  # as trainer name, != host
+    port = content["docker"]["command"][-1]
+    service = task_info["service"]
+    result = {
+        "service": service,
+        "model": model,
+        "alloc_resource": alloc_resource,
+        "port": port
+    }
+    return result
 
 def info(redis, taskfile_dir, task_id, fields):
     """Gets information on a task."""
@@ -456,8 +494,8 @@ def change(redis, task_id, service, priority, ngpus):
                 disable(redis, task_id, prev_service)
                 enable(redis, task_id, service)
                 redis.hset(keyt, "service", service)
-                redis.lrem('queued:'+prev_service, 0, task_id)
-                redis.lpush('queued:'+service, task_id)
+                redis.lrem('queued:' + prev_service, 0, task_id)
+                redis.lpush('queued:' + service, task_id)
         if priority:
             redis.hset(keyt, "priority", priority)
         if ngpus:
@@ -551,7 +589,7 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     with open(os.path.join(taskdir, filename), "wb") as fh:
         content = six.ensure_binary(content)
         if limit and len(content) >= limit:
-            content = content[:limit-len(disclaimer)] + disclaimer
+            content = content[:limit - len(disclaimer)] + disclaimer
         fh.write(content)
     return content
 
@@ -567,8 +605,8 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     if limit and current_size >= limit:
         return
     content = six.ensure_binary(content, encoding="utf-8")
-    if limit and len(content)+current_size >= limit:
-        content = content[:limit-len(disclaimer)] + disclaimer
+    if limit and len(content) + current_size >= limit:
+        content = content[:limit - len(disclaimer)] + disclaimer
     with open(filepath, "ab") as fh:
         fh.write(content)
 
