@@ -208,7 +208,7 @@ parser_launch.add_argument('-o', '--options', default='{}',
                            help='options selected to run the service')
 parser_launch.add_argument('-r', '--resource',
                            help="alternatively to `options`, resource name to use")
-parser_launch.add_argument('-g', '--gpus', type=int, default=1,
+parser_launch.add_argument('-g', '--gpus', type=int,
                            help='number of gpus')
 parser_launch.add_argument('-c', '--cpus', type=int, help='number of cpus - if not provided, '
                                                           'will be obtained from pool config')
@@ -464,6 +464,12 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
 
         if args.service not in service_list:
             raise ValueError("ERROR: service '%s' not defined" % args.service)
+
+        if args.gpus is None:
+            if "trans" in args.docker_command:
+                args.gpus = 0
+            else:
+                args.gpus = 1
 
         if args.gpus < 0:
             raise ValueError("ERROR: ngpus must be >= 0")
