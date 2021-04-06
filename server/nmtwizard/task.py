@@ -128,7 +128,7 @@ class TaskBase:
     def get_docker_image_from_db(service_module, mongo_client):
         image = "systran/pn9_tf"
         registry = get_registry(service_module, image)
-        tag = "v1.46.0-beta1"
+        tag = "v1.49.0"
 
         result = {
             "image": image,
@@ -258,7 +258,7 @@ class TaskScoring(TaskBase):
         task_infos.content["docker"] = {
             "image": image_score,
             "registry": get_registry(task_infos.routes_configuration.service_module, image_score),
-            "tag": "2.1.0-beta1",
+            "tag": "latest",
             "command": []
         }
 

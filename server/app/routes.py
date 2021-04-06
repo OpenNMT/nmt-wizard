@@ -889,8 +889,11 @@ def upload_user_files(routes_config, path, files):
 def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_percent):
     training_push_infos_list = []
     testing_push_infos_list = []
+    temp_files = tempfile.mkdtemp()
     for file in files:
-        push_infos = routes_config.storage_client.partition_auto(file,
+        tmp_file = os.path.join(temp_files, file.filename)
+        file.save(tmp_file)
+        push_infos = routes_config.storage_client.partition_auto(tmp_file,
                                                                  training_path,
                                                                  testing_path,
                                                                  remote_path=training_path,
