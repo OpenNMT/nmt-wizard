@@ -1227,6 +1227,7 @@ def create_model_catalog(training_task_id, input_name, request_data, image_tag, 
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
+    tags = [{'entity': tag.get('entity'), 'tag': tag.get('tag')} for tag in tags]
     config = {
         "source": source,
         "target": target,
