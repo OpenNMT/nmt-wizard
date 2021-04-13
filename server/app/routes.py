@@ -1156,12 +1156,12 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
     for current_sample_dist in current_sample_dists:
         duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
+        client_sample += int(sample_by_path[current_sample_dist['path']])
 
         if len(duplicate) > 0:
             continue
 
         new_sample_dists.append(current_sample_dist)
-        client_sample += int(sample_by_path[current_sample_dist['path']])
 
     new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
