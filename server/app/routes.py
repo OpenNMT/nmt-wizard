@@ -1523,6 +1523,7 @@ def launch(service):
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
+    # Parse tags from snw client
     if content.get('tags') and isinstance(content.get('tags'), list):
         parsed_tags = parse_tags(content.get('tags'))
         content['tags'] = parsed_tags
