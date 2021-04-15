@@ -237,7 +237,7 @@ parser_launch.add_argument('--nochainprepr', action='store_true',
 parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
 parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
-parser_launch.add_argument('--tag', nargs='*', help='model tags')
+parser_launch.add_argument('--tags', nargs='*', help='model tags')
 
 parser_list_tasks = subparsers_tasks.add_parser('list',
                                                 help='{lt} list tasks matching prefix pattern')
