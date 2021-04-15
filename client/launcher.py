@@ -518,18 +518,13 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                 content["totuminer"] = [(_parse_local_filename(i, files),
                                          o) for (i, o) in ARGS.totuminer]
 
-            if args.tag:
+            if args.tags:
                 content['tags'] = []
-                for tag in args.tag:
-                    tmp = {}
-                    entity = ''
+                for tag in args.tags:
+                    tmp = {'tag': tag}
                     if ':' in tag:
                         entity, tag_name = tag.split(':')
-                    else:
-                        tag_name = tag
-                    tmp['tag'] = tag_name
-                    if entity:
-                        tmp['entity'] = entity
+                        tmp = {'entity': entity, 'tag': tag_name}
                     content['tags'].append(tmp)
 
         LOGGER.debug("sending request: %s", json.dumps(content))
