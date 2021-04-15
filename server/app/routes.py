@@ -1506,7 +1506,9 @@ def parse_tags(tags):
         info_tag = builtins.pn9model_db.tag_get(entity, tag_name)
         if info_tag:
             result['existed'].append(str(info_tag.get('_id')))
-    return result
+        else:
+            return False, result
+    return True, result
 
 
 @app.route("/task/launch/<string:service>", methods=["POST"])
@@ -1525,7 +1527,10 @@ def launch(service):
 
     # Parse tags from snw client
     if content.get('tags') and isinstance(content.get('tags'), list):
-        parsed_tags = parse_tags(content.get('tags'))
+        res, parsed_tags = parse_tags(content.get('tags'))
+        if not res:
+            abort(flask.make_response(flask.jsonify(message="Invalid tags"), 400))
+
         content['tags'] = parsed_tags
 
     files = {}
