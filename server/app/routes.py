@@ -1288,6 +1288,12 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
     model_task_map = {}
     tasks_to_create = []
     models_info = []
+    google_docker_content = {}
+    if 'google_image_info' in docker_content:
+        google_docker_content = docker_content['google_image_info']
+        docker_content.pop('google_image_info')
+        google_docker_content['command'] = []
+
     for model in models:
         tasks_id_per_model = []
         tasks_to_create_per_model = []
@@ -1300,10 +1306,23 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
-        creation_infos.task_infos.content["docker"] = docker_content
-        task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
-                                       parent_task_id=model,
-                                       to_translate=creation_infos.to_translate_corpus)
+        if check_google_model(model):
+            creation_infos.task_infos.content["docker"] = google_docker_content
+            task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                           parent_task_id=model,
+                                           to_translate=creation_infos.to_translate_corpus)
+            lang_config = {
+                "source": creation_infos.task_infos.request_data['source'],
+                "target": creation_infos.task_infos.request_data['target']
+            }
+            config = ['-c', json.dumps(lang_config)]
+            task_translate.update_content_docker_command(config)
+        else:
+            creation_infos.task_infos.content["docker"] = docker_content
+            task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                           parent_task_id=model,
+                                           to_translate=creation_infos.to_translate_corpus)
+
         tasks_to_create_per_model.append(task_translate)
         tasks_id_per_model.append(task_translate.task_id)
 
@@ -1357,6 +1376,13 @@ def create_evaluation():
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False, output_path)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+    for model in models:
+        if check_google_model(model):
+            google_docker_image_info = TaskBase.get_google_docker_image_from_db(routes_config.service_module,
+                                                                                mongo_client)
+            docker_image_info['google_image_info'] = google_docker_image_info
+            break
+
     docker_content = {**docker_image_info, **{"command": []}}
     content = {
         "docker": {},
@@ -2258,3 +2284,10 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             result[key].append({**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
+
+
+def check_google_model(model):
+    if model.split('_')[0].lower() == 'google':
+        return True
+    else:
+        return False
