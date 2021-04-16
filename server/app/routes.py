@@ -1497,7 +1497,7 @@ def add_train_restricted_config(json_config, parent_task_id):
 
 
 def parse_tags(tags):
-    result = {'existed': []}
+    result = []
     for tag in tags:
         tag_name = tag.get('tag')
         entity = tag.get('entity', '')
@@ -1505,7 +1505,7 @@ def parse_tags(tags):
             entity = flask.g.user.entity.entity_code
         info_tag = builtins.pn9model_db.tag_get(entity, tag_name)
         if info_tag:
-            result['existed'].append(str(info_tag.get('_id')))
+            result.append({'tag': tag_name, 'entity': entity})
         else:
             return False, result
     return True, result
@@ -1525,7 +1525,7 @@ def launch(service):
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
-    # Parse tags from snw client
+    # Parse tags
     if content.get('tags') and isinstance(content.get('tags'), list):
         res, parsed_tags = parse_tags(content.get('tags'))
         if not res:
