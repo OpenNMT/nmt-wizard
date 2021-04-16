@@ -581,15 +581,17 @@ def create_tasks_for_launch_v2(creation_infos):
         "tasks_id": tasks_id,
         "train_task_id": train_task_id
     }
-    
+
     # Create tasks for parent model
-    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
-    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
-    
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if
+                                            SYSTRAN_BASE_STORAGE not in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if
+                                        SYSTRAN_BASE_STORAGE not in corpus[0]]
+
     create_trans_score_tasks_for_model(creation_infos.task_infos.request_data.get("parent_model"),
-                                              to_translate_corpus_for_parent_model,
-                                              to_score_corpus_for_parent_model,
-                                              creation_infos.task_infos.request_data)
+                                       to_translate_corpus_for_parent_model,
+                                       to_score_corpus_for_parent_model,
+                                       creation_infos.task_infos.request_data)
 
     return creation_output
 
@@ -621,7 +623,8 @@ def create_trans_score_tasks(creation_infos, model, docker_content, parent_model
 
     to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
     if model_info.get('tests'):
-        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus, to_score_corpus)
+        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus,
+                                                                        to_score_corpus)
 
     if not to_translate_corpus:
         return
@@ -686,7 +689,7 @@ def launch_v2():
         dataset_name = request_data.get("dataset_name")
 
         if dataset_name is None:
-          abort(make_response(jsonify(message="unknown dataset"), 400))
+            abort(make_response(jsonify(message="unknown dataset"), 400))
 
         entity_code = routes_config.creator['entity_code']
 
@@ -968,8 +971,8 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     dataset = get_dataset_by_name(entity_code, dataset_name)
 
     return {
-        'training': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_training)),
-        'testing': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_testing))
+        'training': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_training)),
+        'testing': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_testing))
     }
 
 
@@ -1074,7 +1077,7 @@ def get_final_training_config(request_data, training_corpus_infos):
                                                               boolean_param(request.args.get('short')))
     if ok:
         # Change batch size to settings value if specified
-        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"]\
+        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"] \
                 and "batch_size" in parent_config["options"]["config"]["train"]:
             batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
             if batch_size:
@@ -1125,7 +1128,7 @@ def adapt_distribution_proportions(distribution, get_new_value, new_val, is_pare
 
     for storage_block in distribution:
         if storage_block.get('distribution'):
-             storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
     return distribution
 
 
@@ -1165,8 +1168,10 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
     new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
-    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions, client_ratio)
-    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, is_parent=False)
+    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions,
+                                                  client_ratio)
+    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions,
+                                                      client_weight, is_parent=False)
 
     new_sample_dists.extend(sample_dists)
     return new_sample_size, new_sample_dists
@@ -1264,10 +1269,12 @@ def create_model_dataset(routes_config, request_data, service):
     return builtins.pn9model_db.insert_dataset(item)
 
 
-def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain, user_corpus, state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain,
+                         user_corpus, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
+    tags = [{'entity': tag.get('entity'), 'tag': tag.get('tag')} for tag in tags]
     config = {
         "source": source,
         "target": target,
@@ -1373,7 +1380,8 @@ def create_evaluation():
     models = request_data.get("models")
 
     testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False, output_path)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False,
+                                                                      output_path)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
     for model in models:
@@ -1555,6 +1563,21 @@ def add_train_restricted_config(json_config, parent_task_id):
     return json.dumps(config)
 
 
+def parse_tags(tags):
+    result = []
+    for tag in tags:
+        tag_name = tag.get('tag')
+        entity = tag.get('entity', '')
+        if not entity:
+            entity = flask.g.user.entity.entity_code
+        info_tag = builtins.pn9model_db.tag_get(entity, tag_name)
+        if info_tag:
+            result.append({'tag': tag_name, 'entity': entity})
+        else:
+            return False, result
+    return True, result
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
@@ -1568,6 +1591,14 @@ def launch(service):
         content = json.loads(content)
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+
+    # Parse tags
+    if content.get('tags') and isinstance(content.get('tags'), list):
+        res, parsed_tags = parse_tags(content.get('tags'))
+        if not res:
+            abort(flask.make_response(flask.jsonify(message="Invalid tags"), 400))
+
+        content['tags'] = parsed_tags
 
     files = {}
     for k in flask.request.files:
@@ -1878,7 +1909,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                        option_lang + ['-f', "launcher:scores"]
+                                   option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1933,7 +1964,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                        in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
@@ -2281,7 +2312,8 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
         for k, v in directories.items():
-            result[key].append({**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
+            result[key].append(
+                {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
 

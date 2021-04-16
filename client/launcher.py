@@ -236,6 +236,7 @@ parser_launch.add_argument('--nochainprepr', action='store_true',
 parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
 parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
+parser_launch.add_argument('--tags', nargs='*', help='model tags')
 
 parser_list_tasks = subparsers_tasks.add_parser('list',
                                                 help='{lt} list tasks matching prefix pattern')
@@ -521,6 +522,15 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             if 'totuminer' in args and args.totuminer:
                 content["totuminer"] = [(_parse_local_filename(i, files),
                                          o) for (i, o) in ARGS.totuminer]
+
+            if args.tags:
+                content['tags'] = []
+                for tag in args.tags:
+                    tmp = {'tag': tag}
+                    if ':' in tag:
+                        entity, tag_name = tag.split(':')
+                        tmp = {'entity': entity, 'tag': tag_name}
+                    content['tags'].append(tmp)
 
         LOGGER.debug("sending request: %s", json.dumps(content))
 
