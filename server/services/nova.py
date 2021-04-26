@@ -26,10 +26,12 @@ def _run_instance(client, launch_template_name, config, task_id="None"):
     if not isinstance(corpus_dir, list):
         corpus_dir = [corpus_dir]
     for corpus_description in corpus_dir:
-        userdata += "mkdir -p %s && chmod -R 775 %s\n" % (corpus_description["mount"], corpus_description["mount"])
+        userdata += "sudo mkdir -p %s && sudo chmod -R 775 %s\n" % (
+                corpus_description["mount"], corpus_description["mount"])
     if config["variables"].get("temporary_model_storage"):
-        userdata += "mkdir -p %s && chmod -R 775 %s" % (config["variables"]["temporary_model_storage"]["mount"],
-                                                        config["variables"]["temporary_model_storage"]["mount"])
+        userdata += "sudo mkdir -p %s && sudo chmod -R 775 %s" % (
+                config["variables"]["temporary_model_storage"]["mount"],
+                config["variables"]["temporary_model_storage"]["mount"])
 
     flavor = client.flavors.find(name=launch_template_name)
     client.servers.create(name=task_id, image=config['variables']['image_id'], flavor=flavor.id,
@@ -158,6 +160,7 @@ class NOVAService(Service):
                 [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
                 22,
                 params['login'],
+                pkey=self._config.get('pkey'),
                 key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
                 delay=self._config["variables"]["sshConnectionDelay"],
                 retry=self._config["variables"]["maxSshConnectionRetry"])
@@ -215,16 +218,17 @@ def init(config):
 
 
 def init_nova_client(config):
-    auth = v3.Password(auth_url=config["variables"]['auth_url'],
-                       username=config["variables"]['username'],
-                       password=config["variables"]['password'],
-                       project_id=config["variables"]['project_id'],
-                       project_name=config["variables"]['project_name'],
-                       user_domain_name=config["variables"]['user_domain_name'],
-                       project_domain_name=config["variables"]['project_domain_name'])
+    auth = v3.Password(auth_url=config["variables"]["auth_url"],
+                       username=config["variables"]["username"],
+                       password=config["variables"]["password"],
+                       project_id=config["variables"]["project_id"],
+                       project_name=config["variables"]["project_name"],
+                       user_domain_name=config["variables"]["user_domain_name"],
+                       project_domain_name=config["variables"]["project_domain_name"])
 
     sess = session.Session(auth=auth)
-    nova = client.Client(version=2.34, session=sess, region_name=config["variables"]['region_name'])
+    nova = client.Client(version=config["variables"]["nova_client_version"], session=sess,
+                         region_name=config["variables"]["region_name"])
     return nova
 
 

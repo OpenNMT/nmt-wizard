@@ -1,11 +1,11 @@
 #!/bin/sh
+sudo apt-get update
+sudo mkdir -p /home/ubuntu/inftraining_logs
+sudo mkdir -p /home/ubuntu/tmp
+sudo chown -R $USER /home/ubuntu/inftraining_logs
+sudo ln -s /usr/bin/python3 /usr/bin/python
+sudo mount /dev/sdb /home/ubuntu
 sudo -i
-apt-get update
-mkdir -p /home/ubuntu/inftraining_logs
-mkdir -p /home/ubuntu/tmp
-chown -R $USER /home/ubuntu/inftraining_logs
-ln -s /usr/bin/python3 /usr/bin/python
-mount /dev/sdb /home/ubuntu
 apt install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 add-apt-repository \
