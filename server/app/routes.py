@@ -1720,13 +1720,15 @@ def launch(service):
     priority = content.get("priority", 0)
 
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
+    if "parent_task" in content:
+        parent_task_id = content.get("parent_task")
     parent_struct = None
     parent_task_type = None
     if not exec_mode and parent_task_id:
         (parent_struct, parent_task_type) = model_name_analysis(parent_task_id)
 
     # check that parent model type matches current command
-    if parent_task_type:
+    if parent_task_type and "parent_task" not in content:
         if (parent_task_type == "trans" or parent_task_type == "relea" or
                 (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
             abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % parent_task_type), 400))

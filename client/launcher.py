@@ -237,6 +237,7 @@ parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
 parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 parser_launch.add_argument('--tags', nargs='*', help='model tags')
+parser_launch.add_argument('--parent_task', help='parent task ID')
 
 parser_list_tasks = subparsers_tasks.add_parser('list',
                                                 help='{lt} list tasks matching prefix pattern')
@@ -531,6 +532,9 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
                         entity, tag_name = tag.split(':')
                         tmp = {'entity': entity, 'tag': tag_name}
                     content['tags'].append(tmp)
+
+            if args.parent_task:
+                content['parent_task'] = args.parent_task
 
         LOGGER.debug("sending request: %s", json.dumps(content))
 
