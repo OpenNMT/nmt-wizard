@@ -3,7 +3,6 @@ import paramiko
 import six
 import time
 
-from botocore.exceptions import ClientError
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.ovh_instance_types import ovh_capacity_map
@@ -17,7 +16,7 @@ import os
 logger = logging.getLogger(__name__)
 
 
-def _run_instance(client, launch_template_name, config, task_id="None"):
+def _run_instance(nova_client, params, config, task_id="None"):
     path = os.path.dirname(os.path.realpath(__file__))+'/setup_ovh_instance.sh'
     with open(path) as f:
         userdata = f.read()
@@ -26,19 +25,19 @@ def _run_instance(client, launch_template_name, config, task_id="None"):
     if not isinstance(corpus_dir, list):
         corpus_dir = [corpus_dir]
     for corpus_description in corpus_dir:
-        userdata += "sudo mkdir -p %s && sudo chmod -R 775 %s\n" % (
+        userdata += "mkdir -p %s && chmod -R 775 %s\n" % (
                 corpus_description["mount"], corpus_description["mount"])
     if config["variables"].get("temporary_model_storage"):
-        userdata += "sudo mkdir -p %s && sudo chmod -R 775 %s" % (
+        userdata += "mkdir -p %s && chmod -R 775 %s" % (
                 config["variables"]["temporary_model_storage"]["mount"],
                 config["variables"]["temporary_model_storage"]["mount"])
 
-    flavor = client.flavors.find(name=launch_template_name)
-    client.servers.create(name=task_id, image=config['variables']['image_id'], flavor=flavor.id,
-                          nics=config['variables']['nics'], key_name=config['variables']['key_pair'],
-                          userdata=userdata, block_device_mapping=config['variables']['block_device_mapping'])
-    wait_until_running(client, name=task_id)
-    return client.servers.find(name=task_id)
+    flavor = nova_client.flavors.find(name=params['name'])
+    nova_client.servers.create(name=task_id, image=config['variables']['image_id'], flavor=flavor.id,
+                               nics=config['variables']['nics'], key_name=config['variables']['key_pair'],
+                               userdata=userdata, block_device_mapping=config['variables']['block_device_mapping'])
+    wait_until_running(nova_client, config, params, name=task_id)
+    return nova_client.servers.find(name=task_id)
 
 
 def _get_params(templates, options):
@@ -123,13 +122,7 @@ class NOVAService(Service):
         }
 
     def check(self, options, docker_registries_list):
-        if "launchTemplateName" not in options:
-            raise ValueError("missing launchTemplateName option")
-        try:
-            nova_client = self._nova_client
-            _ = _run_instance(nova_client, options["launchTemplateName"], self._config)
-        except ClientError as e:
-            raise e
+        # TODO: Check create new instance.
         return ""
 
     def launch(self,
@@ -150,14 +143,15 @@ class NOVAService(Service):
         options['server'] = resource
         params = _get_params(self._templates, options)
         nova_client = self._nova_client
-        instance = _run_instance(nova_client, params["name"], self._config, task_id=task_id)
+        instance = _run_instance(nova_client, params, self._config, task_id=task_id)
         if not instance:
             raise RuntimeError("no instances were created")
         logger.info("OVH - Instance %s is running.", instance.id)
-        client = paramiko.SSHClient()
+        public_dns_name = [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr']
+        ssh_client = paramiko.SSHClient()
         try:
-            client = common.ssh_connect_with_retry(
-                [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
+            ssh_client = common.ssh_connect_with_retry(
+                public_dns_name,
                 22,
                 params['login'],
                 pkey=self._config.get('pkey'),
@@ -170,7 +164,7 @@ class NOVAService(Service):
                 callback_url = callback_url.replace("://", "://"+auth_token+":x@")
             task = common.launch_task(
                 task_id,
-                client,
+                ssh_client,
                 (xpulist[0], None),
                 params,
                 docker_config,
@@ -188,24 +182,40 @@ class NOVAService(Service):
             if self._config["variables"].get("terminateOnError", True):
                 self.terminate(instance)
                 logger.info("Terminated instance (on launch error): %s.", instance.id)
-            client.close()
+            ssh_client.close()
             raise e
         finally:
-            client.close()
-        task["instance_id"] = instance.id
+            ssh_client.close()
+        task['instance_id'] = instance.id
+        task['host'] = public_dns_name
+        task['port'] = 22
+        task['login'] = params['login']
+        task['log_dir'] = params['log_dir']
         return task
 
-    def status(self, task_id, params):
-        instance_id = params["instance_id"] if isinstance(params, dict) else params
-        nova_client = self._nova_client
-        # TODO: actually check if the task is running, not only the instance.
-        try:
-            status = nova_client.servers.find(id=instance_id).status
-            if status == 'ERROR':
-                return "dead"
-            return status
-        except novaclient.exceptions.NotFound:
+    def status(self, task_id, params, get_log=True):
+        ssh_client = common.ssh_connect_with_retry(
+            params['host'],
+            params['port'],
+            params['login'],
+            pkey=self._config.get('pkey'),
+            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
+            delay=self._config["variables"]["sshConnectionDelay"],
+            retry=self._config["variables"]["maxSshConnectionRetry"])
+
+        if 'container_id' in params:
+            exit_status, stdout, stderr = common.run_docker_command(
+                ssh_client, 'inspect -f {{.State.Status}} %s' % params['container_id'])
+        else:
+            exit_status, stdout, stderr = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
+
+        if get_log:
+            common.update_log(task_id, ssh_client, params['log_dir'], self._config.get('callback_url'))
+
+        ssh_client.close()
+        if exit_status != 0:
             return "dead"
+        return "running"
 
     def terminate(self, instance):
         nova_client = self._nova_client
@@ -232,10 +242,28 @@ def init_nova_client(config):
     return nova
 
 
-def wait_until_running(client, name):
+def wait_until_running(nova_client, config, params, name):
     status = ''
     while status != 'ACTIVE':
-        time.sleep(10)
-        status = client.servers.find(name=name).status
+        time.sleep(60)
+        instance = nova_client.servers.find(name=name)
+        status = instance.status
         if status == 'ERROR':
             raise Exception("OVH - Create instance failed")
+        elif status == 'ACTIVE':
+            count = 10
+            ssh_client = common.ssh_connect_with_retry(
+                [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
+                22,
+                params['login'],
+                pkey=config.get('pkey'),
+                key_filename=config.get('key_filename') or config.get('privateKey'),
+                delay=config["variables"]["sshConnectionDelay"],
+                retry=config["variables"]["maxSshConnectionRetry"])
+            while count > 0:
+                time.sleep(60)
+                if common.program_exists(ssh_client, "docker"):
+                    break
+                count -= 1
+            if count < 0:
+                raise ValueError("Install docker for OVH instance failed")
