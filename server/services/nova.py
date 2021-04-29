@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 def _run_instance(nova_client, params, config, task_id="None"):
-    path = os.path.dirname(os.path.realpath(__file__))+'/setup_ovh_instance.sh'
-    with open(path) as f:
-        userdata = f.read()
+    userdata = open(os.path.dirname(os.path.realpath(__file__))+'/setup_ovh_instance.sh').read()
+    # add nfs server to mounting volume
+    if config["variables"].get("nfs_server_ip_addr"):
+        userdata += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
+                     config["variables"]["nfs_server_ip_addr"])
     # mounting corpus and temporary model directories
     corpus_dir = config["corpus"]
     if not isinstance(corpus_dir, list):
@@ -32,10 +34,13 @@ def _run_instance(nova_client, params, config, task_id="None"):
                 config["variables"]["temporary_model_storage"]["mount"],
                 config["variables"]["temporary_model_storage"]["mount"])
 
+    if params['gpus'].stop != 0:
+        image_id = config['variables']['gpu_image_id']
+    else:
+        image_id = config['variables']['image_id']
     flavor = nova_client.flavors.find(name=params['name'])
-    nova_client.servers.create(name=task_id, image=config['variables']['image_id'], flavor=flavor.id,
-                               nics=config['variables']['nics'], key_name=config['variables']['key_pair'],
-                               userdata=userdata, block_device_mapping=config['variables']['block_device_mapping'])
+    nova_client.servers.create(name=task_id, image=image_id, flavor=flavor.id, nics=config['variables']['nics'],
+                               key_name=config['variables']['key_pair'], userdata=userdata)
     wait_until_running(nova_client, config, params, name=task_id)
     return nova_client.servers.find(name=task_id)
 
@@ -180,7 +185,7 @@ class NOVAService(Service):
                 support_statistics=support_statistics)
         except Exception as e:
             if self._config["variables"].get("terminateOnError", True):
-                self.terminate(instance)
+                self.terminate(instance.id)
                 logger.info("Terminated instance (on launch error): %s.", instance.id)
             ssh_client.close()
             raise e
@@ -217,10 +222,11 @@ class NOVAService(Service):
             return "dead"
         return "running"
 
-    def terminate(self, instance):
+    def terminate(self, params):
+        instance_id = params["instance_id"] if isinstance(params, dict) else params
         nova_client = self._nova_client
-        nova_client.servers.delete(instance.id)
-        logger.info("Terminated instance (on terminate): %s.", instance.id)
+        nova_client.servers.delete(instance_id)
+        logger.info("Terminated instance (on terminate): %s.", instance_id)
 
 
 def init(config):
@@ -251,7 +257,7 @@ def wait_until_running(nova_client, config, params, name):
         if status == 'ERROR':
             raise Exception("OVH - Create instance failed")
         elif status == 'ACTIVE':
-            count = 10
+            count = 5
             ssh_client = common.ssh_connect_with_retry(
                 [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
                 22,
@@ -266,4 +272,4 @@ def wait_until_running(nova_client, config, params, name):
                     break
                 count -= 1
             if count < 0:
-                raise ValueError("Install docker for OVH instance failed")
+                raise Exception("Install docker for OVH instance failed")
