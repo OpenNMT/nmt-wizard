@@ -1665,7 +1665,7 @@ def launch(service):
         if (task_type != "train" and iterations != 1) or iterations < 1:
             abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
-    ngpus = 0 if task_type == TASK_RELEASE_TYPE else 1
+    ngpus = 1 if task_type == "train" else 0
     if "ngpus" in content:
         ngpus = content["ngpus"]
     ncpus = content.get("ncpus")
