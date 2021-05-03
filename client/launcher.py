@@ -188,6 +188,7 @@ for arg in exec_arguments:
     parser_exec.add_argument(*arg[:-1], **arg[-1])
 parser_exec.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 parser_exec.add_argument('-e', '--entity_owner', help='entity owner')
+parser_exec.add_argument('--dependency', help='dependency task (will launch after this task is terminated)')
 
 parser_launch = subparsers.add_parser('launch',
                                       help='launch a task on the service associated'
@@ -237,6 +238,7 @@ parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
 parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 parser_launch.add_argument('--tags', nargs='*', help='model tags')
+parser_launch.add_argument('--dependency', help='dependency task (will launch after this task is terminated)')
 
 parser_list_tasks = subparsers_tasks.add_parser('list',
                                                 help='{lt} list tasks matching prefix pattern')
@@ -500,6 +502,8 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             content["name"] = args.name
         if args.priority:
             content["priority"] = args.priority
+        if args.dependency:
+            content["dependency"] = args.dependency
 
         if cmd == "task" and subcmd == "launch":
             if args.iterations:

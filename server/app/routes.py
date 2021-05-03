@@ -1740,10 +1740,14 @@ def launch(service):
 
     task_ids = []
     task_create = []
-
+    first_of_chain = True
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
             prepr_task_id, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
+
+            if "dependency" in content and first_of_chain:
+                parent_task_id = content["dependency"]
+                first_of_chain = False
 
             if explicit_name:
                 TaskBase.patch_config_explicit_name(content, explicit_name)
@@ -1785,6 +1789,10 @@ def launch(service):
         if task_type != "prepr":
 
             task_id, explicit_name = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            if "dependency" in content and first_of_chain:
+                parent_task_id = content["dependency"]
+                first_of_chain = False
 
             if explicit_name:
                 TaskBase.patch_config_explicit_name(content, explicit_name)
