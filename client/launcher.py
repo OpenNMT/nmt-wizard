@@ -159,7 +159,7 @@ exec_arguments = [
                          "help": 'options selected to run the service'}],
     ['-r', '--resource',
      {"help": "alternatively to `options`, resource name to use"}],
-    ['-g', '--gpus', {"type": int, "default": 1, "help": 'number of gpus'}],
+    ['-g', '--gpus', {"type": int, "help": 'number of gpus'}],
     ['-c', '--cpus', {"type": int,
                       "help": 'number of cpus - if not provided, will be obtained '
                               'from pool config'}],
@@ -467,7 +467,7 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             raise ValueError("ERROR: service '%s' not defined" % args.service)
 
         if args.gpus is None:
-            if "trans" in args.docker_command:
+            if "trans" in args.docker_command or "score" in args.docker_command:
                 args.gpus = 0
             else:
                 args.gpus = 1
