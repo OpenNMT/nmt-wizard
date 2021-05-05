@@ -17,22 +17,26 @@ logger = logging.getLogger(__name__)
 
 
 def _run_instance(nova_client, params, config, task_id="None"):
-    userdata = open(os.path.dirname(os.path.realpath(__file__))+'/setup_ovh_instance.sh').read()
-    # add nfs server to mounting volume
+    # userdata2 - script to install docker
+    [userdata1, userdata2] = open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh').read().split(
+        "#install docker")
+    # add the nfs server to the script to mount volume
     if config["variables"].get("nfs_server_ip_addr"):
-        userdata += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
+        userdata1 += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
                      config["variables"]["nfs_server_ip_addr"])
-    # mounting corpus and temporary model directories
+    # create folder to mount corpus and temporary model directories
     corpus_dir = config["corpus"]
     if not isinstance(corpus_dir, list):
         corpus_dir = [corpus_dir]
     for corpus_description in corpus_dir:
-        userdata += "mkdir -p %s && chmod -R 775 %s\n" % (
+        userdata1 += "mkdir -p %s && chmod -R 775 %s\n" % (
                 corpus_description["mount"], corpus_description["mount"])
     if config["variables"].get("temporary_model_storage"):
-        userdata += "mkdir -p %s && chmod -R 775 %s" % (
+        userdata1 += "mkdir -p %s && chmod -R 775 %s" % (
                 config["variables"]["temporary_model_storage"]["mount"],
                 config["variables"]["temporary_model_storage"]["mount"])
+    # add the docker installation script at the end of the instance installation script
+    userdata = userdata1 + userdata2
 
     if params['gpus'].stop != 0:
         image_id = config['variables']['gpu_image_id']
@@ -257,7 +261,6 @@ def wait_until_running(nova_client, config, params, name):
         if status == 'ERROR':
             raise Exception("OVH - Create instance failed")
         elif status == 'ACTIVE':
-            count = 5
             ssh_client = common.ssh_connect_with_retry(
                 [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
                 22,
@@ -266,10 +269,12 @@ def wait_until_running(nova_client, config, params, name):
                 key_filename=config.get('key_filename') or config.get('privateKey'),
                 delay=config["variables"]["sshConnectionDelay"],
                 retry=config["variables"]["maxSshConnectionRetry"])
+            # check instance until docker installation is complete (max 6 minutes)
+            count = 6
             while count > 0:
                 time.sleep(60)
                 if common.program_exists(ssh_client, "docker"):
                     break
                 count -= 1
-            if count < 0:
+            if count == 0:
                 raise Exception("Install docker for OVH instance failed")
