@@ -20,21 +20,22 @@ def _run_instance(nova_client, params, config, task_id="None"):
     # userdata2 - script to install docker
     [userdata1, userdata2] = open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh').read().split(
         "#install docker")
-    # add the nfs server to the script to mount volume
-    if config["variables"].get("nfs_server_ip_addr"):
-        userdata1 += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
-                     config["variables"]["nfs_server_ip_addr"])
     # create folder to mount corpus and temporary model directories
     corpus_dir = config["corpus"]
     if not isinstance(corpus_dir, list):
         corpus_dir = [corpus_dir]
     for corpus_description in corpus_dir:
         userdata1 += "mkdir -p %s && chmod -R 775 %s\n" % (
-                corpus_description["mount"], corpus_description["mount"])
+            corpus_description["mount"], corpus_description["mount"])
     if config["variables"].get("temporary_model_storage"):
-        userdata1 += "mkdir -p %s && chmod -R 775 %s" % (
-                config["variables"]["temporary_model_storage"]["mount"],
-                config["variables"]["temporary_model_storage"]["mount"])
+        userdata1 += "mkdir -p %s && chmod -R 775 %s\n" % (
+            config["variables"]["temporary_model_storage"]["mount"],
+            config["variables"]["temporary_model_storage"]["mount"])
+    # add the nfs server to the script to mount volume
+    if config["variables"].get("nfs_server_ip_addr"):
+        userdata1 += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
+            config["variables"]["nfs_server_ip_addr"])
+    userdata1 += "chown -R ubuntu /home/ubuntu/model_studio"
     # add the docker installation script at the end of the instance installation script
     userdata = userdata1 + userdata2
 
@@ -151,6 +152,7 @@ class NOVAService(Service):
                support_statistics):
         options['server'] = resource
         params = _get_params(self._templates, options)
+        params['service'] = 'nova'
         nova_client = self._nova_client
         instance = _run_instance(nova_client, params, self._config, task_id=task_id)
         if not instance:
@@ -274,6 +276,7 @@ def wait_until_running(nova_client, config, params, name):
             while count > 0:
                 time.sleep(60)
                 if common.program_exists(ssh_client, "docker"):
+                    time.sleep(20)
                     break
                 count -= 1
             if count == 0:

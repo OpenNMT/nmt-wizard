@@ -310,6 +310,11 @@ def cmd_docker_run(lxpu, docker_options, task_id,
 
     # launch the task
     cmd = '%s_o_run_o_-i_o_--rm' % docker_cmd
+
+    # option for OVH nova service
+    if server_params.get('service') == 'nova':
+        cmd += '_o_--network_o_host'
+
     if need_expose_gpus:
         cmd += '_o_--gpus=all'
     if 'mount' in docker_options:
