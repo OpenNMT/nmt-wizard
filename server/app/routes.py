@@ -1076,6 +1076,8 @@ def get_final_training_config(request_data, training_corpus_infos):
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        # Remove build object from parent config
+        parent_config.pop('build', None)
         # Change batch size to settings value if specified
         if "config" in parent_config["options"] and "train" in parent_config["options"]["config"] \
                 and "batch_size" in parent_config["options"]["config"]["train"]:
