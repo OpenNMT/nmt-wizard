@@ -1778,7 +1778,7 @@ def launch(service):
                 (redis_db, taskfile_dir,
                  prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
                  _duplicate_adapt(service_module, content),
-                 files, priority, 0, content["ncpus"], other_task_info))
+                 files, priority, 0, content["ncpus"], deepcopy(other_task_info)))
             task_ids.append(
                 "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
@@ -1824,7 +1824,7 @@ def launch(service):
                  _duplicate_adapt(service_module, content),
                  files, priority,
                  content["ngpus"], content["ncpus"],
-                 other_task_info))
+                 deepcopy(other_task_info)))
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                 task_type, task_id,
                 content["ngpus"], content["ncpus"]))
@@ -1877,7 +1877,7 @@ def launch(service):
                          _duplicate_adapt(service_module, content_translate),
                          (), content_translate["priority"],
                          content_translate["ngpus"], content_translate["ncpus"],
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "trans", trans_task_id,
                         content_translate["ngpus"], content_translate["ncpus"]))
@@ -1927,7 +1927,7 @@ def launch(service):
                          content_score,
                          files, priority + 2,
                          0, 1,
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "score", score_task_id,
                         0, 1))
@@ -1982,7 +1982,7 @@ def launch(service):
                          content_tuminer,
                          (), priority + 2,
                          ngpus_recommend, ncpus_recommend,
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "tuminer", tuminer_task_id,
                         ngpus_recommend, ncpus_recommend))
