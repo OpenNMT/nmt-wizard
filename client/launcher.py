@@ -467,10 +467,10 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             raise ValueError("ERROR: service '%s' not defined" % args.service)
 
         if args.gpus is None:
-            if "trans" in args.docker_command or "score" in args.docker_command:
-                args.gpus = 0
-            else:
+            if "train" in args.docker_command:
                 args.gpus = 1
+            else:
+                args.gpus = 0
         
         if args.gpus < 0:
             raise ValueError("ERROR: ngpus must be >= 0")
