@@ -1,6 +1,7 @@
 boto3
 enum34
 flask
+flask_session
 ovh
 paramiko
 redis>=3.0.0

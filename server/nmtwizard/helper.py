@@ -4,6 +4,9 @@ import time
 import uuid
 
 from bson import json_util
+from flask import abort, jsonify, make_response
+
+from nmtwizard import configuration as config
 
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
@@ -169,6 +172,8 @@ def build_task_id(content, xxyy, task_type, parent_task):
         trid = content['trainer_id']
 
     name = content["name"] if "name" in content else None
+    if name is not None:
+        name = name.replace("-", "").replace("_", "")[:15]
     parent_uuid = ''
     nn = None
     parent_task_type = None
@@ -219,6 +224,12 @@ def get_cpu_count(config, ngpus, task):
     return 2
 
 
+def get_gpu_count(config, task):
+    if "gpu_allocation" in config:
+        return config["gpu_allocation"].get("%s_task" % task, 1)
+    return 1
+
+
 def get_params(lparam, listcmd):
     res = []
     idx = 0
@@ -240,3 +251,21 @@ def boolean_param(value):
                 value == "0" or
                 value == "False" or
                 value == "false")
+
+
+def get_registry(service_module, image):
+    from app import mongo_client
+    p = image.find("/")
+    if p == -1:
+        abort(make_response(jsonify(message="image should be repository/name"), 400))
+    repository = image[:p]
+    registry = None
+    docker_registries = config.get_registries(mongo_client, service_module.name)
+    for r in docker_registries:
+        v = docker_registries[r]
+        if "default_for" in v and repository in v['default_for']:
+            registry = r
+            break
+    if registry is None:
+        abort(make_response( jsonify(message="cannot find registry for repository %s" % repository), 400))
+    return registry

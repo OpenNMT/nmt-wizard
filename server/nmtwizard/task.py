@@ -2,12 +2,20 @@ import time
 import json
 import os
 import shutil
+from functools import cmp_to_key
+import builtins
+import semver
+from copy import deepcopy
 from enum import Enum
+from nmtwizard.capacity import Capacity
+from nmtwizard.helper import build_task_id, get_cpu_count, get_gpu_count, get_registry, change_parent_task
 
 import six
 
+TASK_RELEASE_TYPE = "relea"
 
-class TaskInfo(Enum):
+
+class TaskEnum(Enum):
     ENTITY_OWNER = "owner"
     STORAGE_ENTITIES = "storage_entities"
 
@@ -15,8 +23,304 @@ class TaskInfo(Enum):
 ttl_policy_func = None
 
 
-def get_task_entity(task_id):
-    return task_id[:2] if task_id else ""
+class TaskInfos:
+    def __init__(self, content, files, request_data, routes_configuration, service, other_infos=None, resource=None):
+        self.content = content
+        self.files = files
+        self.request_data = request_data
+        self.routes_configuration = routes_configuration
+        self.service = service
+        self.other_infos = other_infos
+        self.resource = resource
+
+
+class TasksCreationInfos:
+    def __init__(self, task_infos, to_translate_corpus, to_score_corpus):
+        self.task_infos = task_infos
+        self.to_translate_corpus = to_translate_corpus
+        self.to_score_corpus = to_score_corpus
+
+
+class TaskBase:
+    def __init__(self, task_infos, must_patch_config_name=False):
+        self._content = deepcopy(task_infos.content)
+        self._lang_pair = f'{task_infos.request_data["source"]}{task_infos.request_data["target"]}'
+        if not self._lang_pair and self._parent_task_id:
+            self._lang_pair = self._parent_task_id.split("_")[1]
+        self._service = task_infos.service
+        self._service_config = task_infos.routes_configuration.service_config
+        self._service_module = task_infos.routes_configuration.service_module
+        self._files = task_infos.files
+        self.other_task_info = {TaskEnum.ENTITY_OWNER.value: task_infos.routes_configuration.entity_owner,
+                                TaskEnum.STORAGE_ENTITIES.value: json.dumps(
+                                    task_infos.routes_configuration.trainer_entities)}
+        if task_infos.other_infos:
+            self.update_other_infos(task_infos.other_infos)
+        self._priority = self._content.get("priority", 0)
+        self._resource = task_infos.resource
+
+        if self._task_suffix:
+            self.task_id, explicit_name = build_task_id(self._content, self._lang_pair, self._task_suffix,
+                                                        self._parent_task_id)
+            if must_patch_config_name:
+                TaskBase.patch_config_explicit_name(self._content, explicit_name)
+
+        if self._resource:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._resource, Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
+        else:
+            self._resource = self._service_module.select_resource_from_capacity(
+                self._service_module.get_resource_from_options(self._content["options"]),
+                Capacity(self._content["ngpus"], self._content["ncpus"])
+            )
+
+    def update_other_infos(self, other_infos):
+        self.other_task_info.update(other_infos)
+
+    def update_content_docker_command(self, infos):
+        self._content['docker']['command'] = infos + self._content['docker']['command']
+
+    def create(self, redis_db, taskfile_dir):
+        create_internal(redis_db,
+                        taskfile_dir,
+                        self.task_id,
+                        self._task_type,
+                        self._parent_task_id,
+                        self._resource,
+                        self._service,
+                        self._content,
+                        self._files,
+                        self._priority,
+                        self._content["ngpus"],
+                        self._content["ncpus"],
+                        self.other_task_info)
+        self.post_create()
+
+    def post_create(self):
+        pass
+
+    @staticmethod
+    def patch_config_explicit_name(content, explicit_name):
+        if "docker" in content and content["docker"].get("command"):
+            idx = 0
+            command = content["docker"].get("command")
+            while idx < len(command):
+                if command[idx][0] != '-':
+                    return
+                if command[idx] == '-m' or command[idx] == '--model':
+                    return
+                if command[idx] == '--no_push':
+                    idx += 1
+                    continue
+                if command[idx] == '-c' or command[idx] == '--config':
+                    config = json.loads(command[idx + 1])
+                    config["modelname_description"] = explicit_name
+                    command[idx + 1] = json.dumps(config)
+                    return
+                idx += 2
+
+    @staticmethod
+    def get_docker_image_info(routes_config, docker_image, mongo_client):
+        if not docker_image:
+            return TaskBase.get_docker_image_from_db(routes_config.service_module, mongo_client)
+        return TaskBase.get_docker_image_from_request(routes_config.service_module, routes_config.entity_owner,
+                                                      docker_image)
+
+    @staticmethod
+    def get_google_docker_image_from_db(service_module, mongo_client):
+        image = "nmtwizard/google-translate"
+        registry = get_registry(service_module, image)
+        tag = "2.9.4"
+
+        result = {
+            "image": image,
+            "tag": tag,
+            "registry": registry
+        }
+
+        latest_docker_image_tag = TaskBase.get_latest_docker_image_tag(image, mongo_client)
+
+        if not latest_docker_image_tag:
+            return result
+        return {**result, **{"tag": f'{latest_docker_image_tag}'}}
+
+    @staticmethod
+    def get_docker_image_from_db(service_module, mongo_client):
+        image = "systran/pn9_tf"
+        registry = get_registry(service_module, image)
+        tag = "v1.49.0"
+
+        result = {
+            "image": image,
+            "tag": tag,
+            "registry": registry
+        }
+
+        latest_docker_image_tag = TaskBase.get_latest_docker_image_tag(image, mongo_client)
+
+        if not latest_docker_image_tag:
+            return result
+        return {**result, **{"tag": f'v{latest_docker_image_tag}'}}
+
+    @staticmethod
+    def get_latest_docker_image_tag(image, mongo_client):
+        docker_images = list(mongo_client.get_docker_images(image))
+        if len(docker_images) == 0:
+            return None
+        only_tag_docker_images = list(
+            map(lambda docker_image: TaskBase.get_docker_image_tag(docker_image["image"]), docker_images))
+        only_tag_docker_images = list(filter(lambda tag: tag != "latest", only_tag_docker_images))
+        if len(only_tag_docker_images) == 0:
+            return None
+        if len(only_tag_docker_images) == 1:
+            return only_tag_docker_images[0]
+        sorted_docker_image_tags = sorted(only_tag_docker_images, key=cmp_to_key(
+            lambda x, y: semver.compare(x, y)), reverse=True)
+        return sorted_docker_image_tags[0]
+
+    @staticmethod
+    def get_docker_image_tag(image):
+        split_name = image.split(":")
+        if len(split_name) < 2:
+            return None
+        tag = split_name[-1]
+        if not tag.startswith("v"):
+            return tag
+        return tag[1:]
+
+    @staticmethod
+    def get_docker_image_from_request(service_module, entity_owner, docker_image):
+        result = {**docker_image}
+        registry = docker_image["registry"]
+        if registry == "auto":
+            result["registry"] = get_registry(service_module, docker_image["image"])
+            return result
+        if registry not in service_module.get_docker_config(entity_owner)['registries']:
+            raise Exception(f"Unknown docker registry: {registry}")
+        return result
+
+
+class TaskPreprocess(TaskBase):
+    def __init__(self, task_infos):
+        self._task_suffix = "prepr"
+        self._task_type = "prepr"
+        self._parent_task_id = None
+        # launch preprocess task on cpus only
+        task_infos.content["ngpus"] = 0
+        task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                    task_infos.content["ngpus"], "preprocess")
+
+        idx = 0
+        preprocess_command = []
+        train_command = task_infos.content["docker"]["command"]
+        while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
+            preprocess_command.append(train_command[idx])
+            idx += 1
+
+        # create preprocess command, don't push the model on the catalog,
+        # and generate a pseudo model
+        preprocess_command.append("--no_push")
+        preprocess_command.append("preprocess")
+        preprocess_command.append("--build_model")
+        task_infos.content["docker"]["command"] = preprocess_command
+
+        TaskBase.__init__(self, task_infos, must_patch_config_name=True)
+
+
+class TaskTrain(TaskBase):
+    def __init__(self, task_infos, parent_task_id):
+        self._task_suffix = "train"
+        self._task_type = "train"
+        self._parent_task_id = parent_task_id
+
+        task_infos.content["ngpus"] = get_gpu_count(task_infos.routes_configuration.service_config, "train")
+        task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                    task_infos.content["ngpus"], "train")
+
+        TaskBase.__init__(self, task_infos, must_patch_config_name=True)
+
+
+class TaskTranslate(TaskBase):
+    def __init__(self, task_infos, parent_task_id, to_translate):
+        self._task_suffix = "trans"
+        self._task_type = "trans"
+        self._parent_task_id = parent_task_id
+
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
+        task_infos.content["ngpus"] = 0
+        task_infos.content["ncpus"] = get_cpu_count(task_infos.routes_configuration.service_config,
+                                                    task_infos.content["ngpus"], "trans")
+
+        task_infos.content["docker"]["command"] = ["trans"]
+        task_infos.content["docker"]["command"].append("--as_release")
+        task_infos.content["docker"]["command"].append('-i')
+        for f in to_translate:
+            task_infos.content["docker"]["command"].append(f[0])
+        change_parent_task(task_infos.content["docker"]["command"], parent_task_id)
+        task_infos.content["docker"]["command"].append('-o')
+        for f in to_translate:
+            sub_file = f[1].replace('<MODEL>', parent_task_id)
+            task_infos.content["docker"]["command"].append(sub_file)
+
+        TaskBase.__init__(self, task_infos)
+
+
+class TaskScoring(TaskBase):
+    def __init__(self, task_infos, parent_task_id, model, to_score):
+        self._task_suffix = "score"
+        self._task_type = "exec"
+        self._parent_task_id = parent_task_id
+
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 1
+        task_infos.content["ngpus"] = 0
+        task_infos.content["ncpus"] = 1
+        image_score = "nmtwizard/score"
+        task_infos.content["docker"] = {
+            "image": image_score,
+            "registry": get_registry(task_infos.routes_configuration.service_module, image_score),
+            "tag": "latest",
+            "command": []
+        }
+
+        output_corpus = []
+        references_corpus = []
+        for corpus in to_score:
+            output_file = corpus[0].replace('<MODEL>', model)
+            output_corpus.append(output_file)
+            references_corpus.append(corpus[1])
+
+        task_infos.content["docker"]["command"] = ["score", "-o"]
+        task_infos.content["docker"]["command"].extend(output_corpus)
+        task_infos.content["docker"]["command"].append("-r")
+        task_infos.content["docker"]["command"].extend(references_corpus)
+        task_infos.content["docker"]["command"].extend(["-l", task_infos.request_data['target'],
+                                                        "-f", "launcher:scores"])
+
+        TaskBase.__init__(self, task_infos)
+
+
+class TaskRelease(TaskBase):
+    def __init__(self, task_infos, model, destination, mongo_client):
+        self._task_suffix = TASK_RELEASE_TYPE
+        self._task_type = TASK_RELEASE_TYPE
+        self._parent_task_id = model
+
+        task_infos.content["priority"] = task_infos.content.get("priority", 0) + 10
+        task_infos.content["ngpus"] = 0
+        task_infos.content["ncpus"] = 2
+        task_infos.content["docker"] = TaskBase.get_docker_image_from_db(task_infos.routes_configuration.service_module,
+                                                                         mongo_client)
+        task_infos.content["docker"]["command"] = ['--model',
+                                                   self._parent_task_id,
+                                                   'release',
+                                                   '--destination',
+                                                   destination]
+        TaskBase.__init__(self, task_infos)
+
+    def post_create(self):
+        builtins.pn9model_db.model_set_release_state(self._parent_task_id, self._content["trainer_id"], self.task_id,
+                                                     "in progress")
 
 
 def set_ttl_policy(func):
@@ -42,9 +346,8 @@ def exists(redis, task_id):
     return redis.exists("task:" + task_id)
 
 
-def create(redis, taskfile_dir,
-           task_id, task_type, parent_task, resource, service, content,
-           files, priority, ngpus, ncpus, generic_map):
+def create_internal(redis, taskfile_dir, task_id, task_type, parent_task, resource, service, content, files, priority,
+                    ngpus, ncpus, generic_map):
     """Creates a new task and enables it."""
     keyt = "task:" + task_id
     redis.hset(keyt, "type", task_type)
@@ -185,8 +488,8 @@ def change(redis, task_id, service, priority, ngpus):
 
 def get_owner_entity(redis, task_id):
     key_task_id = "task:" + task_id
-    owner_entity = redis.hget(key_task_id, TaskInfo.ENTITY_OWNER.value)
-    if not owner_entity:  # TODO: usefull only for the first deployment
+    owner_entity = redis.hget(key_task_id, TaskEnum.ENTITY_OWNER.value)
+    if not owner_entity:  # TODO: useful only for the first deployment
         service = redis.hget(key_task_id, "service")
         owner_entity = service[:2]
     return owner_entity.upper()
@@ -194,7 +497,7 @@ def get_owner_entity(redis, task_id):
 
 def get_storages_entity(redis, task_id):
     key_task_id = "task:" + task_id
-    task_storage_entities = redis.hget(key_task_id, TaskInfo.STORAGE_ENTITIES.value)
+    task_storage_entities = redis.hget(key_task_id, TaskEnum.STORAGE_ENTITIES.value)
     return json.loads(task_storage_entities) if task_storage_entities else None
 
 
