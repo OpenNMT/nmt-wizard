@@ -9,7 +9,8 @@ import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-
+from server.routes.task import send_task_status_notification_email
+from threading import Thread
 
 def _compatible_resource(resource, request_resource):
     if request_resource in ['auto', resource]:
@@ -208,6 +209,7 @@ class Worker(object):
             self._logger.info(traceback.format_exc())
             task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
             task.terminate(self._redis, task_id, phase='launch_error')
+            self._send_notification_email_when_task_failed(task_id, phase='launch_error')
             self._logger.info(traceback.format_exc())
             return
         self._logger.info('%s: task started on %s', task_id, service.name)
@@ -566,6 +568,7 @@ class Worker(object):
 
                         if self._redis.hget(keyp, 'message') != 'completed':
                             task.terminate(self._redis, next_task_id, phase='dependency_error')
+                            self._send_notification_email_when_task_failed(next_task_id, phase='dependency_error')
                             return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
@@ -683,3 +686,13 @@ class Worker(object):
         storages_entities_filter = task.get_storages_entity(self._redis, task_id)
         current_config = config.get_entity_config(self._mongo_client, self._service, storages_entities_filter, task_entity)
         return current_config
+
+    def _send_notification_email_when_task_failed(self, task_id, phase):
+        infos = task.info(self._redis, self._taskfile_dir, task_id,
+                          ["type", "content", "queued_time",
+                           "running_time", "priority", "ngpus",
+                           "ncpus", "alloc_resource", "statistics",
+                           "owner", "evaluation_id", "eval_model",
+                           "model"])
+        Thread(target=send_task_status_notification_email, args=({**infos, **{"id": task_id}}, phase)).start()
+
