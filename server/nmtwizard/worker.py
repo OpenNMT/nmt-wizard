@@ -9,8 +9,12 @@ import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from server.routes.task import send_task_status_notification_email
 from threading import Thread
+from config.templates.emails import task_completed, task_failed
+from utils.email_utils import EmailUtils
+from string import Template
+from app import app
+
 
 def _compatible_resource(resource, request_resource):
     if request_resource in ['auto', resource]:
@@ -20,6 +24,39 @@ def _compatible_resource(resource, request_resource):
 
 def graceful_exit(signum, frame):
     sys.exit(0)
+
+
+def send_task_status_notification_email(task_infos, status):
+    with app.app_context():
+        task_id = task_infos["id"]
+        task_type = task_infos.get("type")
+        model = task_infos.get("model")
+        content = json.loads(task_infos["content"])
+        trainer_email = content.get("trainer_email")
+        trainer_name = content.get("trainer_name")
+        it_email = app.get_other_config(['email_sender', 'IT_email'])
+        task_link = app.get_other_config(['email_sender', 'task_link']) + task_id
+        mode = app.get_other_config(['application', 'mode'])
+        if status == 'completed':
+            subject_template = task_completed.SUBJECT
+            if mode == 'advanced':
+                body_template = task_completed.BODY_MODE_ADVANCED
+            else:
+                body_template = task_completed.BODY_MODE_LITE
+        else:
+            subject_template = task_failed.SUBJECT
+            if mode == 'advanced':
+                body_template = task_failed.BODY_MODE_ADVANCED
+            else:
+                body_template = task_failed.BODY_MODE_LITE
+
+        email_subject = Template(subject_template).safe_substitute(task_id=task_id, task_type=task_type,
+                                                                   model=model, task_status=status,
+                                                                   last_name=trainer_name)
+        email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, model=model,
+                                                             task_status=status,last_name=trainer_name, link=task_link)
+
+        EmailUtils.send_text_mail(email_subject, email_body, [trainer_email, it_email])
 
 
 class Worker(object):
