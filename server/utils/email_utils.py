@@ -1,6 +1,6 @@
-from flask import current_app as app
-import smtplib
 from email.mime.text import MIMEText
+import smtplib
+from flask import current_app as app
 
 
 MAIL_SERVER = {

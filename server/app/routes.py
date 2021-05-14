@@ -581,15 +581,17 @@ def create_tasks_for_launch_v2(creation_infos):
         "tasks_id": tasks_id,
         "train_task_id": train_task_id
     }
-    
+
     # Create tasks for parent model
-    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
-    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
-    
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if
+                                            SYSTRAN_BASE_STORAGE not in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if
+                                        SYSTRAN_BASE_STORAGE not in corpus[0]]
+
     create_trans_score_tasks_for_model(creation_infos.task_infos.request_data.get("parent_model"),
-                                              to_translate_corpus_for_parent_model,
-                                              to_score_corpus_for_parent_model,
-                                              creation_infos.task_infos.request_data)
+                                       to_translate_corpus_for_parent_model,
+                                       to_score_corpus_for_parent_model,
+                                       creation_infos.task_infos.request_data)
 
     return creation_output
 
@@ -686,7 +688,7 @@ def launch_v2():
         dataset_name = request_data.get("dataset_name")
 
         if dataset_name is None:
-          abort(make_response(jsonify(message="unknown dataset"), 400))
+            abort(make_response(jsonify(message="unknown dataset"), 400))
 
         entity_code = routes_config.creator['entity_code']
 
@@ -698,6 +700,8 @@ def launch_v2():
     data_file_info = get_data_file_info(request_data, routes_config)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
+    content["trainer_email"] = g.user.email
+    content["trainer_name"] = g.user.last_name
     image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
@@ -1125,7 +1129,7 @@ def adapt_distribution_proportions(distribution, get_new_value, new_val, is_pare
 
     for storage_block in distribution:
         if storage_block.get('distribution'):
-             storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
     return distribution
 
 
@@ -1540,6 +1544,8 @@ def launch(service):
     content = flask.request.form.get('content')
     if content is not None:
         content = json.loads(content)
+        content["trainer_email"] = g.user.email
+        content["trainer_name"] = g.user.last_name
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 

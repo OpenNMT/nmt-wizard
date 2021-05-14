@@ -5,14 +5,14 @@ import traceback
 import os
 import signal
 import sys
+from string import Template
+from threading import Thread
 import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from threading import Thread
 from config.templates.emails import task_completed, task_failed
 from utils.email_utils import EmailUtils
-from string import Template
 from app import app
 
 
@@ -37,18 +37,12 @@ def send_task_status_notification_email(task_infos, status):
         it_email = app.get_other_config(['email_sender', 'IT_email'])
         task_link = app.get_other_config(['email_sender', 'task_link']) + task_id
         mode = app.get_other_config(['application', 'mode'])
-        if status == 'completed':
-            subject_template = task_completed.SUBJECT
-            if mode == 'advanced':
-                body_template = task_completed.BODY_MODE_ADVANCED
-            else:
-                body_template = task_completed.BODY_MODE_LITE
+        task_template = task_completed if status == 'completed' else task_failed
+        subject_template = task_template.SUBJECT
+        if mode == 'advanced':
+            body_template = task_template.BODY_MODE_ADVANCED
         else:
-            subject_template = task_failed.SUBJECT
-            if mode == 'advanced':
-                body_template = task_failed.BODY_MODE_ADVANCED
-            else:
-                body_template = task_failed.BODY_MODE_LITE
+            body_template = task_template.BODY_MODE_LITE
 
         email_subject = Template(subject_template).safe_substitute(task_id=task_id, task_type=task_type,
                                                                    model=model, task_status=status,
@@ -732,4 +726,3 @@ class Worker(object):
                            "owner", "evaluation_id", "eval_model",
                            "model"])
         Thread(target=send_task_status_notification_email, args=({**infos, **{"id": task_id}}, phase)).start()
-
