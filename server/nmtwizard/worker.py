@@ -11,7 +11,6 @@ import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from config.templates.emails import task_completed, task_failed
 from utils.email_utils import EmailUtils
 from app import app
 
@@ -30,25 +29,19 @@ def send_task_status_notification_email(task_infos, status):
     with app.app_context():
         task_id = task_infos["id"]
         task_type = task_infos.get("type")
-        model = task_infos.get("model")
         content = json.loads(task_infos["content"])
         trainer_email = content.get("trainer_email")
         trainer_name = content.get("trainer_name")
         it_email = app.get_other_config(['email_sender', 'IT_email'])
-        task_link = app.get_other_config(['email_sender', 'task_link']) + task_id
         mode = app.get_other_config(['application', 'mode'])
-        task_template = task_completed if status == 'completed' else task_failed
-        subject_template = task_template.SUBJECT
         if mode == 'advanced':
-            body_template = task_template.BODY_MODE_ADVANCED
+            task_link = 'Link: ' + app.get_other_config(['email_sender', 'task_link']) + task_id + '<br>'
         else:
-            body_template = task_template.BODY_MODE_LITE
-
-        email_subject = Template(subject_template).safe_substitute(task_id=task_id, task_type=task_type,
-                                                                   model=model, task_status=status,
-                                                                   last_name=trainer_name)
-        email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, model=model,
-                                                             task_status=status,last_name=trainer_name, link=task_link)
+            task_link = '<br>'
+        email_subject = 'Task completed' if status == 'completed' else 'Task failed'
+        body_template = EmailUtils.get_email_body_template()
+        email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, task_status=status,
+                                                             last_name=trainer_name, link=task_link)
 
         EmailUtils.send_text_mail(email_subject, email_body, [trainer_email, it_email])
 

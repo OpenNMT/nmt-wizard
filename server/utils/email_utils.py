@@ -1,7 +1,8 @@
-from email.mime.text import MIMEText
+import codecs
+import os
 import smtplib
+from email.mime.text import MIMEText
 from flask import current_app as app
-
 
 MAIL_SERVER = {
     "gmail": ("smtp.gmail.com", 587),
@@ -36,7 +37,7 @@ class EmailSender:
 
 class Email:
     def __init__(self, subject, body, sender_display_name, receivers):
-        message = MIMEText(body)
+        message = MIMEText(body, "html")
         message['Subject'] = subject
         message['From'] = sender_display_name
         message['To'] = ", ".join(receivers)
@@ -68,5 +69,12 @@ class EmailUtils:
     @classmethod
     def get_sender(cls):
         sender_info = cls.get_sender_info()
-        sender = EmailSender(sender_info["username"], sender_info["password"], sender_info["type"], sender_info.get("display_name"))
+        sender = EmailSender(sender_info["username"], sender_info["password"], sender_info["type"],
+                             sender_info.get("display_name"))
         return sender
+
+    @classmethod
+    def get_email_body_template(cls):
+        f = codecs.open(os.path.dirname(os.path.realpath(__file__)) + "/email_template/task_notification_template.html",
+                        'r')
+        return f.read()
