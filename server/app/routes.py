@@ -28,6 +28,7 @@ from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreproce
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
 from utils.storage_utils import StorageUtils
+from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
@@ -345,6 +346,23 @@ def filter_request(route, ability=None):
     return wrapper
 
 
+def filter_mode(required_mode=[]):
+    def wrapper(func):
+        """generic request filter system for customization"""
+
+        @wraps(func)
+        def func_wrapper(*args, **kwargs):
+            required_mode.append('admin')
+
+            if g.get('session') is None or g.session['mode'] in required_mode:
+                return func(*args, **kwargs)
+            abort(make_response(jsonify(message="your account does not allow to access this page"), 403))
+
+        return func_wrapper
+
+    return wrapper
+
+
 def has_ability(flask_global, ability, entity):
     for f in has_ability_funcs:
         if not f(flask_global, ability, entity):
@@ -437,7 +455,7 @@ def post_admin_request(app, service, action, value="1"):
 
 
 @app.route("/service/configs/<string:service>", methods=["POST"])
-@filter_request("GET/service/configs", "edit_config")
+@filter_request("POST/service/configs", "edit_config")
 def set_service_config(service):
     check_permission(service, "edit_config")
     request_body = flask.request.form.get('config')
@@ -500,7 +518,7 @@ def server_disable(service, resource):
     return flask.jsonify("ok")
 
 
-@app.route("/service/check/<string:service>", methods=["GET"])
+@app.route("/service/check/<string:service>", methods=["GET", "POST"])
 @filter_request("GET/service/check")
 def check(service):
     service_options = flask.request.get_json() if flask.request.is_json else None
@@ -563,15 +581,17 @@ def create_tasks_for_launch_v2(creation_infos):
         "tasks_id": tasks_id,
         "train_task_id": train_task_id
     }
-    
+
     # Create tasks for parent model
-    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
-    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if SYSTRAN_BASE_STORAGE not in corpus[0]]
-    
+    to_translate_corpus_for_parent_model = [corpus for corpus in creation_infos.to_translate_corpus if
+                                            SYSTRAN_BASE_STORAGE not in corpus[0]]
+    to_score_corpus_for_parent_model = [corpus for corpus in creation_infos.to_score_corpus if
+                                        SYSTRAN_BASE_STORAGE not in corpus[0]]
+
     create_trans_score_tasks_for_model(creation_infos.task_infos.request_data.get("parent_model"),
-                                              to_translate_corpus_for_parent_model,
-                                              to_score_corpus_for_parent_model,
-                                              creation_infos.task_infos.request_data)
+                                       to_translate_corpus_for_parent_model,
+                                       to_score_corpus_for_parent_model,
+                                       creation_infos.task_infos.request_data)
 
     return creation_output
 
@@ -603,7 +623,8 @@ def create_trans_score_tasks(creation_infos, model, docker_content, parent_model
 
     to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
     if model_info.get('tests'):
-        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus, to_score_corpus)
+        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus,
+                                                                        to_score_corpus)
 
     if not to_translate_corpus:
         return
@@ -668,14 +689,14 @@ def launch_v2():
         dataset_name = request_data.get("dataset_name")
 
         if dataset_name is None:
-          abort(make_response(jsonify(message="unknown dataset"), 400))
+            abort(make_response(jsonify(message="unknown dataset"), 400))
 
         entity_code = routes_config.creator['entity_code']
 
         exists_dataset = get_dataset_by_name(entity_code, dataset_name)
 
         if exists_dataset:
-            return make_response(jsonify(message=f"Dataset \"{dataset_name}\" is already existed"), 400)
+            return make_response(jsonify(message=f"Dataset \"{dataset_name}\" already exists"), 400)
 
     data_file_info = get_data_file_info(request_data, routes_config)
 
@@ -729,15 +750,21 @@ def parse_request_data(current_request):
 
     training_data = request_files.getlist("training_data")
     testing_data = request_files.getlist("testing_data")
+    model_data = request_files.getlist("model_data")
     dataset = request_data.getlist("dataset")
     corpus_type = int(request_data.get("corpus_type"))
     dataset_name = request_data.get("dataset_name")
+    testing_percent = request_data.get("testing_percent")
+    if testing_percent:
+        testing_percent = int(testing_percent)
 
     return {**request_data, **{"tags": json.loads(tags)}, **{
         "training_data": training_data,
         "testing_data": testing_data,
+        "model_data": model_data,
         "dataset": dataset,
         "corpus_type": corpus_type,
+        "testing_percent": testing_percent,
         "dataset_name": dataset_name
     }}
 
@@ -757,8 +784,9 @@ def validate_request_data(current_request):
     validate_priority(request_data.get("priority"))
     validate_iteration(request_data.get("num_of_iteration"))
 
-    validate_file(request_data.get("corpus_type"), corpus_config, request_files.getlist("training_data"),
-                  request_files.getlist("testing_data"), request_data.getlist("dataset"))
+    validate_file(request_data.get("corpus_type"), request_data.get("testing_percent"), corpus_config,
+                  request_files.getlist("training_data"), request_files.getlist("testing_data"),
+                  request_files.getlist("model_data"), request_data.getlist("dataset"))
 
 
 def validate_tags(tags):
@@ -861,12 +889,37 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def validate_file(corpus_type, corpus_config, training_data, testing_data, dataset):
+def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_percent):
+    training_push_infos_list = []
+    testing_push_infos_list = []
+    temp_files = tempfile.mkdtemp()
+    for file in files:
+        tmp_file = os.path.join(temp_files, file.filename)
+        file.save(tmp_file)
+        push_infos = routes_config.storage_client.partition_auto(tmp_file,
+                                                                 training_path,
+                                                                 testing_path,
+                                                                 remote_path=training_path,
+                                                                 storage_id=routes_config.global_storage_name,
+                                                                 percent=testing_percent)
+
+        assert push_infos and push_infos['files'] and len(push_infos['files']) == 2
+        training_file_info = push_infos['files'][0]
+        testing_file_info = push_infos['files'][1]
+        assert training_file_info['nbSegments'] and testing_file_info['nbSegments']
+        training_push_infos_list.append(training_file_info)
+        testing_push_infos_list.append(testing_file_info)
+    return training_push_infos_list, testing_push_infos_list
+
+
+def validate_file(corpus_type, testing_percent, corpus_config, training_data, testing_data, model_data, dataset):
     if not corpus_type or not corpus_type.isnumeric() or int(corpus_type) not in CORPUS_TYPE.values():
         raise Exception('Invalid corpus_type')
-    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"]:
+    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent is None:
         validate_training_data(training_data, corpus_config)
         validate_testing_data(testing_data, corpus_config)
+    elif int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent:
+        validate_training_data(model_data, corpus_config)
     else:
         if len(dataset) == 0:
             raise Exception('Num of dataset must greater than 0')
@@ -881,9 +934,13 @@ def get_dataset_by_name(entity, dataset_name):
 
 def get_data_file_info(request_data, routes_config):
     corpus_type = request_data.get("corpus_type")
+    testing_percent = request_data.get("testing_percent")
 
     if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
-        training_data = request_data.get("training_data")
+        if testing_percent:
+            training_data = request_data.get("model_data")
+        else:
+            training_data = request_data.get("training_data")
         testing_data = request_data.get("testing_data")
 
         return get_user_upload_file_info(routes_config, request_data, training_data, testing_data)
@@ -897,20 +954,25 @@ def get_data_file_info(request_data, routes_config):
 def get_user_upload_file_info(routes_config, request_data, training_data, testing_data):
     entity_code = routes_config.creator['entity_code']
     dataset_name = request_data.get('dataset_name')
+    testing_percent = request_data.get("testing_percent")
 
     training_data_path = os.path.join(entity_code, dataset_name, "train") + os.path.sep
     testing_data_path = os.path.join(entity_code, dataset_name, "test") + os.path.sep
 
-    data_training = upload_user_files(routes_config, training_data_path, training_data)
-    data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
-
+    if testing_percent:
+        training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
+        testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
+        data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path, testing_data_path, training_data, testing_percent)
+    else:
+        data_training = upload_user_files(routes_config, training_data_path, training_data)
+        data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
 
     return {
-        'training': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_training)),
-        'testing': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_testing))
+        'training': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_training)),
+        'testing': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_testing))
     }
 
 
@@ -1014,8 +1076,10 @@ def get_final_training_config(request_data, training_corpus_infos):
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        # Remove build object from parent config
+        parent_config.pop('build', None)
         # Change batch size to settings value if specified
-        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"]\
+        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"] \
                 and "batch_size" in parent_config["options"]["config"]["train"]:
             batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
             if batch_size:
@@ -1066,7 +1130,7 @@ def adapt_distribution_proportions(distribution, get_new_value, new_val, is_pare
 
     for storage_block in distribution:
         if storage_block.get('distribution'):
-             storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
     return distribution
 
 
@@ -1097,17 +1161,19 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
     for current_sample_dist in current_sample_dists:
         duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
+        client_sample += int(sample_by_path[current_sample_dist['path']])
 
         if len(duplicate) > 0:
             continue
 
         new_sample_dists.append(current_sample_dist)
-        client_sample += int(sample_by_path[current_sample_dist['path']])
 
     new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
-    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions, client_ratio)
-    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, is_parent=False)
+    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions,
+                                                  client_ratio)
+    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions,
+                                                      client_weight, is_parent=False)
 
     new_sample_dists.extend(sample_dists)
     return new_sample_size, new_sample_dists
@@ -1205,10 +1271,12 @@ def create_model_dataset(routes_config, request_data, service):
     return builtins.pn9model_db.insert_dataset(item)
 
 
-def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain, user_corpus, state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain,
+                         user_corpus, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
+    tags = [{'entity': tag.get('entity'), 'tag': tag.get('tag')} for tag in tags]
     config = {
         "source": source,
         "target": target,
@@ -1229,6 +1297,12 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
     model_task_map = {}
     tasks_to_create = []
     models_info = []
+    google_docker_content = {}
+    if 'google_image_info' in docker_content:
+        google_docker_content = docker_content['google_image_info']
+        docker_content.pop('google_image_info')
+        google_docker_content['command'] = []
+
     for model in models:
         tasks_id_per_model = []
         tasks_to_create_per_model = []
@@ -1241,10 +1315,23 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
-        creation_infos.task_infos.content["docker"] = docker_content
-        task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
-                                       parent_task_id=model,
-                                       to_translate=creation_infos.to_translate_corpus)
+        if check_google_model(model):
+            creation_infos.task_infos.content["docker"] = google_docker_content
+            task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                           parent_task_id=model,
+                                           to_translate=creation_infos.to_translate_corpus)
+            lang_config = {
+                "source": creation_infos.task_infos.request_data['source'],
+                "target": creation_infos.task_infos.request_data['target']
+            }
+            config = ['-c', json.dumps(lang_config)]
+            task_translate.update_content_docker_command(config)
+        else:
+            creation_infos.task_infos.content["docker"] = docker_content
+            task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                           parent_task_id=model,
+                                           to_translate=creation_infos.to_translate_corpus)
+
         tasks_to_create_per_model.append(task_translate)
         tasks_id_per_model.append(task_translate.task_id)
 
@@ -1295,9 +1382,17 @@ def create_evaluation():
     models = request_data.get("models")
 
     testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False, output_path)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False,
+                                                                      output_path)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+    for model in models:
+        if check_google_model(model):
+            google_docker_image_info = TaskBase.get_google_docker_image_from_db(routes_config.service_module,
+                                                                                mongo_client)
+            docker_image_info['google_image_info'] = google_docker_image_info
+            break
+
     docker_content = {**docker_image_info, **{"command": []}}
     content = {
         "docker": {},
@@ -1437,6 +1532,54 @@ def get_evaluations():
     return cust_jsonify(evaluation_catalogs)
 
 
+def get_json_config(command):
+    idx = 0
+    while idx < len(command):
+        if (command[idx] == '-c' or command[idx] == '--config'):
+            return idx + 1, command[idx + 1]
+        idx += 1
+    return None, ''
+
+
+def add_train_restricted_config(json_config, parent_task_id):
+    config = json.loads(json_config)
+
+    if not config.get("data") or not config["data"]["sample_dist"]:
+        return json_config
+
+    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_task_id, False)
+
+    if not ok:
+        return json_config
+
+    sample_dist = config["data"]["sample_dist"]
+    parent_sample_dist = parent_config["data"]["sample_dist"]
+
+    for item in parent_sample_dist:
+        # hide train_restricted path
+        if not is_resource_train_restricted(item['path']):
+            continue
+        sample_dist.append(item)
+
+    config["data"]["sample_dist"] = sample_dist
+    return json.dumps(config)
+
+
+def parse_tags(tags):
+    result = []
+    for tag in tags:
+        tag_name = tag.get('tag')
+        entity = tag.get('entity', '')
+        if not entity:
+            entity = flask.g.user.entity.entity_code
+        info_tag = builtins.pn9model_db.tag_get(entity, tag_name)
+        if info_tag:
+            result.append({'tag': tag_name, 'entity': entity})
+        else:
+            return False, result
+    return True, result
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
@@ -1450,6 +1593,14 @@ def launch(service):
         content = json.loads(content)
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+
+    # Parse tags
+    if content.get('tags') and isinstance(content.get('tags'), list):
+        res, parsed_tags = parse_tags(content.get('tags'))
+        if not res:
+            abort(flask.make_response(flask.jsonify(message="Invalid tags"), 400))
+
+        content['tags'] = parsed_tags
 
     files = {}
     for k in flask.request.files:
@@ -1516,7 +1667,7 @@ def launch(service):
         if (task_type != "train" and iterations != 1) or iterations < 1:
             abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
-    ngpus = 1
+    ngpus = 1 if task_type == "train" else 0
     if "ngpus" in content:
         ngpus = content["ngpus"]
     ncpus = content.get("ncpus")
@@ -1582,12 +1733,23 @@ def launch(service):
                 (task_type == "prepr" and parent_task_type != "train" and parent_task_type != "vocab")):
             abort(flask.make_response(flask.jsonify(message="invalid parent task type: %s" % parent_task_type), 400))
 
+    if task_type == 'train' and not check_permission_access_train_restricted('read'):
+        json_idx, json_config = get_json_config(content["docker"]["command"])
+
+        if json_idx is not None:
+            configuration = add_train_restricted_config(json_config, parent_task_id)
+            content["docker"]["command"][json_idx] = configuration
+
     task_ids = []
     task_create = []
-
+    first_of_chain = True
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
             prepr_task_id, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
+
+            if "dependency" in content and first_of_chain:
+                parent_task_id = content["dependency"]
+                first_of_chain = False
 
             if explicit_name:
                 TaskBase.patch_config_explicit_name(content, explicit_name)
@@ -1618,7 +1780,7 @@ def launch(service):
                 (redis_db, taskfile_dir,
                  prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
                  _duplicate_adapt(service_module, content),
-                 files, priority, 0, content["ncpus"], other_task_info))
+                 files, priority, 0, content["ncpus"], deepcopy(other_task_info)))
             task_ids.append(
                 "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
@@ -1629,6 +1791,10 @@ def launch(service):
         if task_type != "prepr":
 
             task_id, explicit_name = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            if "dependency" in content and first_of_chain:
+                parent_task_id = content["dependency"]
+                first_of_chain = False
 
             if explicit_name:
                 TaskBase.patch_config_explicit_name(content, explicit_name)
@@ -1649,7 +1815,6 @@ def launch(service):
             if task_type == "trans" and can_trans_as_release:
                 if "--as_release" not in content["docker"]["command"] and trans_as_release:
                     content["docker"]["command"].append("--as_release")
-                    content["ngpus"] = ngpus = 0
 
             task_resource = service_module.select_resource_from_capacity(
                 resource, Capacity(content["ngpus"],
@@ -1661,7 +1826,7 @@ def launch(service):
                  _duplicate_adapt(service_module, content),
                  files, priority,
                  content["ngpus"], content["ncpus"],
-                 other_task_info))
+                 deepcopy(other_task_info)))
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                 task_type, task_id,
                 content["ngpus"], content["ncpus"]))
@@ -1714,7 +1879,7 @@ def launch(service):
                          _duplicate_adapt(service_module, content_translate),
                          (), content_translate["priority"],
                          content_translate["ngpus"], content_translate["ncpus"],
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "trans", trans_task_id,
                         content_translate["ngpus"], content_translate["ncpus"]))
@@ -1754,7 +1919,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                        option_lang + ['-f', "launcher:scores"]
+                                   option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1764,7 +1929,7 @@ def launch(service):
                          content_score,
                          files, priority + 2,
                          0, 1,
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "score", score_task_id,
                         0, 1))
@@ -1809,7 +1974,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                        in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
@@ -1819,7 +1984,7 @@ def launch(service):
                          content_tuminer,
                          (), priority + 2,
                          ngpus_recommend, ncpus_recommend,
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "tuminer", tuminer_task_id,
                         ngpus_recommend, ncpus_recommend))
@@ -2157,6 +2322,14 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
         for k, v in directories.items():
-            result[key].append({**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
+            result[key].append(
+                {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
+
+
+def check_google_model(model):
+    if model.split('_')[0].lower() == 'google':
+        return True
+    else:
+        return False

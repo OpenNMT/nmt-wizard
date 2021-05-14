@@ -78,6 +78,9 @@ class TaskBase:
     def update_other_infos(self, other_infos):
         self.other_task_info.update(other_infos)
 
+    def update_content_docker_command(self, infos):
+        self._content['docker']['command'] = infos + self._content['docker']['command']
+
     def create(self, redis_db, taskfile_dir):
         create_internal(redis_db,
                         taskfile_dir,
@@ -125,10 +128,28 @@ class TaskBase:
                                                       docker_image)
 
     @staticmethod
+    def get_google_docker_image_from_db(service_module, mongo_client):
+        image = "nmtwizard/google-translate"
+        registry = get_registry(service_module, image)
+        tag = "2.9.4"
+
+        result = {
+            "image": image,
+            "tag": tag,
+            "registry": registry
+        }
+
+        latest_docker_image_tag = TaskBase.get_latest_docker_image_tag(image, mongo_client)
+
+        if not latest_docker_image_tag:
+            return result
+        return {**result, **{"tag": f'{latest_docker_image_tag}'}}
+
+    @staticmethod
     def get_docker_image_from_db(service_module, mongo_client):
         image = "systran/pn9_tf"
         registry = get_registry(service_module, image)
-        tag = "v1.46.0-beta1"
+        tag = "v1.49.0"
 
         result = {
             "image": image,
@@ -258,7 +279,7 @@ class TaskScoring(TaskBase):
         task_infos.content["docker"] = {
             "image": image_score,
             "registry": get_registry(task_infos.routes_configuration.service_module, image_score),
-            "tag": "2.1.0-beta1",
+            "tag": "latest",
             "command": []
         }
 
