@@ -7,3 +7,5 @@ paramiko
 redis>=3.0.0
 flask_ini
 semver
+python-novaclient
+python-keystoneclient
