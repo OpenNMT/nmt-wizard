@@ -5,14 +5,12 @@ import traceback
 import os
 import signal
 import sys
-from string import Template
 from threading import Thread
 import six
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from utils.email_utils import EmailUtils
-from app import app
+from utils.email_utils import send_task_status_notification_email
 
 
 def _compatible_resource(resource, request_resource):
@@ -23,27 +21,6 @@ def _compatible_resource(resource, request_resource):
 
 def graceful_exit(signum, frame):
     sys.exit(0)
-
-
-def send_task_status_notification_email(task_infos, status):
-    with app.app_context():
-        task_id = task_infos["id"]
-        task_type = task_infos.get("type")
-        content = json.loads(task_infos["content"])
-        trainer_email = content.get("trainer_email")
-        trainer_name = content.get("trainer_name")
-        it_email = app.get_other_config(['email_sender', 'IT_email'])
-        mode = app.get_other_config(['application', 'mode'])
-        if mode == 'advanced':
-            task_link = 'Link: ' + app.get_other_config(['email_sender', 'task_link']) + task_id + '<br>'
-        else:
-            task_link = '<br>'
-        email_subject = 'Task completed' if status == 'completed' else 'Task failed'
-        body_template = EmailUtils.get_email_body_template()
-        email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, task_status=status,
-                                                             last_name=trainer_name, link=task_link)
-
-        EmailUtils.send_text_mail(email_subject, email_body, [trainer_email, it_email])
 
 
 class Worker(object):
@@ -592,7 +569,6 @@ class Worker(object):
 
                         if self._redis.hget(keyp, 'message') != 'completed':
                             task.terminate(self._redis, next_task_id, phase='dependency_error')
-                            self._send_notification_email_when_task_failed(next_task_id, phase='dependency_error')
                             return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))

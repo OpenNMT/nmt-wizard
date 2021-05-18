@@ -1369,7 +1369,10 @@ def create_evaluation():
         'ngpus': 0,
         'service': service,
         "options": {},
-        'support_statistics': True
+        'support_statistics': True,
+        'trainer_email': g.user.email,
+        'trainer_name': g.user.last_name,
+        'eval_name': request_data["evaluation_name"]
     }
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,

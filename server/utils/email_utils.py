@@ -1,13 +1,18 @@
+import builtins
 import codecs
+import json
 import os
 import smtplib
 from email.mime.text import MIMEText
-from flask import current_app as app
+from string import Template
+from nmtwizard import configuration as config
+from app.routes import get_input_name
 
 MAIL_SERVER = {
     "gmail": ("smtp.gmail.com", 587),
     "office365": ("smtp.office365.com", 587)
 }
+system_config = config.get_system_config()
 
 
 class EmailSender:
@@ -63,7 +68,7 @@ class EmailUtils:
 
     @classmethod
     def get_sender_info(cls):
-        email_sender_config = app.get_other_config(["email_sender"])
+        email_sender_config = system_config["email"]
         return email_sender_config
 
     @classmethod
@@ -74,7 +79,47 @@ class EmailUtils:
         return sender
 
     @classmethod
-    def get_email_body_template(cls):
-        f = codecs.open(os.path.dirname(os.path.realpath(__file__)) + "/email_template/task_notification_template.html",
-                        'r')
+    def get_email_body_template(cls, mode):
+        file_name = 'email_template_mode_advanced.html' if mode == 'advanced' else 'email_template_mode_lite.html'
+        f = codecs.open(os.path.dirname(os.path.realpath(__file__)) + '/email_template/' + file_name, 'r')
         return f.read()
+
+
+def send_task_status_notification_email(task_infos, status):
+    task_id = task_infos["id"]
+    task_type = task_infos.get("type")
+    mode = system_config['application']['mode']
+    if mode == 'lite' and status == 'completed' and task_type in ('preprocess', 'trans'):
+        return
+
+    content = json.loads(task_infos["content"])
+    trainer_email = content.get("trainer_email")
+    trainer_name = content.get("trainer_name")
+    receiver = system_config['email']['receiver']
+    receiver.append(trainer_email)
+    eval_model = task_infos.get("eval_model")
+    model = task_infos.get("model")
+    model_name = content.get("name")
+    eval_name = ''
+    if mode == 'advanced':
+        link = system_config['email']['url'] + 'task/detail/' + task_id
+        subject = 'task'
+    else:
+        if eval_model:
+            ok, model_info = builtins.pn9model_db.catalog_get_info(eval_model, True)
+            model_name = get_input_name(model_info)
+            link = system_config['email']['url'] + 'evaluation'
+            subject = 'model evaluation'
+            eval_name = 'Evaluation name: ' + content.get("eval_name") + '<br>'
+        else:
+            link = system_config['email']['url'] + 'model/detail/' + str(model)
+            subject = 'model training' if task_type in ('preprocess', 'train') else 'model scoring'
+
+    subject_status = 'completed' if status == 'completed' else 'failed'
+    email_subject = (subject + ' ' + subject_status).upper()
+    body_template = EmailUtils.get_email_body_template(mode)
+    email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, status=status,
+                                                         last_name=trainer_name, link=link, subject=subject,
+                                                         model_name=model_name, eval_name=eval_name)
+
+    EmailUtils.send_text_mail(email_subject, email_body, receiver)
