@@ -1,4 +1,3 @@
-import builtins
 import codecs
 import json
 import os
@@ -6,7 +5,6 @@ import smtplib
 from email.mime.text import MIMEText
 from string import Template
 from nmtwizard import configuration as config
-from app.routes import get_input_name
 
 MAIL_SERVER = {
     "gmail": ("smtp.gmail.com", 587),
@@ -89,7 +87,7 @@ def send_task_status_notification_email(task_infos, status):
     task_id = task_infos["id"]
     task_type = task_infos.get("type")
     mode = system_config['application']['mode']
-    if mode == 'lite' and status == 'completed' and task_type in ('preprocess', 'trans'):
+    if mode == 'lite' and status == 'completed' and task_type in ('prepr', 'trans'):
         return
 
     content = json.loads(task_infos["content"])
@@ -106,14 +104,13 @@ def send_task_status_notification_email(task_infos, status):
         subject = 'task'
     else:
         if eval_model:
-            ok, model_info = builtins.pn9model_db.catalog_get_info(eval_model, True)
-            model_name = get_input_name(model_info)
+            model_name = content.get("eval_model_input_name")
             link = system_config['email']['url'] + 'evaluation'
             subject = 'model evaluation'
             eval_name = 'Evaluation name: ' + content.get("eval_name") + '<br>'
         else:
             link = system_config['email']['url'] + 'model/detail/' + str(model)
-            subject = 'model training' if task_type in ('preprocess', 'train') else 'model scoring'
+            subject = 'model training' if task_type in ('prepr', 'train') else 'model scoring'
 
     subject_status = 'completed' if status == 'completed' else 'failed'
     email_subject = (subject + ' ' + subject_status).upper()
