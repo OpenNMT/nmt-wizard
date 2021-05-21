@@ -77,8 +77,12 @@ class EmailUtils:
         return sender
 
     @classmethod
-    def get_email_body_template(cls, mode):
-        file_name = 'email_template_mode_advanced.html' if mode == 'advanced' else 'email_template_mode_lite.html'
+    def get_email_body_template(cls, template_type):
+        types_dict = {
+            'advanced': 'email_template_mode_advanced.html',
+            'lite': 'email_template_mode_lite.html'
+        }
+        file_name = types_dict.get(template_type)
         f = codecs.open(os.path.dirname(os.path.realpath(__file__)) + '/email_template/' + file_name, 'r')
         return f.read()
 
@@ -87,9 +91,6 @@ def send_task_status_notification_email(task_infos, status):
     task_id = task_infos["id"]
     task_type = task_infos.get("type")
     mode = system_config['application']['mode']
-    if mode == 'lite' and status == 'completed' and task_type in ('prepr', 'trans'):
-        return
-
     content = json.loads(task_infos["content"])
     trainer_email = content.get("trainer_email")
     trainer_name = content.get("trainer_name")
@@ -114,7 +115,7 @@ def send_task_status_notification_email(task_infos, status):
 
     subject_status = 'completed' if status == 'completed' else 'failed'
     email_subject = (subject + ' ' + subject_status).upper()
-    body_template = EmailUtils.get_email_body_template(mode)
+    body_template = EmailUtils.get_email_body_template(template_type=mode)
     email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, status=status,
                                                          last_name=trainer_name, link=link, subject=subject,
                                                          model_name=model_name, eval_name=eval_name)
