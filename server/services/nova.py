@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 def _run_instance(nova_client, params, config, task_id="None"):
+    # check if instance already exists
+    try:
+        instance = nova_client.servers.find(name=task_id)
+        wait_until_running(nova_client, config, params, name=task_id)
+        return instance
+    except novaclient.exceptions.NotFound:
+        logger.info("Creating instance for task %s", task_id)
+
     # userdata2 - script to install docker
     [userdata1, userdata2] = open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh').read().split(
         "#install docker")
@@ -261,6 +269,7 @@ def wait_until_running(nova_client, config, params, name):
         instance = nova_client.servers.find(name=name)
         status = instance.status
         if status == 'ERROR':
+            nova_client.servers.delete(instance.id)
             raise Exception("OVH - Create instance failed")
         elif status == 'ACTIVE':
             ssh_client = common.ssh_connect_with_retry(
@@ -280,4 +289,5 @@ def wait_until_running(nova_client, config, params, name):
                     break
                 count -= 1
             if count == 0:
+                nova_client.servers.delete(instance.id)
                 raise Exception("Install docker for OVH instance failed")
