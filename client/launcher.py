@@ -159,7 +159,7 @@ exec_arguments = [
                          "help": 'options selected to run the service'}],
     ['-r', '--resource',
      {"help": "alternatively to `options`, resource name to use"}],
-    ['-g', '--gpus', {"type": int, "default": 1, "help": 'number of gpus'}],
+    ['-g', '--gpus', {"type": int, "help": 'number of gpus'}],
     ['-c', '--cpus', {"type": int,
                       "help": 'number of cpus - if not provided, will be obtained '
                               'from pool config'}],
@@ -188,6 +188,7 @@ for arg in exec_arguments:
     parser_exec.add_argument(*arg[:-1], **arg[-1])
 parser_exec.add_argument('docker_command', type=str, nargs='*', help='Docker command')
 parser_exec.add_argument('-e', '--entity_owner', help='entity owner')
+parser_exec.add_argument('--dependency', help='dependency task (will launch after this task is terminated)')
 
 parser_launch = subparsers.add_parser('launch',
                                       help='launch a task on the service associated'
@@ -236,6 +237,8 @@ parser_launch.add_argument('--nochainprepr', action='store_true',
 parser_launch.add_argument('--notransasrelease', action='store_true',
                            help='don\'t run translate as release (image >= 1.8.0)')
 parser_launch.add_argument('docker_command', type=str, nargs='*', help='Docker command')
+parser_launch.add_argument('--tags', nargs='*', help='model tags')
+parser_launch.add_argument('--dependency', help='dependency task (will launch after this task is terminated)')
 
 parser_list_tasks = subparsers_tasks.add_parser('list',
                                                 help='{lt} list tasks matching prefix pattern')
@@ -466,10 +469,10 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             raise ValueError("ERROR: service '%s' not defined" % args.service)
 
         if args.gpus is None:
-            if "trans" in args.docker_command:
-                args.gpus = 0
-            else:
+            if "train" in args.docker_command:
                 args.gpus = 1
+            else:
+                args.gpus = 0
         
         if args.gpus < 0:
             raise ValueError("ERROR: ngpus must be >= 0")
@@ -499,6 +502,8 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             content["name"] = args.name
         if args.priority:
             content["priority"] = args.priority
+        if args.dependency:
+            content["dependency"] = args.dependency
 
         if cmd == "task" and subcmd == "launch":
             if args.iterations:
@@ -521,6 +526,15 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             if 'totuminer' in args and args.totuminer:
                 content["totuminer"] = [(_parse_local_filename(i, files),
                                          o) for (i, o) in ARGS.totuminer]
+
+            if args.tags:
+                content['tags'] = []
+                for tag in args.tags:
+                    tmp = {'tag': tag}
+                    if ':' in tag:
+                        entity, tag_name = tag.split(':')
+                        tmp = {'entity': entity, 'tag': tag_name}
+                    content['tags'].append(tmp)
 
         LOGGER.debug("sending request: %s", json.dumps(content))
 

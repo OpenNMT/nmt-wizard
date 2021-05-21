@@ -623,7 +623,8 @@ def create_trans_score_tasks(creation_infos, model, docker_content, parent_model
 
     to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
     if model_info.get('tests'):
-        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus, to_score_corpus)
+        to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus,
+                                                                        to_score_corpus)
 
     if not to_translate_corpus:
         return
@@ -972,8 +973,8 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     dataset = get_dataset_by_name(entity_code, dataset_name)
 
     return {
-        'training': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_training)),
-        'testing': list(map(lambda ele: { **ele, 'dataset_id': str(dataset["_id"]) }, data_testing))
+        'training': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_training)),
+        'testing': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_testing))
     }
 
 
@@ -1077,8 +1078,10 @@ def get_final_training_config(request_data, training_corpus_infos):
     ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
                                                               boolean_param(request.args.get('short')))
     if ok:
+        # Remove build object from parent config
+        parent_config.pop('build', None)
         # Change batch size to settings value if specified
-        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"]\
+        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"] \
                 and "batch_size" in parent_config["options"]["config"]["train"]:
             batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
             if batch_size:
@@ -1160,17 +1163,19 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
     for current_sample_dist in current_sample_dists:
         duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
+        client_sample += int(sample_by_path[current_sample_dist['path']])
 
         if len(duplicate) > 0:
             continue
 
         new_sample_dists.append(current_sample_dist)
-        client_sample += int(sample_by_path[current_sample_dist['path']])
 
     new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
-    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions, client_ratio)
-    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions, client_weight, is_parent=False)
+    sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions,
+                                                  client_ratio)
+    new_sample_dists = adapt_distribution_proportions(new_sample_dists, get_client_formula_distribution_proportions,
+                                                      client_weight, is_parent=False)
 
     new_sample_dists.extend(sample_dists)
     return new_sample_size, new_sample_dists
@@ -1268,10 +1273,12 @@ def create_model_dataset(routes_config, request_data, service):
     return builtins.pn9model_db.insert_dataset(item)
 
 
-def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain, user_corpus, state="creating"):
+def create_model_catalog(training_task_id, input_name, request_data, image_tag, creator, tasks, tags, domain,
+                         user_corpus, state="creating"):
     source = request_data.get("source")
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
+    tags = [{'entity': tag.get('entity'), 'tag': tag.get('tag')} for tag in tags]
     config = {
         "source": source,
         "target": target,
@@ -1292,6 +1299,12 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
     model_task_map = {}
     tasks_to_create = []
     models_info = []
+    google_docker_content = {}
+    if 'google_image_info' in docker_content:
+        google_docker_content = docker_content['google_image_info']
+        docker_content.pop('google_image_info')
+        google_docker_content['command'] = []
+
     for model in models:
         tasks_id_per_model = []
         tasks_to_create_per_model = []
@@ -1305,10 +1318,23 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "eval_model": model
         }
         creation_infos.task_infos.content["eval_model_input_name"] = get_input_name(model_info)
-        creation_infos.task_infos.content["docker"] = docker_content
-        task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
-                                       parent_task_id=model,
-                                       to_translate=creation_infos.to_translate_corpus)
+        if check_google_model(model):
+            creation_infos.task_infos.content["docker"] = google_docker_content
+            task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                           parent_task_id=model,
+                                           to_translate=creation_infos.to_translate_corpus)
+            lang_config = {
+                "source": creation_infos.task_infos.request_data['source'],
+                "target": creation_infos.task_infos.request_data['target']
+            }
+            config = ['-c', json.dumps(lang_config)]
+            task_translate.update_content_docker_command(config)
+        else:
+            creation_infos.task_infos.content["docker"] = docker_content
+            task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
+                                           parent_task_id=model,
+                                           to_translate=creation_infos.to_translate_corpus)
+
         tasks_to_create_per_model.append(task_translate)
         tasks_id_per_model.append(task_translate.task_id)
 
@@ -1359,9 +1385,17 @@ def create_evaluation():
     models = request_data.get("models")
 
     testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
-    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False, output_path)
+    to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False,
+                                                                      output_path)
 
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
+    for model in models:
+        if check_google_model(model):
+            google_docker_image_info = TaskBase.get_google_docker_image_from_db(routes_config.service_module,
+                                                                                mongo_client)
+            docker_image_info['google_image_info'] = google_docker_image_info
+            break
+
     docker_content = {**docker_image_info, **{"command": []}}
     content = {
         "docker": {},
@@ -1537,6 +1571,21 @@ def add_train_restricted_config(json_config, parent_task_id):
     return json.dumps(config)
 
 
+def parse_tags(tags):
+    result = []
+    for tag in tags:
+        tag_name = tag.get('tag')
+        entity = tag.get('entity', '')
+        if not entity:
+            entity = flask.g.user.entity.entity_code
+        info_tag = builtins.pn9model_db.tag_get(entity, tag_name)
+        if info_tag:
+            result.append({'tag': tag_name, 'entity': entity})
+        else:
+            return False, result
+    return True, result
+
+
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
@@ -1552,6 +1601,14 @@ def launch(service):
         content["trainer_name"] = g.user.last_name
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
+
+    # Parse tags
+    if content.get('tags') and isinstance(content.get('tags'), list):
+        res, parsed_tags = parse_tags(content.get('tags'))
+        if not res:
+            abort(flask.make_response(flask.jsonify(message="Invalid tags"), 400))
+
+        content['tags'] = parsed_tags
 
     files = {}
     for k in flask.request.files:
@@ -1618,7 +1675,7 @@ def launch(service):
         if (task_type != "train" and iterations != 1) or iterations < 1:
             abort(flask.make_response(flask.jsonify(message="invalid value for iterations"), 400))
 
-    ngpus = 0 if task_type == TASK_RELEASE_TYPE else 1
+    ngpus = 1 if task_type == "train" else 0
     if "ngpus" in content:
         ngpus = content["ngpus"]
     ncpus = content.get("ncpus")
@@ -1693,10 +1750,14 @@ def launch(service):
 
     task_ids = []
     task_create = []
-
+    first_of_chain = True
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
             prepr_task_id, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
+
+            if "dependency" in content and first_of_chain:
+                parent_task_id = content["dependency"]
+                first_of_chain = False
 
             if explicit_name:
                 TaskBase.patch_config_explicit_name(content, explicit_name)
@@ -1727,7 +1788,7 @@ def launch(service):
                 (redis_db, taskfile_dir,
                  prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
                  _duplicate_adapt(service_module, content),
-                 files, priority, 0, content["ncpus"], other_task_info))
+                 files, priority, 0, content["ncpus"], deepcopy(other_task_info)))
             task_ids.append(
                 "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
             remove_config_option(train_command)
@@ -1738,6 +1799,10 @@ def launch(service):
         if task_type != "prepr":
 
             task_id, explicit_name = build_task_id(content, xxyy, task_suffix, parent_task_id)
+
+            if "dependency" in content and first_of_chain:
+                parent_task_id = content["dependency"]
+                first_of_chain = False
 
             if explicit_name:
                 TaskBase.patch_config_explicit_name(content, explicit_name)
@@ -1769,7 +1834,7 @@ def launch(service):
                  _duplicate_adapt(service_module, content),
                  files, priority,
                  content["ngpus"], content["ncpus"],
-                 other_task_info))
+                 deepcopy(other_task_info)))
             task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                 task_type, task_id,
                 content["ngpus"], content["ncpus"]))
@@ -1822,7 +1887,7 @@ def launch(service):
                          _duplicate_adapt(service_module, content_translate),
                          (), content_translate["priority"],
                          content_translate["ngpus"], content_translate["ncpus"],
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "trans", trans_task_id,
                         content_translate["ngpus"], content_translate["ncpus"]))
@@ -1862,7 +1927,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                        option_lang + ['-f', "launcher:scores"]
+                                   option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1872,7 +1937,7 @@ def launch(service):
                          content_score,
                          files, priority + 2,
                          0, 1,
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "score", score_task_id,
                         0, 1))
@@ -1917,7 +1982,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                        in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
@@ -1927,7 +1992,7 @@ def launch(service):
                          content_tuminer,
                          (), priority + 2,
                          ngpus_recommend, ncpus_recommend,
-                         other_task_info))
+                         deepcopy(other_task_info)))
                     task_ids.append("%s\t%s\tngpus: %d, ncpus: %d" % (
                         "tuminer", tuminer_task_id,
                         ngpus_recommend, ncpus_recommend))
@@ -2265,6 +2330,14 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
         for k, v in directories.items():
-            result[key].append({**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
+            result[key].append(
+                {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
+
+
+def check_google_model(model):
+    if model.split('_')[0].lower() == 'google':
+        return True
+    else:
+        return False
