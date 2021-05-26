@@ -33,6 +33,6 @@ def check_permission_access_train_restricted(permission):
 
 
 def is_resource_train_restricted(path):
-    regex_pattern = '\/train_restricted(\/.*)*$'
+    regex_pattern = r'\/train_restricted(\/.*)*$'
 
     return re.search(regex_pattern, path)

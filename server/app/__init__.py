@@ -3,10 +3,10 @@ import logging.config
 import redis
 
 from flask import Flask
+from flask_session import Session
 from nmtwizard import common
 from nmtwizard import configuration as config
 from utils.database_utils import DatabaseUtils
-from flask_session import Session
 
 VERSION = "1.12.0"
 app = Flask(__name__)
@@ -81,4 +81,4 @@ if input_dir is not None:
         app.other_config['push_model']['inputDir'] = input_dir
     assert os.path.isdir(input_dir), "Invalid input directory used for deploying model: %s" % input_dir
 
-from app import routes
+from app import routes  # pylint: disable=wrong-import-position

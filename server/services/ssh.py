@@ -65,11 +65,12 @@ class SSHService(Service):
                 server['cpus'] = list(range(server['ncpus']))
             if 'cpus' not in server or len(server['cpus']) == 0:
                 raise ValueError("cpus cannot be empty for server `%s`" % server)
-        super(SSHService, self).__init__(config)
+        super().__init__(config)
         server_pool = self._config['variables']['server_pool']
         self._machines = {_hostname(server): server for server in server_pool}
         self._resources = self._list_all_gpus()
 
+    @property
     def resource_multitask(self):
         return True
 
@@ -89,7 +90,8 @@ class SSHService(Service):
                                       len(self._machines[server]['cpus'])) for server in self._machines}
         return resources
 
-    def get_resource_from_options(self, options):
+    @staticmethod
+    def get_resource_from_options(options):
         if "server" not in options:
             return "auto"
         return options["server"]
@@ -117,7 +119,7 @@ class SSHService(Service):
             }
         return desc
 
-    def check(self, options, docker_registries):
+    def check(self, options, docker_registries_list):
         params = _get_params(self._config, options)
         client = self._get_client(params=params)
         try:
@@ -125,7 +127,7 @@ class SSHService(Service):
                 client,
                 params['gpus'],
                 params['log_dir'],
-                docker_registries,
+                docker_registries_list,
                 self._config.get('requirements'),
                 params.get('with_nvidia_docker'),
                 False)
@@ -188,7 +190,7 @@ class SSHService(Service):
             login_cmd=params['login_cmd'])
         return client
 
-    def status(self, task_id, params, get_log=True):
+    def status(self, task_id, params, get_log=True):  # pylint: disable=arguments-differ
         client = common.ssh_connect_with_retry(
             params['host'],
             params['port'],
@@ -198,10 +200,10 @@ class SSHService(Service):
             login_cmd=params['login_cmd'])
 
         if 'container_id' in params:
-            exit_status, stdout, stderr = common.run_docker_command(
+            exit_status, _, _ = common.run_docker_command(
                 client, 'inspect -f {{.State.Status}} %s' % params['container_id'])
         else:
-            exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+            exit_status, _, _ = common.run_command(client, 'kill -0 -%d' % params['pgid'])
 
         if get_log:
             common.update_log(task_id, client, params['log_dir'], self._config.get('callback_url'))
@@ -223,12 +225,12 @@ class SSHService(Service):
         if 'container_id' in params:
             common.run_docker_command(client, 'rm --force %s' % params['container_id'])
             time.sleep(5)
-        exit_status, stdout, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
+        exit_status, _, stderr = common.run_command(client, 'kill -0 -%d' % params['pgid'])
         if exit_status != 0:
             logger.info("exist_status %d: %s", exit_status, stderr.read())
             client.close()
             return
-        exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+        exit_status, _, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
         if exit_status != 0:
             logger.info("exist_status %d: %s", exit_status, stderr.read())
             client.close()

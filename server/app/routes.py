@@ -1,34 +1,34 @@
+import builtins
 import io
 import json
 import logging
 import os
+import re
+import tempfile
 import time
+import traceback
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
-import builtins
-import re
-import traceback
-from werkzeug.wsgi import FileWrapper
+
+import flask
 import semver
 import six
-from werkzeug.exceptions import HTTPException
-import flask
-from flask import abort, make_response, jsonify, Response, request, g
-import tempfile
-import uuid
 from bson import ObjectId
-from app import app, redis_db, redis_db_without_decode, mongo_client, get_version, taskfile_dir
-from nmtwizard import task, configuration as config
+from werkzeug.exceptions import HTTPException
+from werkzeug.wsgi import FileWrapper
+from flask import abort, make_response, jsonify, Response, request, g
+from app import app, redis_db, mongo_client, get_version, taskfile_dir
+from nmtwizard import task, configuration as nmtwizard_config
+from nmtwizard.capacity import Capacity
 from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker_action, get_registry, cust_jsondump, \
     get_cpu_count, get_params, boolean_param, change_parent_task, remove_config_option, model_name_analysis
-from nmtwizard.capacity import Capacity
-from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
-    TaskScoring, TASK_RELEASE_TYPE
 # only for launch() maybe deprecated
 from nmtwizard.task import TaskBase
-from utils.storage_utils import StorageUtils
+from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
+    TaskScoring, TASK_RELEASE_TYPE
 from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted
+from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
@@ -67,8 +67,8 @@ class StorageId:
     def get_entities(names):
         entities = set({})
         for storage in names:
-            entity, storage_id = StorageId.decode_storage_name(storage)
-            if entity and entity != config.CONFIG_DEFAULT:
+            entity, _ = StorageId.decode_storage_name(storage)
+            if entity and entity != nmtwizard_config.CONFIG_DEFAULT:
                 entities.add(entity)
         return entities
 
@@ -85,7 +85,7 @@ class RoutesConfiguration:
             'entity_code': user.entity.entity_code,
             'user_code': user.user_code
         }
-        self.service_config = config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
+        self.service_config = nmtwizard_config.get_service_config(mongo_client, service_name=GLOBAL_POOL_NAME)
         self.entity_storages_config = self._get_entity_storages(self.creator['entity_code'])
         self.storage_client, self.global_storage_name = StorageUtils.get_storages(GLOBAL_POOL_NAME,
                                                                                   mongo_client,
@@ -94,15 +94,15 @@ class RoutesConfiguration:
                                                                                   g)
 
         if self._service is not GLOBAL_POOL_NAME:
-            self.service_config = config.get_service_config(mongo_client, self._service)
+            self.service_config = nmtwizard_config.get_service_config(mongo_client, self._service)
         self.service_module = get_service(service)
-        self.service_entities = config.get_entities(self.service_config)
+        self.service_entities = nmtwizard_config.get_entities(self.service_config)
         self.entity_owner = self._get_entity_owner()
         self.trainer_entities = RoutesConfiguration.get_entities_by_permission("train")
         assert self.trainer_entities  # Here: almost sure you are trainer
 
     def _get_entity_storages(self, entity_code):
-        if config.is_polyentity_config(self.service_config):
+        if nmtwizard_config.is_polyentity_config(self.service_config):
             entity_config = self.service_config["entities"][entity_code]
             return entity_config["storages"]
         return self.service_config["storages"]
@@ -126,8 +126,8 @@ class RoutesConfiguration:
 
         if not entity_owner:
             abort(flask.make_response(flask.jsonify(
-                message="model owner is ambiguous between these entities: (%s)" % str(",".join(trainer_of_entities))),
-                400))
+                message="model owner is ambiguous between these entities: (%s)" % str(
+                    ",".join(trainer_of_entities))), 400))
         entity_owner = entity_owner.upper()
 
         if not has_ability(flask.g, 'train', entity_owner):
@@ -150,7 +150,7 @@ def check_permission(service, permission):
     if service not in services:
         abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
                             403))
-    is_poly_entity = config.is_polyentity_service(mongo_client, service)
+    is_poly_entity = nmtwizard_config.is_polyentity_service(mongo_client, service)
     if is_poly_entity and not has_ability(flask.g, permission, ""):  # super admin
         abort(make_response(jsonify(message="insufficient credentials for edit_config on this service %s" % service),
                             403))
@@ -183,14 +183,14 @@ def cust_jsonify(obj):
 
 def get_service(service):
     """Wrapper to fail on invalid service."""
-    service_config = config.get_service_config(mongo_client, service)
-    base_config = config.get_base_config(mongo_client)
-    services, merged_config = config.load_service_config(service_config, base_config)
+    service_config = nmtwizard_config.get_service_config(mongo_client, service)
+    base_config = nmtwizard_config.get_base_config(mongo_client)
+    services, _ = nmtwizard_config.load_service_config(service_config, base_config)
 
     return services[service]
 
 
-def _duplicate_adapt(service, content):
+def _duplicate_adapt(content):
     """Duplicate content and apply service-specification modifications
     """
     dup_content = deepcopy(content)
@@ -243,8 +243,8 @@ def _usage_capacity(service):
             count_map_cpu[t] += 1
             count_used_xpus.incr_ncpus(1)
 
-        detail[resource]['usage'] = ["%s %s: %d (%d)" % (task_type[t], t, count_map_gpu[t],
-                                                         count_map_cpu[t]) for t in task_type]
+        detail[resource]['usage'] = ["%s %s: %d (%d)" % (value, t, count_map_gpu[t],
+                                                         count_map_cpu[t]) for t, value in task_type.items()]
         detail[resource]['avail_gpus'] = r_capacity.ngpus - count_used_xpus.ngpus
         detail[resource]['avail_cpus'] = r_capacity.ncpus - count_used_xpus.ncpus
         err = redis_db.get("busy:%s:%s" % (service.name, resource))
@@ -297,15 +297,11 @@ def task_write_control(func):
 
     @wraps(func)
     def func_wrapper(*args, **kwargs):
-        ok = False
         task_id = kwargs['task_id']
         entity = get_task_entity(task_id)
 
-        if has_ability(flask.g, 'admin_task', entity):
-            ok = True
-        elif has_ability(flask.g, 'train', entity) and flask.g.user.user_code == task_id[2:5]:
-            ok = True
-
+        ok = has_ability(flask.g, 'admin_task', entity) or (has_ability(flask.g, 'train', entity) and
+                                                            flask.g.user.user_code == task_id[2:5])
         if not ok:
             abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id),
                                 403))
@@ -336,7 +332,7 @@ def filter_request(route, ability=None):
 
         @wraps(func)
         def func_wrapper(*args, **kwargs):
-            if len(filter_routes):
+            if filter_routes:
                 return filter_routes[0](route, ability, func, *args, **kwargs)
             # if no filter defined, just pass through
             return func(*args, **kwargs)
@@ -346,7 +342,7 @@ def filter_request(route, ability=None):
     return wrapper
 
 
-def filter_mode(required_mode=[]):
+def filter_mode(required_mode):
     def wrapper(func):
         """generic request filter system for customization"""
 
@@ -357,6 +353,7 @@ def filter_mode(required_mode=[]):
             if g.get('session') is None or g.session['mode'] in required_mode:
                 return func(*args, **kwargs)
             abort(make_response(jsonify(message="your account does not allow to access this page"), 403))
+            return None
 
         return func_wrapper
 
@@ -383,11 +380,11 @@ def list_services():
     show_all = boolean_param(flask.request.args.get('all'))
     res = {}
     for service_name in redis_db.smembers("admin:services"):
-        service_config = config.get_service_config(mongo_client, service_name)
+        service_config = nmtwizard_config.get_service_config(mongo_client, service_name)
         if service_config is None:
             abort(make_response(jsonify(message="service configuration %s unknown" % service_name), 404))
 
-        pool_entities = config.get_entities(service_config)
+        pool_entities = nmtwizard_config.get_entities(service_config)
 
         if not show_all and flask.g.user.entity.entity_code not in pool_entities:
             continue
@@ -421,7 +418,7 @@ def describe(service):
 @app.route("/service/configs/_base", methods=["GET"])
 @filter_request("GET/service/configs", "is_super")
 def get_base_config():
-    base_config = config.get_base_config(mongo_client)
+    base_config = nmtwizard_config.get_base_config(mongo_client)
     return flask.jsonify(base_config)
 
 
@@ -429,13 +426,13 @@ def get_base_config():
 @filter_request("GET/service/configs", "edit_config")
 def get_service_config(service):
     check_permission(service, "edit_config")
-    service_config = config.get_service_config(mongo_client, service)
+    service_config = nmtwizard_config.get_service_config(mongo_client, service)
     return flask.jsonify(service_config)
 
 
-def post_admin_request(app, service, action, value="1"):
-    identifier = "%d.%d" % (os.getpid(), app.request_id)
-    app.request_id += 1
+def post_admin_request(current_app, service, action, value="1"):
+    identifier = "%d.%d" % (os.getpid(), current_app.request_id)
+    current_app.request_id += 1
     redis_db.set("admin:command:%s:%s:%s" % (service, action, identifier), value)
     command_result = None
     wait = 0
@@ -462,7 +459,7 @@ def set_service_config(service):
     try:
         update_config = json.loads(request_body)
         update_config["updated_at"] = time.time()
-        config.set_service_config(mongo_client, service, update_config)
+        nmtwizard_config.set_service_config(mongo_client, service, update_config)
         worker_pids = get_worker_pids(service)
         if len(worker_pids) == 0:
             return flask.jsonify("ok")
@@ -470,6 +467,7 @@ def set_service_config(service):
         return flask.jsonify(command_response)
     except Exception as e:
         abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+    return None
 
 
 @app.route("/service/restart/<string:service>", methods=["GET"])
@@ -501,6 +499,7 @@ def server_enable(service, resource):
         redis_db.delete("busy:%s:%s" % (service, resource))
         return flask.jsonify("ok")
     abort(flask.make_response(flask.jsonify(message="resource was not disabled"), 400))
+    return None
 
 
 @app.route("/service/disable/<string:service>/<string:resource>", methods=["GET"])
@@ -526,7 +525,7 @@ def check(service):
         service_options = {}
 
     service_module = get_service(service)
-    registries = config.get_registries(mongo_client, service)
+    registries = nmtwizard_config.get_registries(mongo_client, service)
     try:
         details = service_module.check(service_options, registries)
     except ValueError as e:
@@ -535,6 +534,7 @@ def check(service):
         abort(flask.make_response(flask.jsonify(message=str(e)), 500))
     else:
         return flask.jsonify(details)
+    return None
 
 
 def create_tasks_for_launch_v2(creation_infos):
@@ -675,8 +675,8 @@ def launch_v2():
     service = GLOBAL_POOL_NAME
     try:
         request_data = parse_request_data(request)
-    except Exception:
-        raise Exception("Cannot parse request data in launch_v2")
+    except Exception as e:
+        raise Exception("Cannot parse request data in launch_v2") from e
 
     domain = request_data.get('domain')
     if domain is None:
@@ -779,7 +779,7 @@ def validate_request_data(current_request):
     request_files = current_request.files
     request_data = current_request.form
 
-    base_config = config.get_base_config(mongo_client)
+    base_config = nmtwizard_config.get_base_config(mongo_client)
     corpus_config = base_config.get("corpus")
 
     validate_tags(request_data.get("tags"))
@@ -811,8 +811,8 @@ def validate_tags(tags):
                 raise Exception(f"Invalid id: {tag}")
         for tag in new_tags:
             print(f"Tag: {tag}")
-    except Exception:
-        raise Exception("Invalid tags json")
+    except Exception as e:
+        raise Exception("Invalid tags json") from e
 
 
 def validate_training_data(training_data, corpus_config):
@@ -840,7 +840,7 @@ def is_valid_corpus_extension(file_name, corpus_config):
     valid_extensions = [".tmx", ".txt"]
     if corpus_config:
         valid_extensions = corpus_config.get("extensions") or valid_extensions
-    name, extension = os.path.splitext(file_name)
+    _, extension = os.path.splitext(file_name)
     return extension in valid_extensions
 
 
@@ -848,7 +848,6 @@ def validate_model_name(model_name):
     reg = r"(^[a-zA-Z0-9\.\_\-]+$)"
     if not re.match(reg, model_name):
         raise Exception("Invalid model_name")
-    return
 
 
 def validate_docker_image(docker_image):
@@ -956,7 +955,7 @@ def get_data_file_info(request_data, routes_config):
         return get_user_upload_file_info(routes_config, request_data, training_data, testing_data)
 
     dataset = request_data.get("dataset")
-    dataset_ids = list(map(lambda ele: ObjectId(ele), dataset))
+    dataset_ids = list(map(ObjectId, dataset))
 
     return get_exists_dataset_file_info(dataset_ids)
 
@@ -973,7 +972,8 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
         training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
         testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
         data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path,
-                                                                      testing_data_path, training_data, testing_proportion)
+                                                                      testing_data_path, training_data,
+                                                                      testing_proportion)
     else:
         data_training = upload_user_files(routes_config, training_data_path, training_data)
         data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
@@ -1061,7 +1061,7 @@ def format_training_folder(training_folder):
 
 def get_final_training_config(request_data, training_corpus_infos):
     training_corpus_paths = map(lambda corpus: corpus.get("filename"), training_corpus_infos)
-    training_corpus_folders = set(map(lambda path: os.path.dirname(path), training_corpus_paths))
+    training_corpus_folders = set(map(os.path.dirname, training_corpus_paths))
 
     sample = 0
     sample_by_path = {}
@@ -1108,9 +1108,10 @@ def get_final_training_config(request_data, training_corpus_infos):
 
         parent_config["product"] = "SYSTRAN ModelStudio Lite"
         return parent_config
-    else:
-        abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" %
-                                                        request_data["parent_model"]), 400))
+
+    abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % (
+        request_data["parent_model"])), 400))
+    return None
 
 
 def delete_nfa_feature_from_config(config):
@@ -1174,8 +1175,13 @@ def get_sample_data(current_data, parent_data, sample_by_path):
     client_sample = 0
 
     for current_sample_dist in current_sample_dists:
-        duplicate = list(filter(lambda sample_dist: (current_sample_dist['path'] == sample_dist['path']), sample_dists))
-        client_sample += int(sample_by_path[current_sample_dist['path']])
+        current_sample_dist_path = current_sample_dist['path']
+
+        def equal_path(sample_dist, path=current_sample_dist_path):
+            return path == sample_dist['path']
+
+        duplicate = list(filter(equal_path, sample_dists))
+        client_sample += int(sample_by_path[current_sample_dist_path])
 
         if len(duplicate) > 0:
             continue
@@ -1243,7 +1249,7 @@ def process_tags(tags, entity_code, user_code):
     existed_tags = tags.get("existed", [])
     new_tags = list(set(tags.get("new", [])))  # ensure unique value
 
-    tag_ids = list(map(lambda tag: ObjectId(tag), existed_tags))
+    tag_ids = list(map(ObjectId, existed_tags))
     exists_tags_by_id = list(mongo_client.get_tags_by_ids(tag_ids))
     exists_tags_by_value = list(mongo_client.get_tags_by_value(new_tags, entity_code))
     not_exists_tags = list(
@@ -1388,8 +1394,8 @@ def create_evaluation():
 
     try:
         request_data = parse_request_data_of_evaluation(request)
-    except Exception:
-        raise Exception("Cannot parse request data in create_evaluation")
+    except Exception as e:
+        raise Exception("Cannot parse request data in create_evaluation") from e
 
     service = GLOBAL_POOL_NAME
     routes_config = RoutesConfiguration(flask.g, service)
@@ -1494,7 +1500,7 @@ def validate_request_data_of_evaluation(current_request):
     # TODO: Validate request data
     # models: exists? training completed? same lp? num of models?
     # corpus: use is_valid_corpus_extension(file_name, corpus_config)
-    return
+    return current_request
 
 
 def get_input_name(model):
@@ -1605,8 +1611,8 @@ def parse_tags(tags):
 @app.route("/task/launch/<string:service>", methods=["POST"])
 @filter_request("POST/task/launch", "train")
 def launch(service):
-    service_config = config.get_service_config(mongo_client, service)
-    pool_entities = config.get_entities(service_config)
+    service_config = nmtwizard_config.get_service_config(mongo_client, service)
+    pool_entities = nmtwizard_config.get_entities(service_config)
     if all(not has_ability(flask.g, "train", entity) for entity in pool_entities):
         abort(make_response(jsonify(message="insufficient credentials for train (entity %s)" % service), 403))
 
@@ -1662,7 +1668,7 @@ def launch(service):
         if task_suffix is None:
             task_suffix = task_type
 
-    service_entities = config.get_entities(service_config)
+    service_entities = nmtwizard_config.get_entities(service_config)
     entity_owner = RoutesConfiguration.get_entity_owner(service_entities, service)
     trainer_entities = RoutesConfiguration.get_entities_by_permission("train")
     assert trainer_entities  # Here: almost sure you are trainer
@@ -1809,7 +1815,7 @@ def launch(service):
             task_create.append(
                 (redis_db, taskfile_dir,
                  prepr_task_id, "prepr", parent_task_id, preprocess_resource, service,
-                 _duplicate_adapt(service_module, content),
+                 _duplicate_adapt(content),
                  files, priority, 0, content["ncpus"], deepcopy(other_task_info)))
             task_ids.append(
                 "%s\t%s\tngpus: %d, ncpus: %d" % ("prepr", prepr_task_id, 0, content["ncpus"]))
@@ -1858,7 +1864,7 @@ def launch(service):
             task_create.append(
                 (redis_db, taskfile_dir,
                  task_id, task_type, parent_task_id, task_resource, service,
-                 _duplicate_adapt(service_module, content),
+                 _duplicate_adapt(content),
                  files, priority,
                  content["ngpus"], content["ncpus"],
                  deepcopy(other_task_info)))
@@ -1907,7 +1913,7 @@ def launch(service):
                     task_create.append(
                         (redis_db, taskfile_dir,
                          trans_task_id, "trans", task_id, translate_resource, service,
-                         _duplicate_adapt(service_module, content_translate),
+                         _duplicate_adapt(content_translate),
                          (), content_translate["priority"],
                          content_translate["ngpus"], content_translate["ncpus"],
                          deepcopy(other_task_info)))
@@ -2139,7 +2145,7 @@ def list_tasks(pattern):
 
     for clause in task_where_clauses:
         for task_key in task.scan_iter(redis_db, clause + suffix):
-            task_id = task.id(task_key)
+            task_id = task.get_task_id(task_key)
             info = task.info(
                 redis_db, taskfile_dir, task_id,
                 ["launched_time", "alloc_resource", "alloc_lgpu", "alloc_lcpu", "resource",
@@ -2198,7 +2204,7 @@ def terminate_internal(task_id):
         current_status = task.info(redis_db, taskfile_dir, task_id, "status")
         if current_status is None:
             return "task %s unknown" % task_id, current_status
-        elif current_status == "stopped":
+        if current_status == "stopped":
             return "%s already stopped" % task_id, current_status
 
     phase = flask.request.args.get('phase')
@@ -2233,7 +2239,7 @@ def task_beat(task_id):
 @app.route("/task/file/<string:task_id>/<path:filename>", methods=["GET"])
 @task_request
 def get_file(task_id, filename):
-    content = task.get_file(redis_db, taskfile_dir, task_id, filename)
+    content = task.get_file(taskfile_dir, task_id, filename)
     if content is None:
         abort(flask.make_response(
             flask.jsonify(message="cannot find file %s for task %s" % (filename, task_id)), 404))
@@ -2249,7 +2255,7 @@ def get_file(task_id, filename):
 @task_request
 def post_file(task_id, filename):
     content = flask.request.get_data()
-    task.set_file(redis_db, taskfile_dir, task_id, content, filename)
+    task.set_file(taskfile_dir, task_id, content, filename)
     return flask.jsonify(200)
 
 
@@ -2258,7 +2264,7 @@ def post_file(task_id, filename):
 def get_log(task_id):
     task_readonly_control(task_id)
 
-    content = task.get_log(redis_db, taskfile_dir, task_id)
+    content = task.get_log(taskfile_dir, task_id)
 
     (task_id, content) = post_function('GET/task/log', task_id, content)
     if content is None:
@@ -2273,7 +2279,7 @@ def get_log(task_id):
 @task_request
 def append_log(task_id):
     content = flask.request.get_data()
-    task.append_log(redis_db, taskfile_dir, task_id, content, max_log_size)
+    task.append_log(taskfile_dir, task_id, content, max_log_size)
     duration = flask.request.args.get('duration')
     try:
         if duration is not None:
@@ -2292,7 +2298,7 @@ def append_log(task_id):
 @task_request
 def post_log(task_id):
     content = flask.request.get_data()
-    content = task.set_log(redis_db, taskfile_dir, task_id, content, max_log_size)
+    content = task.set_log(taskfile_dir, task_id, content, max_log_size)
     post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
 
@@ -2360,7 +2366,4 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
 
 
 def check_google_model(model):
-    if model.split('_')[0].lower() == 'google':
-        return True
-    else:
-        return False
+    return model.split('_')[0].lower() == 'google'

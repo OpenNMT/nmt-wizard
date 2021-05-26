@@ -1,4 +1,3 @@
-import os
 import logging
 import boto3
 import paramiko
@@ -66,7 +65,6 @@ def _get_params(templates, options):
     p = templateName.rfind(":")
     if p != -1:
         templateName = templateName[:p]
-    params = {}
     for t in templates:
         if t["name"] == templateName:
             return t
@@ -76,7 +74,7 @@ def _get_params(templates, options):
 class EC2Service(Service):
 
     def __init__(self, config):
-        super(EC2Service, self).__init__(config)
+        super().__init__(config)
         self._session = boto3.Session(
             aws_access_key_id=config["variables"]["awsAccessKeyId"],
             aws_secret_access_key=config["variables"]["awsSecretAccessKey"],
@@ -123,6 +121,7 @@ class EC2Service(Service):
         # here, server must exist
         return self._machines[server].get(field_name)
 
+    @property
     def resource_multitask(self):
         return False
 
@@ -159,7 +158,7 @@ class EC2Service(Service):
             }
         }
 
-    def check(self, options, docker_registries_list):
+    def check(self, options, docker_registries_list):  # pylint: disable=unused-argument
         if "launchTemplateName" not in options:
             raise ValueError("missing launchTemplateName option")
         try:
@@ -169,7 +168,7 @@ class EC2Service(Service):
             if e.response["Error"]["Code"] == "DryRunOperation":
                 pass
             elif e.response["Error"]["Code"] == "UnauthorizedOperation":
-                raise RuntimeError("not authorized to run instances")
+                raise RuntimeError("not authorized to run instances") from e
             else:
                 raise e
         return ""
@@ -179,7 +178,7 @@ class EC2Service(Service):
                options,
                xpulist,
                resource,
-               storages,
+               storages,  # pylint: disable=unused-argument
                docker_config,
                docker_registry,
                docker_image,
@@ -260,7 +259,7 @@ class EC2Service(Service):
         task["instance_id"] = instance.id
         return task
 
-    def status(self, task_id, params):
+    def status(self, task_id, params):  # pylint: disable=arguments-differ, unused-argument
         instance_id = params["instance_id"] if isinstance(params, dict) else params
         ec2_client = self._session.client("ec2")
         status = ec2_client.describe_instance_status(

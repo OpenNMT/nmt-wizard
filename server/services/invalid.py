@@ -1,14 +1,6 @@
-import os
 import logging
-import boto3
-import paramiko
-import six
-
-from botocore.exceptions import ClientError
-from nmtwizard import common
 from nmtwizard.service import Service
-from nmtwizard.ec2_instance_types import ec2_capacity_map
-from nmtwizard.capacity import Capacity
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,19 +9,23 @@ class InvalidService(Service):
     """Proxy class to keep worker in invalid state when there is an invalid configuration"""
 
     def __init__(self, config):
-        super(InvalidService, self).__init__(config)
+        super().__init__(config)
         self._resources = []
 
+    @property
     def valid(self):
         return False
 
+    @property
     def resource_multitask(self):
         return False
 
-    def list_resources(self):
+    @staticmethod
+    def list_resources():
         return {}
 
-    def get_resource_from_options(self, options):
+    @staticmethod
+    def get_resource_from_options(options):  # pylint: disable=unused-argument
         return "auto"
 
     def describe(self):
@@ -42,7 +38,7 @@ class InvalidService(Service):
             }
         }
 
-    def check(self, options):
+    def check(self, options, docker_registries_list):
         raise NotImplementedError()
 
     def launch(self,
@@ -50,16 +46,19 @@ class InvalidService(Service):
                options,
                xpulist,
                resource,
+               storages,
+               docker_config,
                docker_registry,
                docker_image,
                docker_tag,
                docker_command,
                docker_files,
                wait_after_launch,
-               auth_token):
+               auth_token,
+               support_statistics):
         raise NotImplementedError()
 
-    def status(self, task_id, params):
+    def status(self, params):
         raise NotImplementedError()
 
     def terminate(self, params):

@@ -4,13 +4,12 @@ import os
 import shutil
 from functools import cmp_to_key
 import builtins
-import semver
 from copy import deepcopy
 from enum import Enum
+import semver
+import six
 from nmtwizard.capacity import Capacity
 from nmtwizard.helper import build_task_id, get_cpu_count, get_gpu_count, get_registry, change_parent_task
-
-import six
 
 TASK_RELEASE_TYPE = "relea"
 
@@ -176,7 +175,7 @@ class TaskBase:
         if len(only_tag_docker_images) == 1:
             return only_tag_docker_images[0]
         sorted_docker_image_tags = sorted(only_tag_docker_images, key=cmp_to_key(
-            lambda x, y: semver.compare(x, y)), reverse=True)
+            lambda x, y: semver.compare(x, y)), reverse=True)  # pylint: disable=unnecessary-lambda
         return sorted_docker_image_tags[0]
 
     @staticmethod
@@ -364,7 +363,7 @@ def create_internal(redis, taskfile_dir, task_id, task_type, parent_task, resour
     for k in generic_map:
         redis.hset(keyt, k, generic_map[k])
     for k in files:
-        set_file(redis, taskfile_dir, task_id, files[k], k)
+        set_file(taskfile_dir, task_id, files[k], k)
     set_status(redis, keyt, "launched")
     set_status(redis, keyt, "queued")
     enable(redis, task_id, service)
@@ -445,7 +444,7 @@ def info(redis, taskfile_dir, task_id, fields):
             fields = redis.hkeys(keyt)
             fields.append("ttl")
             r = info(redis, taskfile_dir, task_id, fields)
-            r['files'] = file_list(redis, taskfile_dir, task_id)
+            r['files'] = file_list(taskfile_dir, task_id)
             return r
     field = None
     if not isinstance(fields, list):
@@ -525,7 +524,7 @@ def scan_iter(redis, pattern):
     return redis.scan_iter('task:' + pattern)
 
 
-def id(task_key):
+def get_task_id(task_key):
     return task_key[5:]
 
 
@@ -556,7 +555,7 @@ def beat(redis, task_id, duration, container_id):
             redis.hset(keyt, "container_id", container_id)
 
 
-def file_list(redis, taskfile_dir, task_id):
+def file_list(taskfile_dir, task_id):
     """Returns the list of files attached to a task"""
     task_dir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(task_dir):
@@ -567,7 +566,7 @@ def file_list(redis, taskfile_dir, task_id):
 disclaimer = b'\n\n[FILE TRUNCATED]\n'
 
 
-def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
+def set_file(taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
@@ -579,7 +578,7 @@ def set_file(redis, taskfile_dir, task_id, content, filename, limit=None):
     return content
 
 
-def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
+def append_file(taskfile_dir, task_id, content, filename, limit=None):
     taskdir = os.path.join(taskfile_dir, task_id)
     if not os.path.isdir(taskdir):
         os.mkdir(taskdir)
@@ -596,7 +595,7 @@ def append_file(redis, taskfile_dir, task_id, content, filename, limit=None):
         fh.write(content)
 
 
-def get_file(redis, taskfile_dir, task_id, filename):
+def get_file(taskfile_dir, task_id, filename):
     path = os.path.join(taskfile_dir, task_id, filename)
     if not os.path.isfile(path):
         return None
@@ -604,16 +603,16 @@ def get_file(redis, taskfile_dir, task_id, filename):
         return fh.read()
 
 
-def get_log(redis, taskfile_dir, task_id):
-    return get_file(redis, taskfile_dir, task_id, "log")
+def get_log(taskfile_dir, task_id):
+    return get_file(taskfile_dir, task_id, "log")
 
 
-def append_log(redis, taskfile_dir, task_id, content, limit=None):
-    return append_file(redis, taskfile_dir, task_id, content, "log", limit)
+def append_log(taskfile_dir, task_id, content, limit=None):
+    return append_file(taskfile_dir, task_id, content, "log", limit)
 
 
-def set_log(redis, taskfile_dir, task_id, content, limit=None):
-    return set_file(redis, taskfile_dir, task_id, content, "log", limit)
+def set_log(taskfile_dir, task_id, content, limit=None):
+    return set_file(taskfile_dir, task_id, content, "log", limit)
 
 
 def set_stat(redis, task_id, duration, statistics):

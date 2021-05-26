@@ -4,12 +4,12 @@ Docker-based tasks.
 
 import abc
 import six
-from nmtwizard import configuration as config
+from nmtwizard import configuration as nmtwizard_config
 from nmtwizard.capacity import Capacity
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Service(object):
+class Service:
     """Base class for services."""
 
     def __init__(self, config):
@@ -32,10 +32,11 @@ class Service(object):
         if self._default_ms and (self._default_msr or self._default_msw):
             raise ValueError('default_ms and default_ms[rw] are exclusive')
         self._machines = None
+        self._resources = None
 
     def __getstate__(self):
         """Return state values to be pickled."""
-        return (self._config, self._machines, self._resources)
+        return self._config, self._machines, self._resources
 
     def __setstate__(self, state):
         """Restore state from the unpickled state values."""
@@ -103,9 +104,10 @@ class Service(object):
         raise NotImplementedError()
 
     def get_docker_config(self, entity_name):
-        return config.get_docker(self._config, entity_name)
+        return nmtwizard_config.get_docker(self._config, entity_name)
 
-    def select_resource_from_capacity(self, request_resource, request_capacity):
+    @staticmethod
+    def select_resource_from_capacity(request_resource, request_capacity):  # pylint: disable=unused-argument
         """Given expected capacity, restrict or not resource list to the capacity
 
         Args:
@@ -118,7 +120,8 @@ class Service(object):
 
         return request_resource
 
-    def describe(self):
+    @staticmethod
+    def describe():
         """Describe the service options.
 
         Returns:

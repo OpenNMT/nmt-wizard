@@ -66,6 +66,7 @@ def add_log_handler(fh):
 
 
 # Make sure error is processed as binary so won't cause additional exception when decoding
+# pylint: disable=unused-argument
 def _patched_exec_command(self,
                           command,
                           bufsize=-1,
@@ -83,6 +84,7 @@ def _patched_exec_command(self,
     stdout = chan.makefile('rb' if stdin_binary else 'r', bufsize)
     stderr = chan.makefile_stderr('rb' if stdin_binary else 'r', bufsize)
     return stdin, stdout, stderr
+# pylint: enable=unused-argument
 
 
 paramiko.SSHClient.exec_command = _patched_exec_command
@@ -153,7 +155,7 @@ def ssh_connect_with_retry(hostname,
         try:
             pkey = paramiko.RSAKey.from_private_key(private_key_file)
         except Exception as e:
-            raise RuntimeError("cannot parse private key (%s)" % str(e))
+            raise RuntimeError("cannot parse private key (%s)" % str(e)) from e
     if delay > 0:
         time.sleep(delay)
     while True:
@@ -173,7 +175,7 @@ def ssh_connect_with_retry(hostname,
         except Exception as e:
             retry -= 1
             if retry < 0:
-                raise EnvironmentError('cannot connect to node: %s' % str(e))
+                raise EnvironmentError('cannot connect to node: %s' % str(e)) from e
             logger.warning("Failed to connect to %s via SSH (%s), retrying in %d seconds...",
                            hostname, str(e), retry_delay)
             time.sleep(retry_delay)
@@ -201,6 +203,7 @@ def fuse_s3_bucket(client, corpus):
             corpus["bucket"], corpus["mount"]))
     if status != 0:
         raise RuntimeError('failed to fuse S3 bucket: %s' % six.ensure_str(stderr.read()))
+    return None
 
 
 def check_environment(client, lgpu, log_dir, docker_registries, requirements, with_nvidia_docker=False, check=True):
@@ -388,7 +391,7 @@ def update_log(task_id,
     log_file = "%s/%s.log" % (log_dir, task_id)
     cmd = 'curl -X POST "%s/task/log/%s" --data-binary "@%s"' % (
         callback_url, task_id, log_file)
-    _, stdout, stderr = run_command(client, cmd)
+    _, _, _ = run_command(client, cmd)
 
 
 def launch_task(task_id,
@@ -431,7 +434,7 @@ def launch_task(task_id,
         {the_docker_registry: docker_options['registries'][the_docker_registry]},
         requirements, server_params.get('with_nvidia_docker'))
 
-    if callback_url is not None and False:
+    if callback_url is not None and False:  # pylint: disable=condition-evals-to-constant
         exit_status, stdout, stderr = run_command(
             client,
             "curl --retry 3 -s -X PATCH '%s/task/log/%s' "
@@ -463,7 +466,7 @@ def launch_task(task_id,
         if exit_status != 0:
             raise RuntimeError("error pulling the image %s: %s" % (image_ref, six.ensure_str(stderr.read())))
 
-    if len(docker_files):
+    if docker_files:
         # we have files to synchronize locally
         assert 'mount' in docker_options, "mount point should be defined for passing files"
         assert callback_url is not None, "callback_url needed for passing files"
@@ -478,23 +481,23 @@ def launch_task(task_id,
         if exit_status != 0:
             raise RuntimeError("error build task tmp dir: %s, %s" % (cmd_mkdir, six.ensure_str(stderr.read())))
         logger.info("transfer task files in dockers [%s]", ", ".join(docker_files))
-        for f in docker_files:
-            p = f.rfind("/")
+        for file in docker_files:
+            p = file.rfind("/")
             if p != -1:
-                fdir = f[:p]
+                fdir = file[:p]
                 cmd_mkdir = "mkdir -p %s/%s/%s" % (mount_tmpdir, task_id, fdir)
                 exit_status, stdout, stderr = run_command(client, cmd_mkdir)
                 if exit_status != 0:
                     raise RuntimeError("error build task tmp sub-dir: %s, %s" %
                                        (cmd_mkdir, six.ensure_str(stderr.read())))
-            logger.info("retrieve file %s -> %s/%s", f, mount_tmpdir, task_id)
+            logger.info("retrieve file %s -> %s/%s", file, mount_tmpdir, task_id)
             cmd_get_files = 'curl "%s/task/file/%s/%s" > %s/%s/%s' % (
                 callback_url,
                 task_id,
-                f,
+                file,
                 mount_tmpdir,
                 task_id,
-                f)
+                file)
             exit_status, stdout, stderr = run_command(client, cmd_get_files)
             if exit_status != 0:
                 raise RuntimeError("error retrieving files: %s, %s" %
