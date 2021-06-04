@@ -288,3 +288,7 @@ def wait_until_running(nova_client, config, params, name):
             if count == 0:
                 nova_client.servers.delete(instance.id)
                 raise Exception("Install docker for OVH instance failed")
+            # check mount instance dirs with nfs server dirs
+            if not common.run_and_check_command(ssh_client, "mount -l | grep nfs"):
+                nova_client.servers.delete(instance.id)
+                raise EnvironmentError("Unable to mount instance dirs with nfs server dirs")
