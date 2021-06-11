@@ -89,34 +89,45 @@ class EmailUtils:
 
 def send_task_status_notification_email(task_infos, status):
     task_id = task_infos["id"]
-    task_type = task_infos.get("type")
-    mode = system_config['application']['mode']
+    task_type = task_infos.get("type") if task_infos.get("type") else 'push model'
+    mode = system_config['application']['mode'] if system_config.get('application') else 'advanced'
     content = json.loads(task_infos["content"])
     trainer_email = content.get("trainer_email")
     trainer_name = content.get("trainer_name")
     receiver = system_config['email']['receiver']
     receiver.append(trainer_email)
     eval_model = task_infos.get("eval_model")
-    model = task_infos.get("model")
+    model = task_infos.get("model") if task_infos.get("model") else task_infos.get("parent")
     model_name = content.get("name")
     eval_name = ''
+    link_info = ''
     if mode == 'advanced':
-        link = system_config['email']['url'] + 'task/detail/' + task_id
         subject = 'task'
+        if task_type == 'push model':
+            link_info = 'Model: ' + model
+            link = system_config['email']['url'] + 'model/detail/' + model
+        else:
+            link_info = 'Task_id: ' + task_id
+            link = system_config['email']['url'] + 'task/detail/' + task_id
     else:
+        link = system_config['email']['url'] + 'model/detail/' + str(model)
         if eval_model:
             model_name = content.get("eval_model_input_name")
             link = system_config['email']['url'] + 'evaluation'
             subject = 'model evaluation'
             eval_name = 'Evaluation name: ' + content.get("eval_name") + '<br>'
+        elif task_type in ('prepr', 'train'):
+            subject = 'model training'
+        elif task_type in ('relea', 'push model'):
+            model_name = content.get("model_input_name")
+            subject = 'model deploying'
         else:
-            link = system_config['email']['url'] + 'model/detail/' + str(model)
-            subject = 'model training' if task_type in ('prepr', 'train') else 'model scoring'
+            subject = 'model scoring'
 
     subject_status = 'completed' if status == 'completed' else 'failed'
     email_subject = (subject + ' ' + subject_status).upper()
     body_template = EmailUtils.get_email_body_template(template_type=mode)
-    email_body = Template(body_template).safe_substitute(task_id=task_id, task_type=task_type, status=status,
+    email_body = Template(body_template).safe_substitute(link_info=link_info, task_type=task_type, status=status,
                                                          last_name=trainer_name, link=link, subject=subject,
                                                          model_name=model_name, eval_name=eval_name)
 
