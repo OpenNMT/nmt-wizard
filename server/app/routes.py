@@ -1432,6 +1432,7 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
     routes_config = RoutesConfiguration(flask.g, service)
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
     docker_content = {**docker_image_info, **{"command": []}}
+    ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
     content = {
         "docker": {},
         'wait_after_launch': 2,
@@ -1439,7 +1440,10 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
         'ngpus': 0,
         'service': service,
         "options": {},
-        'support_statistics': True
+        'support_statistics': True,
+        'trainer_email': g.user.email,
+        'trainer_name': g.user.last_name,
+        'name': get_input_name(model_info) if ok else model
     }
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,

@@ -92,7 +92,10 @@ def send_task_status_notification_email(task_infos, status, is_admin=False):
         status = 'aborted'
     task_id = task_infos["id"]
     task_type = task_infos.get("type") if task_infos.get("type") else 'push model'
-    mode = 'lite' if (system_config.get('application') == 'lite') and not is_admin else 'advanced'
+    if is_admin:
+        mode = 'advanced'
+    else:
+        mode = system_config['application']['mode'] if system_config.get('application') else 'advanced'
     content = json.loads(task_infos["content"])
     trainer_email = content.get("trainer_email")
     trainer_name = content.get("trainer_name")
