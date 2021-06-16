@@ -1,8 +1,8 @@
 import logging
+import os
+import time
 import paramiko
 import six
-import time
-
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.ovh_instance_types import ovh_capacity_map
@@ -11,15 +11,22 @@ from keystoneauth1 import session
 from novaclient import client
 import novaclient.exceptions
 from keystoneauth1.identity import v3
-import os
 
 logger = logging.getLogger(__name__)
 
 
 def _run_instance(nova_client, params, config, task_id="None"):
+    # check if instance already exists
+    try:
+        instance = nova_client.servers.find(name=task_id)
+        wait_until_running(nova_client, config, params, name=task_id)
+        return instance
+    except novaclient.exceptions.NotFound:
+        logger.info("Creating instance for task %s", task_id)
+
     # userdata2 - script to install docker
-    [userdata1, userdata2] = open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh').read().split(
-        "#install docker")
+    scripts = open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh').readlines()
+    userdata1, userdata2 = ''.join(scripts[0:6]), ''.join(scripts[6:len(scripts)])
     # create folder to mount corpus and temporary model directories
     corpus_dir = config["corpus"]
     if not isinstance(corpus_dir, list):
@@ -32,10 +39,8 @@ def _run_instance(nova_client, params, config, task_id="None"):
             config["variables"]["temporary_model_storage"]["mount"],
             config["variables"]["temporary_model_storage"]["mount"])
     # add the nfs server to the script to mount volume
-    if config["variables"].get("nfs_server_ip_addr"):
-        userdata1 += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
-            config["variables"]["nfs_server_ip_addr"])
-    userdata1 += "chown -R ubuntu /home/ubuntu/model_studio"
+    userdata1 += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
+        config["variables"]["nfs_server_ip_addr"]) + "chown -R ubuntu /home/ubuntu/model_studio\n"
     # add the docker installation script at the end of the instance installation script
     userdata = userdata1 + userdata2
 
@@ -261,6 +266,7 @@ def wait_until_running(nova_client, config, params, name):
         instance = nova_client.servers.find(name=name)
         status = instance.status
         if status == 'ERROR':
+            nova_client.servers.delete(instance.id)
             raise Exception("OVH - Create instance failed")
         elif status == 'ACTIVE':
             ssh_client = common.ssh_connect_with_retry(
@@ -280,4 +286,9 @@ def wait_until_running(nova_client, config, params, name):
                     break
                 count -= 1
             if count == 0:
+                nova_client.servers.delete(instance.id)
                 raise Exception("Install docker for OVH instance failed")
+            # check mount instance dirs with nfs server dirs
+            if not common.run_and_check_command(ssh_client, "mount -l | grep nfs"):
+                nova_client.servers.delete(instance.id)
+                raise EnvironmentError("Unable to mount instance dirs with nfs server dirs")

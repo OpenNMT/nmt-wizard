@@ -10,9 +10,7 @@ class StorageUtils:
         return builtins.pn9model_db._StorageClient._config
 
     @staticmethod
-    def get_local_storages(service, mongo_client, redis_db, has_ability, g):
-        user_entity = g.user.entity.entity_code.upper()
-        result = {}
+    def get_local_storages_with_service(service, mongo_client, redis_db, has_ability, g):
         def check_service(service_name):
             entities = config.get_entities_from_service(mongo_client, service_name)
             is_ok = any(has_ability(g, "train", pool_entity) for pool_entity in entities)
@@ -36,6 +34,14 @@ class StorageUtils:
                 local_storages[service_name] = {"entities": {ent: json_config["entities"][ent]["storages"]
                                                              for ent in json_config["entities"].keys()
                                                              if has_ability(g, "train", ent)}}
+        return local_storages
+
+    @staticmethod
+    def get_local_storages(service, mongo_client, redis_db, has_ability, g):
+        user_entity = g.user.entity.entity_code.upper()
+        result = {}
+
+        local_storages = StorageUtils.get_local_storages_with_service(service, mongo_client, redis_db, has_ability, g)
 
         for s in local_storages:
             cur_service = local_storages[s]["entities"]
