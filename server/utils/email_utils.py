@@ -87,10 +87,12 @@ class EmailUtils:
         return f.read()
 
 
-def send_task_status_notification_email(task_infos, status):
+def send_task_status_notification_email(task_infos, status, is_admin=False):
+    if not status:
+        status = 'aborted'
     task_id = task_infos["id"]
     task_type = task_infos.get("type") if task_infos.get("type") else 'push model'
-    mode = system_config['application']['mode'] if system_config.get('application') else 'advanced'
+    mode = 'lite' if (system_config.get('application') == 'lite') and not is_admin else 'advanced'
     content = json.loads(task_infos["content"])
     trainer_email = content.get("trainer_email")
     trainer_name = content.get("trainer_name")
