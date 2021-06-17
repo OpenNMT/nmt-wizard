@@ -621,6 +621,7 @@ def create_trans_score_tasks(creation_infos, model, docker_content, parent_model
     if not ok:
         abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
 
+    creation_infos.task_infos.content["name"] = get_input_name(model_info)
     to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
     if model_info.get('tests'):
         to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus,
@@ -701,6 +702,8 @@ def launch_v2():
     data_file_info = get_data_file_info(request_data, routes_config)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
+    content["trainer_email"] = g.user.email
+    content["trainer_name"] = g.user.last_name
     image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
@@ -1315,6 +1318,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
+        creation_infos.task_infos.content["name"] = get_input_name(model_info)
         if check_google_model(model):
             creation_infos.task_infos.content["docker"] = google_docker_content
             task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
@@ -1401,7 +1405,10 @@ def create_evaluation():
         'ngpus': 0,
         'service': service,
         "options": {},
-        'support_statistics': True
+        'support_statistics': True,
+        'trainer_email': g.user.email,
+        'trainer_name': g.user.last_name,
+        'eval_name': request_data["evaluation_name"]
     }
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
@@ -1433,7 +1440,9 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
         'ngpus': 0,
         'service': service,
         "options": {},
-        'support_statistics': True
+        'support_statistics': True,
+        'trainer_email': g.user.email,
+        'trainer_name': g.user.last_name,
     }
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
@@ -1591,6 +1600,8 @@ def launch(service):
     content = flask.request.form.get('content')
     if content is not None:
         content = json.loads(content)
+        content["trainer_email"] = g.user.email
+        content["trainer_name"] = g.user.last_name
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
