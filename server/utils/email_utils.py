@@ -88,8 +88,6 @@ class EmailUtils:
 
 
 def send_task_status_notification_email(task_infos, status, is_admin=False):
-    if not status:
-        status = 'aborted'
     task_id = task_infos["id"]
     task_type = task_infos.get("type") if task_infos.get("type") else 'push model'
     if is_admin:
@@ -102,10 +100,17 @@ def send_task_status_notification_email(task_infos, status, is_admin=False):
     receiver = system_config['email']['receiver']
     receiver.append(trainer_email)
     eval_model = task_infos.get("eval_model")
-    model = task_infos.get("model") if task_infos.get("model") else task_infos.get("parent")
-    model_name = content.get("name")
-    eval_name = ''
-    link_info = ''
+    # get model and model input name from task infos
+    model = task_infos.get("model")
+    if not model:
+        if task_type in ('trans', 'relea'):
+            model = content["docker"]["command"][1]
+        elif task_type == 'exec':
+            of = content["docker"]["command"][2]
+            if of.startswith("pn9_testtrans:"):
+                model = of[14:].split('/')[0]
+    model_input_name = content.get("name") if content.get("name") else model
+
     if mode == 'advanced':
         subject = 'task'
         if task_type == 'push model':
@@ -116,15 +121,14 @@ def send_task_status_notification_email(task_infos, status, is_admin=False):
             link = system_config['email']['url'] + 'task/detail/' + task_id
     else:
         link = system_config['email']['url'] + 'model/detail/' + str(model)
+        link_info = 'Model: ' + model_input_name
         if eval_model:
-            model_name = content.get("eval_model_input_name")
             link = system_config['email']['url'] + 'evaluation'
             subject = 'model evaluation'
-            eval_name = 'Evaluation name: ' + content.get("eval_name") + '<br>'
+            link_info += '<br>'+'Evaluation name: ' + content.get("eval_name")
         elif task_type in ('prepr', 'train'):
             subject = 'model training'
         elif task_type in ('relea', 'push model'):
-            model_name = content.get("model_input_name")
             subject = 'model deploying'
         else:
             subject = 'model scoring'
@@ -133,7 +137,6 @@ def send_task_status_notification_email(task_infos, status, is_admin=False):
     email_subject = (subject + ' ' + subject_status).upper()
     body_template = EmailUtils.get_email_body_template(template_type=mode)
     email_body = Template(body_template).safe_substitute(link_info=link_info, task_type=task_type, status=status,
-                                                         last_name=trainer_name, link=link, subject=subject,
-                                                         model_name=model_name, eval_name=eval_name)
+                                                         last_name=trainer_name, link=link, subject=subject)
 
     EmailUtils.send_text_mail(email_subject, email_body, receiver)

@@ -621,6 +621,7 @@ def create_trans_score_tasks(creation_infos, model, docker_content, parent_model
     if not ok:
         abort(flask.make_response(flask.jsonify(message="invalid model %s" % model), 400))
 
+    creation_infos.task_infos.content["name"] = get_input_name(model_info)
     to_translate_corpus, to_score_corpus = creation_infos.to_translate_corpus, creation_infos.to_score_corpus
     if model_info.get('tests'):
         to_translate_corpus, to_score_corpus = get_only_new_test_corpus(model_info.get('tests'), to_translate_corpus,
@@ -1317,7 +1318,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
-        creation_infos.task_infos.content["eval_model_input_name"] = get_input_name(model_info)
+        creation_infos.task_infos.content["name"] = get_input_name(model_info)
         if check_google_model(model):
             creation_infos.task_infos.content["docker"] = google_docker_content
             task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
@@ -1432,7 +1433,6 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
     routes_config = RoutesConfiguration(flask.g, service)
     docker_image_info = TaskBase.get_docker_image_info(routes_config, request_data.get("docker_image"), mongo_client)
     docker_content = {**docker_image_info, **{"command": []}}
-    ok, model_info = builtins.pn9model_db.catalog_get_info(model, True)
     content = {
         "docker": {},
         'wait_after_launch': 2,
@@ -1443,7 +1443,6 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
         'support_statistics': True,
         'trainer_email': g.user.email,
         'trainer_name': g.user.last_name,
-        'name': get_input_name(model_info) if ok else model
     }
 
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
