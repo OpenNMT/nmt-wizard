@@ -15,7 +15,7 @@ from keystoneauth1.identity import v3
 logger = logging.getLogger(__name__)
 
 
-def _run_instance(nova_client, params, config, task_id="None"):
+def _run_instance(nova_client, params, config, task_id):
     # check if instance already exists
     try:
         instance = nova_client.servers.find(name=task_id)
@@ -101,7 +101,7 @@ class NOVAService(Service):
         return self._machines[server].get(field_name)
 
     def resource_multitask(self):
-        return False
+        return 'hybrid'
 
     def list_resources(self):
         return self._resources
