@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 def _run_instance(nova_client, params, config, task_id):
+    # check fixed instance
+    if not params.get("dynamic"):
+        try:
+            instance = nova_client.servers.find(id=params['instance_id'])
+            wait_until_running(nova_client, config, params, name=instance.name)
+            return instance
+        except novaclient.exceptions.NotFound as exc:
+            raise RuntimeWarning("Instance fixed not found") from exc
+
     # check if instance already exists
     try:
         instance = nova_client.servers.find(name=task_id)
@@ -261,13 +270,16 @@ def init_nova_client(config):
 
 def wait_until_running(nova_client, config, params, name):
     status = ''
-    while status != 'ACTIVE':
+    instance_wait_count = config["variables"]["instanceWaitCount"]
+    instance = ''
+    while status != 'ACTIVE' and instance_wait_count > 0:
         time.sleep(60)
+        instance_wait_count -= 1
         instance = nova_client.servers.find(name=name)
         status = instance.status
         if status == 'ERROR':
             nova_client.servers.delete(instance.id)
-            raise Exception("OVH - Create instance failed")
+            raise RuntimeWarning("OVH - Create instance failed")
         elif status == 'ACTIVE':
             ssh_client = common.ssh_connect_with_retry(
                 [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
@@ -277,18 +289,22 @@ def wait_until_running(nova_client, config, params, name):
                 key_filename=config.get('key_filename') or config.get('privateKey'),
                 delay=config["variables"]["sshConnectionDelay"],
                 retry=config["variables"]["maxSshConnectionRetry"])
-            # check instance until docker installation is complete (max 6 minutes)
-            count = 6
-            while count > 0:
+            # check instance until docker installation is complete
+            docker_wait_count = config["variables"]["dockerWaitCount"]
+            while docker_wait_count > 0:
                 time.sleep(60)
                 if common.program_exists(ssh_client, "docker"):
                     time.sleep(20)
                     break
-                count -= 1
-            if count == 0:
+                docker_wait_count -= 1
+            if docker_wait_count == 0:
                 nova_client.servers.delete(instance.id)
-                raise Exception("Install docker for OVH instance failed")
+                raise RuntimeWarning("Install docker for OVH instance failed")
             # check mount instance dirs with nfs server dirs
             if not common.run_and_check_command(ssh_client, "mount -l | grep nfs"):
                 nova_client.servers.delete(instance.id)
-                raise EnvironmentError("Unable to mount instance dirs with nfs server dirs")
+                raise RuntimeWarning("Unable to mount instance dirs with nfs server dirs")
+
+    if instance_wait_count == 0:
+        nova_client.servers.delete(instance.id)
+        raise RuntimeWarning("OVH - Create instance failed")
