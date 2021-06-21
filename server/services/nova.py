@@ -27,6 +27,10 @@ def _run_instance(nova_client, params, config, task_id):
     # check if instance already exists
     try:
         instance = nova_client.servers.find(name=task_id)
+        # if instance is deleting, wait until successful deleted before create new instance
+        while instance._info.get('OS-EXT-STS:task_state') == 'deleting':
+            time.sleep(60)
+            instance = nova_client.servers.find(name=task_id)
         wait_until_running(nova_client, config, params, name=task_id)
         return instance
     except novaclient.exceptions.NotFound:
@@ -203,8 +207,10 @@ class NOVAService(Service):
                 self._config.get('callback_interval'),
                 support_statistics=support_statistics)
         except Exception as e:
-            if self._config["variables"].get("terminateOnError", True) and params.get('dynamic'):
+            if self._config["variables"].get("terminateOnError", True):
                 params['instance_id'] = instance.id
+                params['host'] = public_dns_name
+                params['port'] = 22
                 self.terminate(params)
                 logger.info("Terminated instance (on launch error): %s.", instance.id)
             ssh_client.close()
@@ -244,10 +250,35 @@ class NOVAService(Service):
         return "running"
 
     def terminate(self, params):
-        instance_id = params["instance_id"] if isinstance(params, dict) else params
+        instance_id = params["instance_id"]
         if params.get('dynamic'):
             nova_client = self._nova_client
             nova_client.servers.delete(instance_id)
+        else:
+            ssh_client = common.ssh_connect_with_retry(
+                params['host'],
+                params['port'],
+                params['login'],
+                pkey=self._config.get('pkey'),
+                key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
+                delay=self._config["variables"]["sshConnectionDelay"],
+                retry=self._config["variables"]["maxSshConnectionRetry"])
+            if 'container_id' in params:
+                common.run_docker_command(ssh_client, 'rm --force %s' % params['container_id'])
+                time.sleep(5)
+            if 'pgid' in params:
+                exit_status, stdout, stderr = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
+                if exit_status != 0:
+                    logger.info("exist_status %d: %s", exit_status, stderr.read())
+                    ssh_client.close()
+                    return
+                exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+                if exit_status != 0:
+                    logger.info("exist_status %d: %s", exit_status, stderr.read())
+                    ssh_client.close()
+                    return
+            ssh_client.close()
+
         logger.info("Terminated instance (on terminate): %s.", instance_id)
 
 
