@@ -20,10 +20,9 @@ def _run_instance(nova_client, params, config, task_id):
     if not params.get("dynamic"):
         try:
             instance = nova_client.servers.find(id=params['instance_id'])
-            wait_until_running(nova_client, config, params, name=instance.name)
             return instance
         except novaclient.exceptions.NotFound as exc:
-            raise RuntimeWarning("Instance fixed not found") from exc
+            raise EnvironmentError("Instance fixed not found") from exc
 
     # check if instance already exists
     try:
@@ -54,9 +53,9 @@ def _run_instance(nova_client, params, config, task_id):
     userdata = userdata1 + userdata2
 
     if params['gpus'].stop != 0:
-        image_id = config['variables']['gpu_image_id']
+        image_id = nova_client.glance.find_image(config['variables']['gpu_image']).id
     else:
-        image_id = config['variables']['image_id']
+        image_id = nova_client.glance.find_image(config['variables']['image']).id
     flavor = nova_client.flavors.find(name=params['name'])
     nova_client.servers.create(name=task_id, image=image_id, flavor=flavor.id, nics=config['variables']['nics'],
                                key_name=config['variables']['key_pair'], userdata=userdata)
@@ -204,8 +203,9 @@ class NOVAService(Service):
                 self._config.get('callback_interval'),
                 support_statistics=support_statistics)
         except Exception as e:
-            if self._config["variables"].get("terminateOnError", True):
-                self.terminate(instance.id)
+            if self._config["variables"].get("terminateOnError", True) and params.get('dynamic'):
+                params['instance_id'] = instance.id
+                self.terminate(params)
                 logger.info("Terminated instance (on launch error): %s.", instance.id)
             ssh_client.close()
             raise e
@@ -216,6 +216,7 @@ class NOVAService(Service):
         task['port'] = 22
         task['login'] = params['login']
         task['log_dir'] = params['log_dir']
+        task['dynamic'] = params.get('dynamic')
         return task
 
     def status(self, task_id, params, get_log=True):
@@ -244,8 +245,9 @@ class NOVAService(Service):
 
     def terminate(self, params):
         instance_id = params["instance_id"] if isinstance(params, dict) else params
-        nova_client = self._nova_client
-        nova_client.servers.delete(instance_id)
+        if params.get('dynamic'):
+            nova_client = self._nova_client
+            nova_client.servers.delete(instance_id)
         logger.info("Terminated instance (on terminate): %s.", instance_id)
 
 
@@ -271,7 +273,7 @@ def init_nova_client(config):
 def wait_until_running(nova_client, config, params, name):
     status = ''
     instance_wait_count = config["variables"]["instanceWaitCount"]
-    instance = ''
+    instance = {}
     while status != 'ACTIVE' and instance_wait_count > 0:
         time.sleep(60)
         instance_wait_count -= 1
@@ -279,7 +281,7 @@ def wait_until_running(nova_client, config, params, name):
         status = instance.status
         if status == 'ERROR':
             nova_client.servers.delete(instance.id)
-            raise RuntimeWarning("OVH - Create instance failed")
+            raise EnvironmentError("OVH - Create instance failed")
         elif status == 'ACTIVE':
             ssh_client = common.ssh_connect_with_retry(
                 [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
@@ -299,12 +301,12 @@ def wait_until_running(nova_client, config, params, name):
                 docker_wait_count -= 1
             if docker_wait_count == 0:
                 nova_client.servers.delete(instance.id)
-                raise RuntimeWarning("Install docker for OVH instance failed")
+                raise EnvironmentError("Timeout to install docker for OVH instance")
             # check mount instance dirs with nfs server dirs
             if not common.run_and_check_command(ssh_client, "mount -l | grep nfs"):
                 nova_client.servers.delete(instance.id)
-                raise RuntimeWarning("Unable to mount instance dirs with nfs server dirs")
+                raise EnvironmentError("Unable to mount instance dirs with nfs server dirs")
 
     if instance_wait_count == 0:
         nova_client.servers.delete(instance.id)
-        raise RuntimeWarning("OVH - Create instance failed")
+        raise EnvironmentError("Timeout to create new OVH instance")

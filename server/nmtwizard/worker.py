@@ -121,8 +121,7 @@ class Worker(object):
             if task_id is not None:
                 try:
                     self._advance_task(task_id)
-                except RuntimeWarning as e:
-                    self._logger.warning('Runtime warning: %s', e)
+                except RuntimeWarning:
                     self._logger.warning(
                         '%s: failed to acquire a lock, retrying', task_id)
                     task.work_queue(self._redis, task_id, self._service)
