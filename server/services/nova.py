@@ -124,19 +124,13 @@ class NOVAService(Service):
         return [r for r in self._resources if r.startswith(options["launchTemplateName"]+":")]
 
     def select_resource_from_capacity(self, request_resource, request_capacity):
-        min_capacity = None
-        min_capacity_resource = []
+        capacity_resource = []
         for resource, capacity in six.iteritems(self._resources):
             if request_resource == 'auto' or resource == request_resource or \
                     (isinstance(request_resource, list) and resource in request_resource):
                 if request_capacity <= capacity:
-                    if min_capacity_resource == [] or capacity == min_capacity:
-                        min_capacity_resource.append(resource)
-                        min_capacity = capacity
-                    elif capacity < min_capacity:
-                        min_capacity_resource = [resource]
-                        min_capacity = capacity
-        return min_capacity_resource
+                    capacity_resource.append(resource)
+        return capacity_resource
 
     def describe(self):
         return {
