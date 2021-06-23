@@ -23,8 +23,12 @@ def graceful_exit(signum, frame):
     sys.exit(0)
 
 
-def _check_dynamic_resource(service, resource):
-    return service.resource_multitask() == 'hybrid' and service.get_server_detail(resource, "dynamic")
+def _is_resource_multitask(service, resource):
+    if not service.resource_multitask() or (
+            service.resource_multitask() == 'hybrid' and service.get_server_detail(resource, "dynamic")):
+        return False
+    else:
+        return True
 
 
 class Worker(object):
@@ -387,7 +391,7 @@ class Worker(object):
 
             current_usage_cpu = self._redis.hlen(keycr)
             self._logger.debug('current_usage_cpu = %d', current_usage_cpu)
-            if current_usage_cpu > 0 and (not service.resource_multitask() or _check_dynamic_resource(service, resource)):
+            if current_usage_cpu > 0 and not _is_resource_multitask(service, resource):
                 return None, None
             avail_cpu = capacity.ncpus - current_usage_cpu
             if task_asked_capacity.ncpus > avail_cpu:
@@ -397,7 +401,7 @@ class Worker(object):
                 # do not allocate several run on the same GPU
                 current_usage_gpu = self._redis.hlen(keygr)
                 self._logger.debug('current_usage_gpu = %d', current_usage_gpu)
-                if current_usage_gpu > 0 and (not service.resource_multitask() or _check_dynamic_resource(service, resource)):
+                if current_usage_gpu > 0 and not _is_resource_multitask(service, resource):
                     return None, None
                 # available gpu is the capacity of the node less number of gpu used
                 avail_gpu = capacity.ngpus - current_usage_gpu
@@ -409,22 +413,18 @@ class Worker(object):
                 remaining_gpus = avail_gpu - task_asked_capacity.ngpus
                 self._logger.debug('remaining_gpus = %d', remaining_gpus)
 
-                if not (service.resource_multitask() == 'hybrid' and resource_priority != br_priority):
-                    if br_remaining_xpus.ngpus != -1 and remaining_gpus >= br_remaining_xpus.ngpus:
-                        return None, None
+                if br_remaining_xpus.ngpus != -1 and remaining_gpus >= br_remaining_xpus.ngpus and resource_priority == br_priority:
+                    return None, None
 
             remaining_cpus = avail_cpu - task_asked_capacity.ncpus
             self._logger.debug('remaining_cpus = %d', remaining_cpus)
 
-            # for mono task service, allocate node with lowest cpu number
-            if service.resource_multitask():
-                # for hybrid task service, allocate node with higher resource priority
-                if service.resource_multitask() == 'hybrid' and resource_priority != br_priority:
-                    better_cpu_usage = resource_priority > br_priority
-                elif _check_dynamic_resource(service, resource) and resource_priority == br_priority:
-                    better_cpu_usage = remaining_cpus < br_remaining_xpus.ncpus
-                else:
-                    better_cpu_usage = remaining_cpus > br_remaining_xpus.ncpus
+            # allocate node with higher resource priority
+            # if priority for resources is equal, for mono task service, allocate node with lowest cpu number
+            if resource_priority != br_priority:
+                better_cpu_usage = resource_priority > br_priority
+            elif _is_resource_multitask(service, resource):
+                better_cpu_usage = remaining_cpus > br_remaining_xpus.ncpus
             else:
                 better_cpu_usage = remaining_cpus < br_remaining_xpus.ncpus
 
@@ -622,7 +622,7 @@ class Worker(object):
 
                     # can not launch multiple tasks on service with no multi-tasking (ec2)
                     # or launch multiple tasks on service with hybrid task mode and dynamic resource mode (nova)
-                    if (not service.resource_multitask() or _check_dynamic_resource(service, resource)) and (gpu_tasks or cpu_tasks):
+                    if not _is_resource_multitask(service, resource) and (gpu_tasks or cpu_tasks):
                         continue
                     tmp_tasks = {}
                     for k, v in six.iteritems(gpu_tasks):
