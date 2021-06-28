@@ -340,12 +340,14 @@ class Worker(object):
         task_required_ngpus = task_expected_capacity.ngpus
         return task_required_ngpus > 0
 
-    def _distribute_machine_for_task(self, task_id, task_entity, task_expected_capacity, request_resource, service, machines):
+    def _distribute_machine_for_task(self, task_id, task_entity,
+                                     task_expected_capacity, request_resource, service, machines):
         best_resource = None
         br_remaining_xpus = Capacity(-1, -1)
         br_priority = -1
         for name, machine in six.iteritems(machines):
-            if _compatible_resource(name, request_resource) and machine._is_authorized(task_entity, task_expected_capacity):
+            if _compatible_resource(name, request_resource) and \
+               machine._is_authorized(task_entity, task_expected_capacity):
                 better_remaining_xpus, better_priority = self._reserve_resource(
                     service, name, machine._init_capacity, task_id,
                     task_expected_capacity, br_remaining_xpus, br_priority, machine._priority)
@@ -481,17 +483,20 @@ class Worker(object):
 
             @property
             def _weighted_usage(self):
-                return self._current_usage_capacity.ncpus * self._usage_coeff, self._current_usage_capacity.ngpus * self._usage_coeff
+                return self._current_usage_capacity.ncpus * self._usage_coeff,\
+                       self._current_usage_capacity.ngpus * self._usage_coeff
 
             def add_current_usage(self, current_usage):
                 self._current_usage_capacity += current_usage
 
             def __eq__(self, other):
-                return self._weighted_usage[0] == other._weighted_usage[0] and self._weighted_usage[1] == other._weighted_usage[1]
+                return self._weighted_usage[0] == other._weighted_usage[0] and \
+                       self._weighted_usage[1] == other._weighted_usage[1]
 
             def __lt__(self, other):
                 return self._weighted_usage[1] < other._weighted_usage[1] or \
-                       (self._weighted_usage[1] == other._weighted_usage[1] and self._weighted_usage[0] < other._weighted_usage[0])
+                       (self._weighted_usage[1] == other._weighted_usage[1] and
+                        self._weighted_usage[0] < other._weighted_usage[0])
 
             def __le__(self, other):
                 return self == other or self < other
@@ -518,7 +523,8 @@ class Worker(object):
                 self._logger = logger
 
             def __str__(self):
-                return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity, self._entity_usage, self._priority)
+                return "Task ( %s / %s ; %s ; Priority:%d)" % (self._task_id, self._capacity,
+                                                               self._entity_usage, self._priority)
 
             def __gt__(self, other):
                 return self.is_higher_priority(other)
@@ -532,7 +538,8 @@ class Worker(object):
 
             def _is_more_respectful_usage(self, other):
                 if self._entity == other._entity:  # same entity, go for highest priority
-                    is_more_prio = self._priority > other._priority or (self._priority == other._priority and self._launched_time < other._launched_time)
+                    is_more_prio = self._priority > other._priority or (self._priority == other._priority and
+                                                                        self._launched_time < other._launched_time)
                     return is_more_prio
                 my_entity_usage = resource_mgr.entities_usage[self._entity]
                 other_entity_usage = resource_mgr.entities_usage[other._entity]
@@ -540,7 +547,8 @@ class Worker(object):
                     return self._launched_time < other._launched_time
 
                 result = my_entity_usage < other_entity_usage
-                self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage, other_entity_usage, result)
+                self._logger.debug("AZ-COMPUSE: my: %s.Other: %s . Result = %s", my_entity_usage,
+                                   other_entity_usage, result)
                 return result
 
             def is_higher_priority(self, other_task):
@@ -586,7 +594,8 @@ class Worker(object):
                             return None
 
                 task_capacity = Capacity(self._redis.hget(next_keyt, 'ngpus'), self._redis.hget(next_keyt, 'ncpus'))
-                candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity, resource_mgr.entities_usage[task_entity], self._logger)
+                candidate_task = CandidateTask(next_task_id, task_entity, self._redis, task_capacity,
+                                               resource_mgr.entities_usage[task_entity], self._logger)
                 # check now the task has a chance to be processed by any machine
                 for srv, machine in six.iteritems(resource_mgr._machines):
                     can_be_processed = machine._is_authorized(candidate_task._entity, candidate_task._capacity) \
@@ -700,7 +709,8 @@ class Worker(object):
     def _get_current_config(self, task_id):
         task_entity = task.get_owner_entity(self._redis, task_id)
         storages_entities_filter = task.get_storages_entity(self._redis, task_id)
-        current_config = config.get_entity_config(self._mongo_client, self._service, storages_entities_filter, task_entity)
+        current_config = config.get_entity_config(self._mongo_client, self._service,
+                                                  storages_entities_filter, task_entity)
         return current_config
 
     def _send_notification_email_when_task_failed(self, task_id, phase):

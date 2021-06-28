@@ -25,7 +25,8 @@ def check_permission_access_train_restricted(permission):
         return True
 
     # user is PARTNER partners, set allowed permission
-    if partner_codes is None or any(entity_code in partner['codes'] and permission in partner['permissions'] for partner in partner_codes):
+    if partner_codes is None or any(entity_code in partner['codes'] and permission in partner['permissions']
+                                    for partner in partner_codes):
         return True
 
     return False

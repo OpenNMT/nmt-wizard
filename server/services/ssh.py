@@ -85,7 +85,8 @@ class SSHService(Service):
         return self._machines[server].get(field_name)
 
     def list_resources(self):
-        resources = {server: Capacity(len(self._machines[server]['gpus']), len(self._machines[server]['cpus'])) for server in self._machines}
+        resources = {server: Capacity(len(self._machines[server]['gpus']),
+                                      len(self._machines[server]['cpus'])) for server in self._machines}
         return resources
 
     def get_resource_from_options(self, options):

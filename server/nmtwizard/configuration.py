@@ -92,7 +92,8 @@ def get_registries(mongo_client, service):
 
     if is_polyentity_config(service_config):
         for ent in service_config["entities"]:
-            if service_config["entities"][ent].get("docker") and service_config["entities"][ent]["docker"].get("registries"):
+            if service_config["entities"][ent].get("docker") and \
+                    service_config["entities"][ent]["docker"].get("registries"):
                 registries.update(service_config["entities"][ent]["docker"]["registries"])
     elif service_config.get("docker") and service_config["docker"].get("registries"):
         registries.update(service_config["docker"]["registries"])
