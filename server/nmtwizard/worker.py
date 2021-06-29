@@ -27,8 +27,7 @@ def _is_resource_multitask(service, resource):
     if not service.resource_multitask() or (
             service.resource_multitask() == 'hybrid' and service.get_server_detail(resource, "dynamic")):
         return False
-    else:
-        return True
+    return True
 
 
 class Worker(object):
