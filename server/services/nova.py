@@ -15,10 +15,22 @@ from keystoneauth1.identity import v3
 logger = logging.getLogger(__name__)
 
 
-def _run_instance(nova_client, params, config, task_id="None"):
+def _run_instance(nova_client, params, config, task_id):
+    # check fixed instance
+    if not params.get("dynamic"):
+        try:
+            instance = nova_client.servers.find(id=params['instance_id'])
+            return instance
+        except novaclient.exceptions.NotFound as exc:
+            raise EnvironmentError("Instance fixed not found") from exc
+
     # check if instance already exists
     try:
         instance = nova_client.servers.find(name=task_id)
+        # if instance is deleting, wait until successful deleted before create new instance
+        while instance._info.get('OS-EXT-STS:task_state') == 'deleting':
+            time.sleep(60)
+            instance = nova_client.servers.find(name=task_id)
         wait_until_running(nova_client, config, params, name=task_id)
         return instance
     except novaclient.exceptions.NotFound:
@@ -45,9 +57,9 @@ def _run_instance(nova_client, params, config, task_id="None"):
     userdata = userdata1 + userdata2
 
     if params['gpus'].stop != 0:
-        image_id = config['variables']['gpu_image_id']
+        image_id = nova_client.glance.find_image(config['variables']['gpu_image']).id
     else:
-        image_id = config['variables']['image_id']
+        image_id = nova_client.glance.find_image(config['variables']['image']).id
     flavor = nova_client.flavors.find(name=params['name'])
     nova_client.servers.create(name=task_id, image=image_id, flavor=flavor.id, nics=config['variables']['nics'],
                                key_name=config['variables']['key_pair'], userdata=userdata)
@@ -101,7 +113,7 @@ class NOVAService(Service):
         return self._machines[server].get(field_name)
 
     def resource_multitask(self):
-        return False
+        return 'hybrid'
 
     def list_resources(self):
         return self._resources
@@ -112,19 +124,13 @@ class NOVAService(Service):
         return [r for r in self._resources if r.startswith(options["launchTemplateName"]+":")]
 
     def select_resource_from_capacity(self, request_resource, request_capacity):
-        min_capacity = None
-        min_capacity_resource = []
+        capacity_resource = []
         for resource, capacity in six.iteritems(self._resources):
             if request_resource == 'auto' or resource == request_resource or \
                     (isinstance(request_resource, list) and resource in request_resource):
                 if request_capacity <= capacity:
-                    if min_capacity_resource == [] or capacity == min_capacity:
-                        min_capacity_resource.append(resource)
-                        min_capacity = capacity
-                    elif capacity < min_capacity:
-                        min_capacity_resource = [resource]
-                        min_capacity = capacity
-        return min_capacity_resource
+                    capacity_resource.append(resource)
+        return capacity_resource
 
     def describe(self):
         return {
@@ -196,7 +202,10 @@ class NOVAService(Service):
                 support_statistics=support_statistics)
         except Exception as e:
             if self._config["variables"].get("terminateOnError", True):
-                self.terminate(instance.id)
+                params['instance_id'] = instance.id
+                params['host'] = public_dns_name
+                params['port'] = 22
+                self.terminate(params)
                 logger.info("Terminated instance (on launch error): %s.", instance.id)
             ssh_client.close()
             raise e
@@ -207,6 +216,7 @@ class NOVAService(Service):
         task['port'] = 22
         task['login'] = params['login']
         task['log_dir'] = params['log_dir']
+        task['dynamic'] = params.get('dynamic')
         return task
 
     def status(self, task_id, params, get_log=True):
@@ -234,9 +244,35 @@ class NOVAService(Service):
         return "running"
 
     def terminate(self, params):
-        instance_id = params["instance_id"] if isinstance(params, dict) else params
-        nova_client = self._nova_client
-        nova_client.servers.delete(instance_id)
+        instance_id = params["instance_id"]
+        if params.get('dynamic'):
+            nova_client = self._nova_client
+            nova_client.servers.delete(instance_id)
+        else:
+            ssh_client = common.ssh_connect_with_retry(
+                params['host'],
+                params['port'],
+                params['login'],
+                pkey=self._config.get('pkey'),
+                key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
+                delay=self._config["variables"]["sshConnectionDelay"],
+                retry=self._config["variables"]["maxSshConnectionRetry"])
+            if 'container_id' in params:
+                common.run_docker_command(ssh_client, 'rm --force %s' % params['container_id'])
+                time.sleep(5)
+            if 'pgid' in params:
+                exit_status, stdout, stderr = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
+                if exit_status != 0:
+                    logger.info("exist_status %d: %s", exit_status, stderr.read())
+                    ssh_client.close()
+                    return
+                exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+                if exit_status != 0:
+                    logger.info("exist_status %d: %s", exit_status, stderr.read())
+                    ssh_client.close()
+                    return
+            ssh_client.close()
+
         logger.info("Terminated instance (on terminate): %s.", instance_id)
 
 
@@ -261,13 +297,16 @@ def init_nova_client(config):
 
 def wait_until_running(nova_client, config, params, name):
     status = ''
-    while status != 'ACTIVE':
+    instance_wait_count = config["variables"]["instanceWaitCount"]
+    instance = {}
+    while status != 'ACTIVE' and instance_wait_count > 0:
         time.sleep(60)
+        instance_wait_count -= 1
         instance = nova_client.servers.find(name=name)
         status = instance.status
         if status == 'ERROR':
             nova_client.servers.delete(instance.id)
-            raise Exception("OVH - Create instance failed")
+            raise EnvironmentError("OVH - Create instance failed")
         elif status == 'ACTIVE':
             ssh_client = common.ssh_connect_with_retry(
                 [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
@@ -277,18 +316,22 @@ def wait_until_running(nova_client, config, params, name):
                 key_filename=config.get('key_filename') or config.get('privateKey'),
                 delay=config["variables"]["sshConnectionDelay"],
                 retry=config["variables"]["maxSshConnectionRetry"])
-            # check instance until docker installation is complete (max 6 minutes)
-            count = 6
-            while count > 0:
+            # check instance until docker installation is complete
+            docker_wait_count = config["variables"]["dockerWaitCount"]
+            while docker_wait_count > 0:
                 time.sleep(60)
                 if common.program_exists(ssh_client, "docker"):
                     time.sleep(20)
                     break
-                count -= 1
-            if count == 0:
+                docker_wait_count -= 1
+            if docker_wait_count == 0:
                 nova_client.servers.delete(instance.id)
-                raise Exception("Install docker for OVH instance failed")
+                raise EnvironmentError("Timeout to install docker for OVH instance")
             # check mount instance dirs with nfs server dirs
             if not common.run_and_check_command(ssh_client, "mount -l | grep nfs"):
                 nova_client.servers.delete(instance.id)
                 raise EnvironmentError("Unable to mount instance dirs with nfs server dirs")
+
+    if instance_wait_count == 0:
+        nova_client.servers.delete(instance.id)
+        raise EnvironmentError("Timeout to create new OVH instance")
