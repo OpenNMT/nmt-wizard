@@ -25,6 +25,7 @@ def get_logger(logger_config):
     logging.config.dictConfig(logger_config)
     return logging.getLogger("worker")
 
+
 system_config = config.get_system_config()
 mongo_client = DatabaseUtils.get_mongo_client(system_config)
 redis_db = DatabaseUtils.get_redis_client(system_config)
@@ -57,7 +58,8 @@ if "worker" in service_config and "worker_cycle" in service_config["worker"]:
 if "worker" in service_config and "worker_butler_cycle" in service_config["worker"]:
     worker_butler_cycle_config = service_config["worker"]["worker_butler_cycle"]
     assert isinstance(worker_butler_cycle_config,
-                      float) and worker_butler_cycle_config > 0, "worker/worker_butler_cycle must be numeric and greater than 0"
+                      float) and worker_butler_cycle_config > 0,\
+        "worker/worker_butler_cycle must be numeric and greater than 0"
     worker_butler_cycle = worker_butler_cycle_config
 
 

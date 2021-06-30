@@ -965,7 +965,8 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     if testing_percent:
         training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
         testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
-        data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path, testing_data_path, training_data, testing_percent)
+        data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path,
+                                                                      testing_data_path, training_data, testing_percent)
     else:
         data_training = upload_user_files(routes_config, training_data_path, training_data)
         data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
@@ -1930,7 +1931,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                                   option_lang + ['-f', "launcher:scores"]
+                               option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1985,7 +1986,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                               in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)

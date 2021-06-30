@@ -267,5 +267,5 @@ def get_registry(service_module, image):
             registry = r
             break
     if registry is None:
-        abort(make_response( jsonify(message="cannot find registry for repository %s" % repository), 400))
+        abort(make_response(jsonify(message="cannot find registry for repository %s" % repository), 400))
     return registry

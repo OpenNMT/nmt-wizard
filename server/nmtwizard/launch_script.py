@@ -20,7 +20,7 @@ def ensure_str(s, encoding="utf-8", errors="ignore"):
         if s is None:
             return ""
         if not isinstance(s, (str, bytes)):
-            raise TypeError( "not expecting type \"{}\"".format(type(s)))
+            raise TypeError("not expecting type \"{}\"".format(type(s)))
         if isinstance(s, bytes):
             s = s.decode(encoding, errors)
         return s
@@ -144,5 +144,6 @@ if callback_url:
     mutex.acquire()
     current_log = ""
     mutex.release()
-    subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url + "/task/log/" + task_id, "--data-binary", "@" + log_file])
+    subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url + "/task/log/" + task_id,
+                     "--data-binary", "@" + log_file])
     subprocess.call(["curl", "-X", "GET", callback_url + "/task/terminate/" + task_id + "?phase=" + phase])
