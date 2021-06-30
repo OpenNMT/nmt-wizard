@@ -12,7 +12,7 @@ cmd = """
 """.strip().split("\n")
 log_file = "%s"
 callback_url = "%s"
-myenv = json.loads("%s")
+myenv = json.loads(%s)
 
 
 def ensure_str(s, encoding="utf-8", errors="ignore"):
