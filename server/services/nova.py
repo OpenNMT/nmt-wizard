@@ -37,7 +37,8 @@ def _run_instance(nova_client, params, config, task_id):
         logger.info("Creating instance for task %s", task_id)
 
     # userdata2 - script to install docker
-    scripts = open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh').readlines()
+    with open(os.path.dirname(os.path.realpath(__file__)) + '/setup_ovh_instance.sh') as setup_file:
+        scripts = setup_file.readlines()
     userdata1, userdata2 = ''.join(scripts[0:6]), ''.join(scripts[6:len(scripts)])
     # create folder to mount corpus and temporary model directories
     corpus_dir = config["corpus"]
@@ -51,8 +52,10 @@ def _run_instance(nova_client, params, config, task_id):
             config["variables"]["temporary_model_storage"]["mount"],
             config["variables"]["temporary_model_storage"]["mount"])
     # add the nfs server to the script to mount volume
-    userdata1 += "mount %s:/home/ubuntu/model_studio /home/ubuntu/model_studio\n" % (
-        config["variables"]["nfs_server_ip_addr"]) + "chown -R ubuntu /home/ubuntu/model_studio\n"
+    userdata1 += "mount %s:%s %s\n" % (
+        config["variables"]["nfs_server_ip_addr"], config["variables"]["nfs_server_dir"]["mount"],
+        config["variables"]["nfs_server_dir"]["mount"]) + "chown -R %s %s\n" % (
+                 params["login"], config["variables"]["nfs_server_dir"]["mount"])
     # add the docker installation script at the end of the instance installation script
     userdata = userdata1 + userdata2
 
