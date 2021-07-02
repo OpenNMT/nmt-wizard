@@ -28,9 +28,14 @@ def _run_instance(nova_client, params, config, task_id):
     try:
         instance = nova_client.servers.find(name=task_id)
         # if instance is deleting, wait until successful deleted before create new instance
-        while instance._info.get('OS-EXT-STS:task_state') == 'deleting':
+        delete_wait_count = config["variables"]["deleteWaitCount"]
+        while instance._info.get('OS-EXT-STS:task_state') == 'deleting' and delete_wait_count > 0:
             time.sleep(60)
+            delete_wait_count -= 1
             instance = nova_client.servers.find(name=task_id)
+        if delete_wait_count == 0:
+            raise EnvironmentError("Timeout to delete old instance")
+
         wait_until_running(nova_client, config, params, name=task_id)
         return instance
     except novaclient.exceptions.NotFound:
