@@ -105,12 +105,12 @@ class Service(object):
     def get_docker_config(self, entity_name):
         return config.get_docker(self._config, entity_name)
 
-    def select_resource_from_capacity(self, request_resource, capacity):
+    def select_resource_from_capacity(self, request_resource, request_capacity):
         """Given expected capacity, restrict or not resource list to the capacity
 
         Args:
           request_resource: name of a resource, 'auto', or list of resource name
-          capacity: expected capacity - see Capacity
+          request_capacity: expected capacity - see Capacity
 
         Returns:
           New resource name/auto/resource list
@@ -144,7 +144,7 @@ class Service(object):
     def launch(self,
                task_id,
                options,
-               gpulist,
+               xpulist,
                resource,
                storages,
                docker_config,
@@ -154,7 +154,7 @@ class Service(object):
                docker_command,
                docker_files,
                wait_after_launch,
-               auth_tokens,
+               auth_token,
                support_statistics):
         """Launches a new task."""
         raise NotImplementedError()
