@@ -157,7 +157,7 @@ class NOVAService(Service):
     def launch(self,
                task_id,
                options,
-               xpulist,
+               gpulist,
                resource,
                storages,
                docker_config,
@@ -167,7 +167,7 @@ class NOVAService(Service):
                docker_command,
                docker_files,
                wait_after_launch,
-               auth_token,
+               auth_tokens,
                support_statistics):
         options['server'] = resource
         params = _get_params(self._templates, options)
@@ -190,12 +190,12 @@ class NOVAService(Service):
                 retry=self._config["variables"]["maxSshConnectionRetry"])
 
             callback_url = self._config.get('callback_url')
-            if auth_token:
-                callback_url = callback_url.replace("://", "://"+auth_token+":x@")
+            if auth_tokens:
+                callback_url = callback_url.replace("://", "://"+auth_tokens+":x@")
             task = common.launch_task(
                 task_id,
                 ssh_client,
-                (xpulist[0], None),
+                (gpulist[0], None),
                 params,
                 docker_config,
                 docker_registry,
