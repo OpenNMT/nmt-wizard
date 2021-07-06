@@ -7,6 +7,7 @@ import signal
 import sys
 from threading import Thread
 import six
+import requests
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
@@ -217,8 +218,14 @@ class Worker(object):
             self._logger.info('fail task [%s] - %s', task_id, str(e))
             self._logger.info(traceback.format_exc())
             task.append_log(self._redis, self._taskfile_dir, task_id, str(e))
+            auth_token = self._redis.hget(keyt, 'token')
+            callback_url = service._config.get('callback_url')
+            if auth_token:
+                callback_url = callback_url.replace("://", "://" + auth_token + ":x@")
+            r = requests.get(os.path.join(callback_url, "task/terminate", task_id), params={'phase': 'launch_error'})
+            if r.status_code != 200:
+                raise RuntimeError('incorrect result from \'task/terminate\' service: %s' % r.text) from e
             task.terminate(self._redis, task_id, phase='launch_error')
-            self._send_notification_email_when_task_failed(task_id, phase='launch_error')
             self._logger.info(traceback.format_exc())
             return
         self._logger.info('%s: task started on %s', task_id, service.name)
