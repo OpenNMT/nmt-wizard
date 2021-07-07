@@ -46,7 +46,7 @@ class StorageUtils:
         for s in local_storages:
             cur_service = local_storages[s]["entities"]
             for ent in cur_service:
-                if user_entity and ent != user_entity:
+                if not has_ability(g, 'train', ent):
                     continue
                 result.update(cur_service[ent])
 
