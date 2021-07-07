@@ -11,8 +11,6 @@ import requests
 
 from nmtwizard import task, configuration as config
 from nmtwizard.capacity import Capacity
-from utils.email_utils import send_task_status_notification_email
-
 
 def _compatible_resource(resource, request_resource):
     if request_resource in ['auto', resource]:
@@ -719,12 +717,3 @@ class Worker(object):
         current_config = config.get_entity_config(self._mongo_client, self._service,
                                                   storages_entities_filter, task_entity)
         return current_config
-
-    def _send_notification_email_when_task_failed(self, task_id, phase):
-        infos = task.info(self._redis, self._taskfile_dir, task_id,
-                          ["type", "content", "queued_time",
-                           "running_time", "priority", "ngpus",
-                           "ncpus", "alloc_resource", "statistics",
-                           "owner", "evaluation_id", "eval_model",
-                           "model"])
-        Thread(target=send_task_status_notification_email, args=({**infos, **{"id": task_id}}, phase)).start()
