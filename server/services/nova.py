@@ -172,23 +172,16 @@ class NOVAService(Service):
         options['server'] = resource
         params = _get_params(self._templates, options)
         params['service'] = 'nova'
+        params['port'] = 22
         nova_client = self._nova_client
         instance = _run_instance(nova_client, params, self._config, task_id=task_id)
         if not instance:
             raise RuntimeError("no instances were created")
         logger.info("OVH - Instance %s is running.", instance.id)
-        public_dns_name = [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr']
+        params['host'] = [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr']
         ssh_client = paramiko.SSHClient()
         try:
-            ssh_client = common.ssh_connect_with_retry(
-                public_dns_name,
-                22,
-                params['login'],
-                pkey=self._config.get('pkey'),
-                key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
-                delay=self._config["variables"]["sshConnectionDelay"],
-                retry=self._config["variables"]["maxSshConnectionRetry"])
-
+            ssh_client = get_client(params, self._config)
             callback_url = self._config.get('callback_url')
             if auth_token:
                 callback_url = callback_url.replace("://", "://"+auth_token+":x@")
@@ -211,8 +204,6 @@ class NOVAService(Service):
         except Exception as e:
             if self._config["variables"].get("terminateOnError", True):
                 params['instance_id'] = instance.id
-                params['host'] = public_dns_name
-                params['port'] = 22
                 self.terminate(params)
                 logger.info("Terminated instance (on launch error): %s.", instance.id)
             ssh_client.close()
@@ -220,23 +211,15 @@ class NOVAService(Service):
         finally:
             ssh_client.close()
         task['instance_id'] = instance.id
-        task['host'] = public_dns_name
-        task['port'] = 22
+        task['host'] = params['host']
+        task['port'] = params['port']
         task['login'] = params['login']
         task['log_dir'] = params['log_dir']
         task['dynamic'] = params.get('dynamic')
         return task
 
     def status(self, task_id, params, get_log=True):
-        ssh_client = common.ssh_connect_with_retry(
-            params['host'],
-            params['port'],
-            params['login'],
-            pkey=self._config.get('pkey'),
-            key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
-            delay=self._config["variables"]["sshConnectionDelay"],
-            retry=self._config["variables"]["maxSshConnectionRetry"])
-
+        ssh_client = get_client(params, self._config)
         if 'container_id' in params:
             exit_status, stdout, stderr = common.run_docker_command(
                 ssh_client, 'inspect -f {{.State.Status}} %s' % params['container_id'])
@@ -257,14 +240,7 @@ class NOVAService(Service):
             nova_client = self._nova_client
             nova_client.servers.delete(instance_id)
         else:
-            ssh_client = common.ssh_connect_with_retry(
-                params['host'],
-                params['port'],
-                params['login'],
-                pkey=self._config.get('pkey'),
-                key_filename=self._config.get('key_filename') or self._config.get('privateKey'),
-                delay=self._config["variables"]["sshConnectionDelay"],
-                retry=self._config["variables"]["maxSshConnectionRetry"])
+            ssh_client = get_client(params, self._config)
             if 'container_id' in params:
                 common.run_docker_command(ssh_client, 'rm --force %s' % params['container_id'])
                 time.sleep(5)
@@ -316,14 +292,14 @@ def wait_until_running(nova_client, config, params, name):
             nova_client.servers.delete(instance.id)
             raise EnvironmentError("OVH - Create instance failed")
         elif status == 'ACTIVE':
-            ssh_client = common.ssh_connect_with_retry(
-                [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr'],
-                22,
-                params['login'],
-                pkey=config.get('pkey'),
-                key_filename=config.get('key_filename') or config.get('privateKey'),
-                delay=config["variables"]["sshConnectionDelay"],
-                retry=config["variables"]["maxSshConnectionRetry"])
+            params['host'] = [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr']
+            ssh_client = paramiko.SSHClient()
+            try:
+                ssh_client = get_client(params, config)
+            except Exception as e:
+                nova_client.servers.delete(instance.id)
+                ssh_client.close()
+                raise EnvironmentError("%s" % e) from e
             # check instance until docker installation is complete
             docker_wait_count = config["variables"]["dockerWaitCount"]
             while docker_wait_count > 0:
@@ -339,7 +315,20 @@ def wait_until_running(nova_client, config, params, name):
             if not common.run_and_check_command(ssh_client, "mount -l | grep nfs"):
                 nova_client.servers.delete(instance.id)
                 raise EnvironmentError("Unable to mount instance dirs with nfs server dirs")
+            ssh_client.close()
 
     if instance_wait_count == 0:
         nova_client.servers.delete(instance.id)
         raise EnvironmentError("Timeout to create new OVH instance")
+
+
+def get_client(params, config):
+    ssh_client = common.ssh_connect_with_retry(
+        params['host'],
+        params['port'],
+        params['login'],
+        pkey=config.get('pkey'),
+        key_filename=config.get('key_filename') or config.get('privateKey'),
+        delay=config["variables"]["sshConnectionDelay"],
+        retry=config["variables"]["maxSshConnectionRetry"])
+    return ssh_client
