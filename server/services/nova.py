@@ -172,7 +172,8 @@ class NOVAService(Service):
         options['server'] = resource
         params = _get_params(self._templates, options)
         params['service'] = 'nova'
-        params['port'] = 22
+        if not params.get('port'):
+            params['port'] = 22
         nova_client = self._nova_client
         instance = _run_instance(nova_client, params, self._config, task_id=task_id)
         if not instance:
