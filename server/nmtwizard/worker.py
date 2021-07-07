@@ -205,6 +205,9 @@ class Worker(object):
                                    Capacity(self._redis.hget(keyt, 'ngpus'),
                                             self._redis.hget(keyt, 'ncpus')
                                             ))
+            status = self._redis.hget(keyt, 'status')
+            if status == 'terminating':
+                return
             task.set_status(self._redis, keyt, 'queued')
             task.service_queue(self._redis, task_id, service.name)
             self._logger.info('could not launch [%s] %s on %s: blocking resource',
@@ -228,6 +231,9 @@ class Worker(object):
             return
         self._logger.info('%s: task started on %s', task_id, service.name)
         self._redis.hset(keyt, 'job', json.dumps(data))
+        status = self._redis.hget(keyt, 'status')
+        if status == 'terminating':
+            return
         task.set_status(self._redis, keyt, 'running')
         # For services that do not notify their activity, we should
         # poll the task status more regularly.
