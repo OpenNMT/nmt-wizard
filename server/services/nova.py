@@ -13,6 +13,8 @@ import novaclient.exceptions
 from keystoneauth1.identity import v3
 
 logger = logging.getLogger(__name__)
+# define number of new instance machine initializations for tasks
+num_of_inits = {}
 
 
 def _run_instance(nova_client, params, config, task_id):
@@ -39,6 +41,16 @@ def _run_instance(nova_client, params, config, task_id):
         wait_until_running(nova_client, config, params, name=task_id)
         return instance
     except novaclient.exceptions.NotFound:
+        # check the number of new instance initializations for task
+        global num_of_inits
+        if num_of_inits.get(task_id):
+            num_of_inits[task_id] += 1
+            if num_of_inits.get(task_id) > config['variables']['instanceInitLimit']:
+                num_of_inits.pop(task_id)
+                raise Exception("Exceed the number of new instance initializations (maximum: %s)" % config['variables'][
+                    'instanceInitLimit'])
+        else:
+            num_of_inits[task_id] = 1
         logger.info("Creating instance for task %s", task_id)
 
     # userdata2 - script to install docker
@@ -211,6 +223,9 @@ class NOVAService(Service):
             raise e
         finally:
             ssh_client.close()
+            global num_of_inits
+            if num_of_inits.get(task_id):
+                num_of_inits.pop(task_id)
         task['instance_id'] = instance.id
         task['host'] = params['host']
         task['port'] = params['port']
