@@ -40,7 +40,7 @@ def _run_instance(nova_client, params, config, task_id):
 
         wait_until_running(nova_client, config, params, name=task_id)
         return instance
-    except novaclient.exceptions.NotFound:
+    except novaclient.exceptions.NotFound as error:
         # check the number of new instance initializations for task
         global num_of_inits
         if num_of_inits.get(task_id):
@@ -48,7 +48,7 @@ def _run_instance(nova_client, params, config, task_id):
             if num_of_inits.get(task_id) > config['variables']['instanceInitLimit']:
                 num_of_inits.pop(task_id)
                 raise Exception("Exceed the number of new instance initializations (maximum: %s)" % config['variables'][
-                    'instanceInitLimit'])
+                    'instanceInitLimit']) from error
         else:
             num_of_inits[task_id] = 1
         logger.info("Creating instance for task %s", task_id)
