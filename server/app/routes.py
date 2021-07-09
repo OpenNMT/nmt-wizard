@@ -1399,7 +1399,6 @@ def create_evaluation():
             docker_image_info['google_image_info'] = google_docker_image_info
             break
 
-    a = g
     docker_content = {**docker_image_info, **{"command": []}}
     content = {
         "docker": {},
