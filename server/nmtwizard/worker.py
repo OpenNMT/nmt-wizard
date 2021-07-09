@@ -5,7 +5,6 @@ import traceback
 import os
 import signal
 import sys
-from threading import Thread
 import six
 import requests
 
