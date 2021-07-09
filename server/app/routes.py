@@ -757,9 +757,10 @@ def parse_request_data(current_request):
     dataset = request_data.getlist("dataset")
     corpus_type = int(request_data.get("corpus_type"))
     dataset_name = request_data.get("dataset_name")
-    testing_percent = request_data.get("testing_percent")
-    if testing_percent:
-        testing_percent = int(testing_percent)
+    testing_proportion = request_data.get("testing_proportion")
+    if testing_proportion:
+        testing_proportion = json.loads(testing_proportion)
+        testing_proportion['value'] = int(testing_proportion['value'])
 
     return {**request_data, **{"tags": json.loads(tags)}, **{
         "training_data": training_data,
@@ -767,7 +768,7 @@ def parse_request_data(current_request):
         "model_data": model_data,
         "dataset": dataset,
         "corpus_type": corpus_type,
-        "testing_percent": testing_percent,
+        "testing_proportion": testing_proportion,
         "dataset_name": dataset_name
     }}
 
@@ -787,7 +788,7 @@ def validate_request_data(current_request):
     validate_priority(request_data.get("priority"))
     validate_iteration(request_data.get("num_of_iteration"))
 
-    validate_file(request_data.get("corpus_type"), request_data.get("testing_percent"), corpus_config,
+    validate_file(request_data.get("corpus_type"), request_data.get("testing_proportion"), corpus_config,
                   request_files.getlist("training_data"), request_files.getlist("testing_data"),
                   request_files.getlist("model_data"), request_data.getlist("dataset"))
 
@@ -892,19 +893,23 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_percent):
+def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_proportion):
     training_push_infos_list = []
     testing_push_infos_list = []
     temp_files = tempfile.mkdtemp()
     for file in files:
         tmp_file = os.path.join(temp_files, file.filename)
         file.save(tmp_file)
-        push_infos = routes_config.storage_client.partition_auto(tmp_file,
-                                                                 training_path,
-                                                                 testing_path,
-                                                                 remote_path=training_path,
-                                                                 storage_id=routes_config.global_storage_name,
-                                                                 percent=testing_percent)
+        try:
+            push_infos = routes_config.storage_client.partition_auto(tmp_file,
+                                                                     training_path,
+                                                                     testing_path,
+                                                                     remote_path=training_path,
+                                                                     storage_id=routes_config.global_storage_name,
+                                                                     partition_value=testing_proportion.get('value'),
+                                                                     is_percent=testing_proportion.get('isPercentage'))
+        except (Exception, ):
+            abort(flask.make_response(flask.jsonify(message=str("Cannot push uploaded file(s).")), 400))
 
         assert push_infos and push_infos['files'] and len(push_infos['files']) == 2
         training_file_info = push_infos['files'][0]
@@ -915,13 +920,13 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
     return training_push_infos_list, testing_push_infos_list
 
 
-def validate_file(corpus_type, testing_percent, corpus_config, training_data, testing_data, model_data, dataset):
+def validate_file(corpus_type, testing_proportion, corpus_config, training_data, testing_data, model_data, dataset):
     if not corpus_type or not corpus_type.isnumeric() or int(corpus_type) not in CORPUS_TYPE.values():
         raise Exception('Invalid corpus_type')
-    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent is None:
+    if int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_proportion is None:
         validate_training_data(training_data, corpus_config)
         validate_testing_data(testing_data, corpus_config)
-    elif int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_percent:
+    elif int(corpus_type) == CORPUS_TYPE["USER_UPLOAD"] and testing_proportion:
         validate_training_data(model_data, corpus_config)
     else:
         if len(dataset) == 0:
@@ -937,10 +942,10 @@ def get_dataset_by_name(entity, dataset_name):
 
 def get_data_file_info(request_data, routes_config):
     corpus_type = request_data.get("corpus_type")
-    testing_percent = request_data.get("testing_percent")
+    testing_proportion = request_data.get("testing_proportion")
 
     if corpus_type == CORPUS_TYPE["USER_UPLOAD"]:
-        if testing_percent:
+        if testing_proportion:
             training_data = request_data.get("model_data")
         else:
             training_data = request_data.get("training_data")
@@ -957,16 +962,16 @@ def get_data_file_info(request_data, routes_config):
 def get_user_upload_file_info(routes_config, request_data, training_data, testing_data):
     entity_code = routes_config.creator['entity_code']
     dataset_name = request_data.get('dataset_name')
-    testing_percent = request_data.get("testing_percent")
+    testing_proportion = request_data.get("testing_proportion")
 
     training_data_path = os.path.join(entity_code, dataset_name, "train") + os.path.sep
     testing_data_path = os.path.join(entity_code, dataset_name, "test") + os.path.sep
 
-    if testing_percent:
+    if testing_proportion:
         training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
         testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
         data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path,
-                                                                      testing_data_path, training_data, testing_percent)
+                                                                      testing_data_path, training_data, testing_proportion)
     else:
         data_training = upload_user_files(routes_config, training_data_path, training_data)
         data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
@@ -1931,7 +1936,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["score", "-o"] + oref["output"] + ["-r"] + oref["ref"] +
-                               option_lang + ['-f', "launcher:scores"]
+                                   option_lang + ['-f', "launcher:scores"]
                     }
 
                     score_task_id, explicit_name = build_task_id(content_score, xxyy, "score", parent_task_id)
@@ -1986,7 +1991,7 @@ def launch(service):
                         "registry": get_registry(service_module, image_score),
                         "tag": "latest",
                         "command": ["tuminer", "--tumode", "score", "--srcfile"] + in_out["infile"] + ["--tgtfile"] +
-                               in_out["outfile"] + ["--output"] + in_out["scorefile"]
+                                   in_out["outfile"] + ["--output"] + in_out["scorefile"]
                     }
 
                     tuminer_task_id, explicit_name = build_task_id(content_tuminer, xxyy, "tuminer", parent_task_id)
