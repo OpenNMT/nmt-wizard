@@ -704,7 +704,8 @@ def launch_v2():
     content = get_training_config(service, request_data, routes_config, data_file_info)
     content["trainer_email"] = g.user.email
     content["trainer_name"] = g.user.last_name
-    content["application_mode"] = g.session.get('mode')
+    if g.get('session'):
+        content["application_mode"] = g.session.get('mode')
     image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
@@ -1611,7 +1612,8 @@ def launch(service):
         content = json.loads(content)
         content["trainer_email"] = g.user.email
         content["trainer_name"] = g.user.last_name
-        content["application_mode"] = g.session.get('mode')
+        if g.get('session'):
+            content["application_mode"] = g.session.get('mode')
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
