@@ -14,6 +14,22 @@ logger = logging.getLogger(__name__)
 
 
 def _run_instance(client, launch_template_name, task_id="None", dry_run=False):
+    # check if instance already exist
+    response = client.describe_instances(
+        Filters=[
+            {
+                'Name': 'tag:task_id',
+                'Values': [task_id]
+            },
+            {
+                'Name': 'instance-state-name',
+                'Values': ['running']
+            },
+        ]
+    )
+    if response['Reservations']:
+        return response['Reservations'][0]
+
     return client.run_instances(
         MaxCount=1,
         MinCount=1,
