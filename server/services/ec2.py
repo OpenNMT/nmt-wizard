@@ -204,7 +204,7 @@ class EC2Service(Service):
                 (xpulist[0], None),
                 params,
                 docker_config,
-                [docker_registry],
+                docker_registry,
                 docker_image,
                 docker_tag,
                 docker_command,
