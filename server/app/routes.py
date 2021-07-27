@@ -1326,7 +1326,7 @@ def create_tasks_for_evaluation(creation_infos, models, evaluation_id, docker_co
             "evaluation_id": str(evaluation_id),
             "eval_model": model
         }
-        creation_infos.task_infos.content["name"] = get_input_name(model_info)
+        creation_infos.task_infos.content["model_input_name"] = get_input_name(model_info)
         if check_google_model(model):
             creation_infos.task_infos.content["docker"] = google_docker_content
             task_translate = TaskTranslate(task_infos=creation_infos.task_infos,
