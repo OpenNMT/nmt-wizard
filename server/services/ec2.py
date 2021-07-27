@@ -180,7 +180,10 @@ class EC2Service(Service):
         options['server'] = resource
         params = _get_params(self._templates, options)
         ec2_client = self._session.client("ec2")
-        response = _run_instance(ec2_client, params["name"], task_id=task_id)
+        try:
+            response = _run_instance(ec2_client, params["name"], task_id=task_id)
+        except ClientError as error:
+            raise EnvironmentError('Create instance failed: %s' % error) from error
         if response is None:
             raise RuntimeError("empty response from boto3.run_instances")
         if not response["Instances"]:
