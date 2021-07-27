@@ -11,9 +11,10 @@ from nmtwizard.ec2_instance_types import ec2_capacity_map
 from nmtwizard.capacity import Capacity
 
 logger = logging.getLogger(__name__)
+num_of_inits = {}
 
 
-def _run_instance(client, launch_template_name, task_id="None", dry_run=False):
+def _run_instance(client, launch_template_name, instance_init_limit, task_id="None", dry_run=False):
     # check if instance already exist
     response = client.describe_instances(
         Filters=[
@@ -29,6 +30,17 @@ def _run_instance(client, launch_template_name, task_id="None", dry_run=False):
     )
     if response['Reservations']:
         return response['Reservations'][0]
+
+    # check the number of new instance initializations for task
+    global num_of_inits
+    instance_init_limit = 3 if not instance_init_limit else instance_init_limit
+    if num_of_inits.get(task_id):
+        num_of_inits[task_id] += 1
+        if num_of_inits.get(task_id) > instance_init_limit:
+            num_of_inits.pop(task_id)
+            raise Exception("Exceed the number of new instance initializations (maximum: %s)" % instance_init_limit)
+    else:
+        num_of_inits[task_id] = 1
 
     return client.run_instances(
         MaxCount=1,
@@ -181,7 +193,8 @@ class EC2Service(Service):
         params = _get_params(self._templates, options)
         ec2_client = self._session.client("ec2")
         try:
-            response = _run_instance(ec2_client, params["name"], task_id=task_id)
+            response = _run_instance(ec2_client, params["name"], task_id=task_id,
+                                     instance_init_limit=self._config["variables"].get("instanceInitLimit"))
         except ClientError as error:
             raise EnvironmentError('Create instance failed: %s' % error) from error
         if response is None:
@@ -241,6 +254,9 @@ class EC2Service(Service):
             raise e
         finally:
             client.close()
+            global num_of_inits
+            if num_of_inits.get(task_id):
+                num_of_inits.pop(task_id)
         task["instance_id"] = instance.id
         return task
 
