@@ -316,7 +316,7 @@ def cmd_docker_run(lxpu, docker_options, task_id,
         cmd += '_o_--network_o_host'
 
     if need_expose_gpus:
-        cmd += '_o_--gpus=all'
+        cmd += '_o_--gpus=' + env['NV_GPU']
     if 'mount' in docker_options:
         for k in docker_options['mount']:
             cmd += '_o_-v_o_%s' % k
