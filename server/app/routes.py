@@ -1161,7 +1161,7 @@ def get_client_formula_distribution_proportions(client_weight):
 
 def get_client_weight(sample_size, client_ratio, client_volume):
     proportion = float(client_ratio) / 100.0
-    result =  0 if client_volume == 0 else int(round(sample_size * proportion / client_volume, 0))
+    result = int(round(sample_size * proportion / client_volume, 0))
     return result if result > 0 else 1
 
 
