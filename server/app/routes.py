@@ -710,7 +710,7 @@ def launch_v2():
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
                                                                       routes_config)
-
+    print(content)
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
 
@@ -1090,11 +1090,15 @@ def get_final_training_config(request_data, training_corpus_infos):
         # Remove build object from parent config
         parent_config.pop('build', None)
         # Change batch size to settings value if specified
-        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"] \
-                and "batch_size" in parent_config["options"]["config"]["train"]:
-            batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
-            if batch_size:
-                parent_config["options"]["config"]["train"]["batch_size"] = batch_size
+        batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
+        print('batch_size')
+        print(batch_size)
+        if batch_size is not None:
+            if "config" not in parent_config["options"]:
+                parent_config["options"]["config"] = {
+                    "train": {}
+                }
+            parent_config["options"]["config"]["train"]["batch_size"] = batch_size
 
         parent_config = delete_nfa_feature_from_config(parent_config)
         sample_size, sample_dist = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
@@ -1159,7 +1163,7 @@ def get_client_formula_distribution_proportions(client_weight):
 
 def get_client_weight(sample_size, client_ratio, client_volume):
     proportion = float(client_ratio) / 100.0
-    result = int(round(sample_size * proportion / client_volume, 0))
+    result =  0 if client_volume == 0 else int(round(sample_size * proportion / client_volume, 0))
     return result if result > 0 else 1
 
 
