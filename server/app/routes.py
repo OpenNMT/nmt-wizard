@@ -710,7 +710,7 @@ def launch_v2():
 
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(data_file_info["testing"], request_data,
                                                                       routes_config)
-    print(content)
+
     task_infos = TaskInfos(content=content, files={}, request_data=request_data, routes_configuration=routes_config,
                            service=service)
 
@@ -1091,8 +1091,6 @@ def get_final_training_config(request_data, training_corpus_infos):
         parent_config.pop('build', None)
         # Change batch size to settings value if specified
         batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
-        print('batch_size')
-        print(batch_size)
         if batch_size is not None:
             if "config" not in parent_config["options"]:
                 parent_config["options"]["config"] = {
