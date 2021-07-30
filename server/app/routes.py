@@ -1115,7 +1115,7 @@ def get_final_training_config(request_data, training_corpus_infos):
 
 def delete_nfa_feature_from_config(config):
     def apply(sampling_rule):
-        if len(sampling_rule) > 2 and sampling_rule[2].get("bpreprocess"):
+        if len(sampling_rule) > 2 and isinstance(sampling_rule[2], dict) and sampling_rule[2].get("bpreprocess"):
             bpreprocess = sampling_rule[2].get("bpreprocess")
             if bpreprocess.get("tm") and len(bpreprocess) > 1:
                 del sampling_rule[2]["bpreprocess"]["tm"]
