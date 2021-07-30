@@ -1118,7 +1118,7 @@ def delete_nfa_feature_from_config(config):
         config['supported_features']['NFA'] = 'false'
 
     def apply(sampling_rule):
-        if len(sampling_rule) > 2 and sampling_rule[2].get("bpreprocess"):
+        if len(sampling_rule) > 2 and isinstance(sampling_rule[2], dict) and sampling_rule[2].get("bpreprocess"):
             bpreprocess = sampling_rule[2].get("bpreprocess")
             if bpreprocess.get("tm") and len(bpreprocess) > 1:
                 del sampling_rule[2]["bpreprocess"]["tm"]
