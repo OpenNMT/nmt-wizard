@@ -1090,11 +1090,13 @@ def get_final_training_config(request_data, training_corpus_infos):
         # Remove build object from parent config
         parent_config.pop('build', None)
         # Change batch size to settings value if specified
-        if "config" in parent_config["options"] and "train" in parent_config["options"]["config"] \
-                and "batch_size" in parent_config["options"]["config"]["train"]:
-            batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
-            if batch_size:
-                parent_config["options"]["config"]["train"]["batch_size"] = batch_size
+        batch_size = app.get_other_config(['training_options', 'batch_size'], fallback=None)
+        if batch_size is not None:
+            if "config" not in parent_config["options"]:
+                parent_config["options"]["config"] = {
+                    "train": {}
+                }
+            parent_config["options"]["config"]["train"]["batch_size"] = batch_size
 
         parent_config = delete_nfa_feature_from_config(parent_config)
         sample_size, sample_dist = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
