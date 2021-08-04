@@ -213,6 +213,15 @@ parser_launch.add_argument('-r', '--resource',
 parser_launch.add_argument('-g', '--gpus', type=int, help='number of gpus')
 parser_launch.add_argument('-c', '--cpus', type=int, help='number of cpus - if not provided, '
                                                           'will be obtained from pool config')
+parser_launch.add_argument('-c_prepr', '--cpus_prepr', type=int,
+                           help='number of cpus for preprocessor task - if not provided, '
+                                'will be obtained from pool config')
+parser_launch.add_argument('-c_train', '--cpus_train', type=int,
+                           help='number of cpus for training task - if not provided, '
+                                'will be obtained from pool config')
+parser_launch.add_argument('-c_trans', '--cpus_trans', type=int,
+                           help='number of cpus for translation task - if not provided, '
+                                'will be obtained from pool config')
 parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                            help='if not 0, wait for this number of seconds after launch '
                                 'to check that launch is ok - by default wait for 2 seconds')
@@ -495,7 +504,10 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             "trainer_id": args.trainer_id,
             "options": options,
             "ngpus": args.gpus,
-            "ncpus": args.cpus
+            "ncpus": args.cpus,
+            "ncpus_prepr": args.cpus_prepr,
+            "ncpus_train": args.cpus_train,
+            "ncpus_trans": args.cpus_trans
         }
 
         if cmd == "exec":
