@@ -463,7 +463,7 @@ def info(redis, taskfile_dir, task_id, fields):
     return r
 
 
-def change(redis, task_id, service, priority, ngpus):
+def change(redis, task_id, service, priority, ngpus, ncpus):
     """ move a task to another service or change priority/ngpus, assume service exists
         check task_id is queued """
     keyt = "task:" + task_id
@@ -483,6 +483,8 @@ def change(redis, task_id, service, priority, ngpus):
             redis.hset(keyt, "priority", priority)
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
+        if ncpus:
+            redis.hset(keyt, "ncpus", ncpus)
     return True, ""
 
 
