@@ -1839,8 +1839,12 @@ def launch(service):
                 except Exception:
                     pass
 
-            content["ncpus"] = ncpus_train if (task_type == "train" and ncpus_train) else (
-                        ncpus or get_cpu_count(service_config, ngpus, task_type))
+            if task_type == "train" and ncpus_train:
+                content["ncpus"] = ncpus_train
+            elif task_type == "trans" and ncpus_trans:
+                content["ncpus"] = ncpus_trans
+            else:
+                content["ncpus"] = ncpus or get_cpu_count(service_config, ngpus, task_type)
             content["ngpus"] = ngpus
 
             if task_type == "trans" and can_trans_as_release:
