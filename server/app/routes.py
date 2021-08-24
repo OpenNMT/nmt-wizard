@@ -1697,9 +1697,13 @@ def launch(service):
     if "ngpus" in content:
         ngpus = content["ngpus"]
     ncpus = content.get("ncpus")
+    ncpus_prepr = content.get("ncpus_prepr")
+    ncpus_train = content.get("ncpus_train")
+    ncpus_trans = content.get("ncpus_trans")
+    ncpus_max = max((x for x in [ncpus, ncpus_prepr, ncpus_train, ncpus_trans] if x is not None), default=None)
 
     # check that we have a resource able to run such a request
-    if not _find_compatible_resource(service_module, ngpus, ncpus, resource):
+    if not _find_compatible_resource(service_module, ngpus, ncpus_max, resource):
         abort(flask.make_response(
             flask.jsonify(message="no resource available on %s for %d gpus (%s cpus)" % (
                 service, ngpus, ncpus and str(ncpus) or "-")), 400))
@@ -1795,7 +1799,7 @@ def launch(service):
 
             content["docker"]["command"] = prepr_command
 
-            content["ncpus"] = ncpus or get_cpu_count(service_config, 0, "preprocess")
+            content["ncpus"] = ncpus_prepr or ncpus or get_cpu_count(service_config, 0, "preprocess")
             content["ngpus"] = 0
 
             preprocess_resource = service_module.select_resource_from_capacity(
@@ -1835,7 +1839,12 @@ def launch(service):
                 except Exception:
                     pass
 
-            content["ncpus"] = ncpus or get_cpu_count(service_config, ngpus, task_type)
+            if task_type == "train" and ncpus_train:
+                content["ncpus"] = ncpus_train
+            elif task_type == "trans" and ncpus_trans:
+                content["ncpus"] = ncpus_trans
+            else:
+                content["ncpus"] = ncpus or get_cpu_count(service_config, ngpus, task_type)
             content["ngpus"] = ngpus
 
             if task_type == "trans" and can_trans_as_release:
@@ -1867,7 +1876,7 @@ def launch(service):
                 else:
                     content_translate["ngpus"] = min(ngpus, 1)
 
-                content_translate["ncpus"] = ncpus or get_cpu_count(service_config,
+                content_translate["ncpus"] = ncpus_trans or ncpus or get_cpu_count(service_config,
                                                                     content_translate["ngpus"],
                                                                     "trans")
 

@@ -71,7 +71,8 @@ def find_files_parameters(v, files):
                         for f in os.listdir(v) if os.path.isfile(os.path.join(v, f))]
         allfiles = [(v, global_basename)]
         for f in allfiles:
-            files[f[1]] = (f[1], open(f[0], 'rb'))
+            with open(f[0], 'rb') as f0:
+                files[f[1]] = (f[1], f0)
             LOGGER.info('transferring local file: %s -> ${TMP_DIR}/%s', f[0], f[1])
         return "${TMP_DIR}/%s" % global_basename
     if isinstance(v, list):
@@ -213,6 +214,15 @@ parser_launch.add_argument('-r', '--resource',
 parser_launch.add_argument('-g', '--gpus', type=int, help='number of gpus')
 parser_launch.add_argument('-c', '--cpus', type=int, help='number of cpus - if not provided, '
                                                           'will be obtained from pool config')
+parser_launch.add_argument('-c_prepr', '--cpus_prepr', type=int,
+                           help='number of cpus for preprocessor task - if not provided, '
+                                'will be obtained from pool config')
+parser_launch.add_argument('-c_train', '--cpus_train', type=int,
+                           help='number of cpus for training task - if not provided, '
+                                'will be obtained from pool config')
+parser_launch.add_argument('-c_trans', '--cpus_trans', type=int,
+                           help='number of cpus for translation task - if not provided, '
+                                'will be obtained from pool config')
 parser_launch.add_argument('-w', '--wait_after_launch', default=2, type=int,
                            help='if not 0, wait for this number of seconds after launch '
                                 'to check that launch is ok - by default wait for 2 seconds')
@@ -306,7 +316,8 @@ def _parse_local_filename(arg, files):
 
     basename = os.path.basename(arg)
     if basename not in files:
-        files[basename] = (basename, open(arg, 'rb'))
+        with open(arg, 'rb') as arg_file:
+            files[basename] = (basename, arg_file)
     arg = "${TMP_DIR}/%s" % basename
 
     return arg
@@ -495,7 +506,10 @@ def process_request(service_list, cmd, subcmd, is_json, args, auth=None):
             "trainer_id": args.trainer_id,
             "options": options,
             "ngpus": args.gpus,
-            "ncpus": args.cpus
+            "ncpus": args.cpus,
+            "ncpus_prepr": args.cpus_prepr,
+            "ncpus_train": args.cpus_train,
+            "ncpus_trans": args.cpus_trans
         }
 
         if cmd == "exec":
