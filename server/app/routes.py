@@ -1871,11 +1871,7 @@ def launch(service):
             if to_translate:
                 content_translate = deepcopy(content)
                 content_translate["priority"] = priority + 1
-                if trans_as_release:
-                    content_translate["ngpus"] = 0
-                else:
-                    content_translate["ngpus"] = min(ngpus, 1)
-
+                content_translate["ngpus"] = 0
                 content_translate["ncpus"] = ncpus_trans or ncpus or get_cpu_count(service_config,
                                                                     content_translate["ngpus"],
                                                                     "trans")
