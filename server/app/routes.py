@@ -2359,8 +2359,9 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
         for k, v in directories.items():
-            result[key].append(
-                {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
+            if v.get('status') not in ['error', 'pending']:
+                result[key].append(
+                    {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
 
     return result
 
