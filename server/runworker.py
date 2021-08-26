@@ -42,7 +42,7 @@ counter = 0
 current_pid = None
 
 
-def graceful_exit(signum, frame):
+def graceful_exit(signum, frame):  # pylint: disable=unused-argument
     if current_pid:
         os.kill(current_pid, signal.SIGTERM)
     sys.exit(0)

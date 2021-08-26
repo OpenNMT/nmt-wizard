@@ -7,11 +7,11 @@ import logging
 from nmtwizard import task
 
 
-def graceful_exit(signum, frame):
+def graceful_exit(signum, frame):  # pylint: disable=unused-argument
     sys.exit(0)
 
 
-class WorkerButler(object):
+class WorkerButler:
     class WorkerButlerLogger:
         def __init__(self, service, instance_id):
             self._logger = logging.getLogger(__name__)

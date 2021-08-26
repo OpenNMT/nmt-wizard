@@ -81,7 +81,7 @@ assert len(services) == 1, "workers are now dedicated to one single service"
 service = next(iter(services))
 
 pid = os.getpid()
-logger.info('Running worker for %s - PID = %d' % (service, pid))
+logger.info('Running worker for %s - PID = %d', service, pid)
 
 instance_id = 'admin:worker:%s:%d' % (service, pid)
 redis_db.hset(instance_id, "launch_time", time.time())
@@ -92,7 +92,7 @@ keys = 'admin:services'
 redis_db.sadd(keys, service)
 
 
-def graceful_exit(signum, frame):
+def graceful_exit(signum, frame):   # pylint: disable=unused-argument
     logger.info('received interrupt - stopping')
     redis_db.delete(instance_id)
     sys.exit(0)
@@ -118,20 +118,20 @@ def ttl_policy(task_map):
 
 
 def reorganize_data():
-    logger.debug(f"[{service}-{pid}]: Reorganizing data")
+    logger.debug("[%s-%s]: Reorganizing data", service, pid)
     remove_queued_tasks()
     reorganize_tasks()
     reorganize_resources()
 
 
 def remove_queued_tasks():
-    logger.debug(f"[{service}-{pid}]: Removing queued tasks")
+    logger.debug("[%s-%s]: Removing queued tasks", service, pid)
     for key in redis_db.keys('queued:%s' % service):
         redis_db.delete(key)
 
 
 def reorganize_tasks():
-    logger.debug(f"[{service}-{pid}]: Reorganizing tasks")
+    logger.debug("[%s-%s]: Reorganizing tasks", service, pid)
     # On startup, add all active tasks in the work queue or service queue
     for task_id in task.list_active(redis_db, service):
         task_key = f'task:{task_id}'
@@ -150,7 +150,7 @@ def reorganize_tasks():
 
 
 def reorganize_resources():
-    logger.debug(f"[{service}-{pid}]: Reorganizing resources")
+    logger.debug("[%s-%s]: Reorganizing resources", service, pid)
     if services[service].valid:
         # Deallocate all resources that are not anymore associated to a running task
         resources = services[service].list_resources()
@@ -164,17 +164,17 @@ def reorganize_resources():
 
 
 def cleanup_list_resource():
-    logger.debug(f"[{service}-{pid}]: Cleaning up list resource")
+    logger.debug("[%s-%s]: Cleaning up list resource", service, pid)
     redis_db.delete('admin:resources:' + service)
 
 
 def declare_resource(resource):
-    logger.debug(f"[{service}-{pid}]: Declaring resource {resource}")
+    logger.debug("[%s-%s]: Declaring resource {resource}", service, pid)
     redis_db.lpush('admin:resources:' + service, resource)
 
 
 def reorganize_reserved_resource(resource):
-    logger.debug(f"[{service}-{pid}]: Reorganizing reserved resource {resource}")
+    logger.debug("[%s-%s]: Reorganizing reserved resource {resource}", service, pid)
     reorganize_reserved_gpu_resource(resource)
     reorganize_reserved_cpu_resource(resource)
 
@@ -214,7 +214,7 @@ def start():
     while True:
         count += 1
         if count % PROCESS_CHECK_INTERVAL == 0 and is_any_process_stopped():
-            logger.debug(f"[{service}-{pid}]: Any process has stopped")
+            logger.debug("[%s-%s]: Any process has stopped", service, pid)
             restart_all()
             continue
         # Currently, WORKER_ADMIN_CHECK_INTERVAL = 1, can ignore this condition
@@ -230,11 +230,12 @@ def start():
 def is_any_process_stopped():
     for worker_process in worker_processes:
         if not worker_process.is_alive():
-            logger.debug(f"Worker {worker_process.pid} has stopped")
+            logger.debug("Worker {worker_process.pid} has stopped")
             return True
     if not worker_butler_process.is_alive():
         logger.debug("Worker butler has stopped")
         return True
+    return False
 
 
 def restart_all():
@@ -247,22 +248,22 @@ def restart_all():
 def kill_all():
     for worker_process in worker_processes:
         if worker_process.is_alive():
-            logger.debug(f"[{service}-{pid}]: Killing worker {worker_process.pid}")
+            logger.debug("[%s-%s]: Killing worker {worker_process.pid}", service, pid)
             worker_process.terminate()
     if worker_butler_process.is_alive():
-        logger.debug(f"[{service}-{pid}]: Killing worker butler")
+        logger.debug("[%s-%s]: Killing worker butler", service, pid)
         worker_butler_process.terminate()
 
 
 def start_all():
-    logger.debug(f"[{service}-{pid}]: Starting worker butler")
+    logger.debug("[%s-%s]: Starting worker butler", service, pid)
     global worker_butler_process
     worker_butler_process = Process(target=start_worker_butler, args=(redis_db, services, pid, worker_butler_cycle))
     worker_butler_process.daemon = True
     worker_butler_process.start()
 
-    logger.debug(f"[{service}-{pid}]: Starting {process_count} workers")
-    for i in range(0, process_count):
+    logger.debug("[%s-%s]: Starting {process_count} workers", service, pid)
+    for _ in range(0, process_count):
         mongodb_client = DatabaseUtils.get_mongo_client(system_config)
         worker_process = Process(target=start_worker, args=(redis_db, mongodb_client, services,
                                                             ttl_policy,
@@ -277,27 +278,27 @@ def start_all():
         worker_processes.append(worker_process)
 
 
-def start_worker(redis_db, mongodb_client, services,
-                 ttl_policy,
+def start_worker(current_redis_db, mongodb_client, current_services,
+                 current_ttl_policy,
                  refresh_counter,
                  quarantine_time,
-                 instance_id,
+                 current_instance_id,
                  taskfile_dir,
-                 worker_cycle):
+                 current_worker_cycle):
 
-    worker = Worker(redis_db, mongodb_client, services,
-                    ttl_policy,
+    worker = Worker(current_redis_db, mongodb_client, current_services,
+                    current_ttl_policy,
                     refresh_counter,
                     quarantine_time,
-                    instance_id,
+                    current_instance_id,
                     taskfile_dir,
-                    worker_cycle)
+                    current_worker_cycle)
 
     worker.run()
 
 
-def start_worker_butler(redis_db, services, instance_id, worker_butler_cycle):
-    worker_butler = WorkerButler(redis_db, services, instance_id, worker_butler_cycle)
+def start_worker_butler(current_redis_db, current_services, current_instance_id, current_worker_butler_cycle):
+    worker_butler = WorkerButler(current_redis_db, current_services, current_instance_id, current_worker_butler_cycle)
     worker_butler.run()
 
 

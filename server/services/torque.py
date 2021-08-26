@@ -41,7 +41,8 @@ class TorqueService(Service):
     def list_resources(self):
         return {'torque': self._config['maxInstance']}
 
-    def get_resource_from_options(self, options):
+    @staticmethod
+    def get_resource_from_options(options):  # pylint: disable=unused-argument
         return "torque"
 
     def describe(self):
@@ -68,7 +69,7 @@ class TorqueService(Service):
         }
         return desc
 
-    def check(self, options):
+    def check(self, options):  # pylint: disable=arguments-differ
         params = _get_params(self._config, options)
 
         client = common.ssh_connect_with_retry(
@@ -89,6 +90,7 @@ class TorqueService(Service):
             raise RuntimeError('qstat exited with code %s' % status)
         return "%s jobs(s) in the queue" % (len(stdout.read().split('\n')) - 2)
 
+    # pylint: disable=unused-argument, arguments-differ
     def launch(self,
                task_id,
                options,
@@ -120,7 +122,7 @@ class TorqueService(Service):
         cmd += "    if [ -e \"${PBS_GPUFILE}\" ]\n"
         cmd += "    then\n"
         cmd += "        GPUS=`cat ${PBS_GPUFILE} | perl -pe 's/[^-]+-gpu//g' |"
-        cmd += " perl -pe 's/\s+/ /g' | perl -pe 's/,$//g'`\n"
+        cmd += r" perl -pe 's/\s+/ /g' | perl -pe 's/,$//g'`\n"
         cmd += "        GPUS=`echo \"${GPUS}+1\" | bc `\n"
         cmd += "        echo $GPUS;\n"
         cmd += "    else\n"
@@ -185,7 +187,8 @@ class TorqueService(Service):
         params['qsub_id'] = stdout.read().strip()
         return params
 
-    def status(self, task_id, params):
+    @staticmethod
+    def status(task_id, params):
         logger.info("Check status of process with qsub id %s.", params['qsub_id'])
 
         client = paramiko.client.SSHClient()
@@ -209,8 +212,10 @@ class TorqueService(Service):
             host = m.group(1)
 
         return "%s (%s)" % (status, host)
+    # pylint: enable=unused-argument,arguments-differ
 
-    def terminate(self, params):
+    @staticmethod
+    def terminate(params):
         client = paramiko.client.SSHClient()
         client.load_system_host_keys()
         client.connect(params['master_node'], username=params['login'])
@@ -223,4 +228,4 @@ class TorqueService(Service):
 
 
 def init(config):
-    return TorqueService(config)
+    return TorqueService(config)  # pylint: disable=abstract-class-instantiated

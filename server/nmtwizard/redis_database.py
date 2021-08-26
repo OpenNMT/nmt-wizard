@@ -70,9 +70,9 @@ class RedisDatabase(redis.Redis):
         self.delete(key)
 
 
-class RedisLock(object):
-    def __init__(self, redis, name, acquire_timeout=20, expire_time=60):
-        self._redis = redis
+class RedisLock:
+    def __init__(self, current_redis, name, acquire_timeout=20, expire_time=60):
+        self._redis = current_redis
         self._name = name
         self._acquire_timeout = acquire_timeout
         self._expire_time = expire_time
@@ -95,7 +95,7 @@ class RedisLock(object):
                     created_at = float(split_identifier[1])
                     # If ttl is not set after 3s when created, delete it
                     if created_at + 3 < time.time():
-                        logger.debug('Delete lock: %s' % lock)
+                        logger.debug('Delete lock: %s', lock)
                         self._redis.delete(lock)
             if self._redis.setnx(lock, self._identifier):
                 self._redis.expire(lock, self._expire_time)

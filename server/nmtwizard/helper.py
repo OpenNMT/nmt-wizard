@@ -6,7 +6,7 @@ import uuid
 from bson import json_util
 from flask import abort, jsonify, make_response
 
-from nmtwizard import configuration as config
+from nmtwizard import configuration as nmtwizard_config
 
 from nmtwizard.funnynames.german import generate_name_de
 from nmtwizard.funnynames.english import generate_name_en
@@ -40,18 +40,11 @@ def _generate_name(xxyy, length=15):
 def get_docker_action(command):
     # docker command starts with docker option
     idx = 0
+    cmds = ['-d', '--disable-content-trust', '--help', '--init', '--interactive', '--privileged', '--publish-all',
+            '--read-only', '--sig-proxy', '--rm', '--tty']
     while idx < len(command) and command[idx].startswith('-'):
-        if (command[idx] == '-d' or
-                command[idx] == '--disable-content-trust' or
-                command[idx] == '--help' or
-                command[idx] == '--init' or
-                command[idx].startswith('-i') or command[idx] == '--interactive' or
-                command[idx] == '--privileged' or
-                command[idx].startswith('-P') or command[idx] == '--publish-all' or
-                command[idx] == '--read-only' or
-                command[idx] == '--sig-proxy' or
-                command[idx] == '--rm' or
-                command[idx].startswith('-t') or command[idx] == '--tty'):
+        if command[idx] in cmds or command[idx].startswith('-i') or command[idx].startswith('-P') or \
+                command[idx].startswith('-t'):
             idx += 1
         else:
             idx += 2
@@ -144,13 +137,13 @@ def model_name_analysis(model):
         if len(lst) == 0:
             lst.append(struct["nn"])
             del struct["nn"]
-    uuid = lst.pop(0)
-    usplit = uuid.split('-')
+    current_uuid = lst.pop(0)
+    usplit = current_uuid.split('-')
     if len(usplit) > 1:
         struct["uuid"] = usplit[0]
         struct["parent_uuid"] = usplit[-1]
     else:
-        struct["uuid"] = uuid
+        struct["uuid"] = current_uuid
     return struct, task_type
 
 
@@ -253,13 +246,13 @@ def boolean_param(value):
 
 
 def get_registry(service_module, image):
-    from app import mongo_client
+    from app import mongo_client  # pylint: disable=import-outside-toplevel
     p = image.find("/")
     if p == -1:
         abort(make_response(jsonify(message="image should be repository/name"), 400))
     repository = image[:p]
     registry = None
-    docker_registries = config.get_registries(mongo_client, service_module.name)
+    docker_registries = nmtwizard_config.get_registries(mongo_client, service_module.name)
     for r in docker_registries:
         v = docker_registries[r]
         if "default_for" in v and repository in v['default_for']:

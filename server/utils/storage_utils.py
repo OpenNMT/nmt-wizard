@@ -1,7 +1,7 @@
 import builtins
 from nmtwizard import configuration as config
-from systran_storages import StorageClient
 from nmtwizard.common import rmprivate
+from systran_storages import StorageClient
 
 
 class StorageUtils:
@@ -38,13 +38,12 @@ class StorageUtils:
 
     @staticmethod
     def get_local_storages(service, mongo_client, redis_db, has_ability, g):
-        user_entity = g.user.entity.entity_code.upper()
         result = {}
 
         local_storages = StorageUtils.get_local_storages_with_service(service, mongo_client, redis_db, has_ability, g)
 
-        for s in local_storages:
-            cur_service = local_storages[s]["entities"]
+        for _, service_value in local_storages.items():
+            cur_service = service_value["entities"]
             for ent in cur_service:
                 if not has_ability(g, 'train', ent):
                     continue

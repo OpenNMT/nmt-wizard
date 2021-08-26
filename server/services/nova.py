@@ -3,14 +3,14 @@ import os
 import time
 import paramiko
 import six
+from keystoneauth1 import session
+from keystoneauth1.identity import v3
+from novaclient import client
+import novaclient.exceptions
 from nmtwizard import common
 from nmtwizard.service import Service
 from nmtwizard.ovh_instance_types import ovh_capacity_map
 from nmtwizard.capacity import Capacity
-from keystoneauth1 import session
-from novaclient import client
-import novaclient.exceptions
-from keystoneauth1.identity import v3
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def _run_instance(nova_client, params, config, task_id):
     userdata1 += "mount %s:%s %s\n" % (
         config["variables"]["nfs_server_ip_addr"], config["variables"]["nfs_server_dir"]["mount"],
         config["variables"]["nfs_server_dir"]["mount"]) + "chown -R %s %s\n" % (
-                 params["login"], config["variables"]["nfs_server_dir"]["mount"])
+            params["login"], config["variables"]["nfs_server_dir"]["mount"])
     # add the docker installation script at the end of the instance installation script
     userdata = userdata1 + userdata2
 
@@ -89,7 +89,7 @@ def _get_params(templates, options):
 class NOVAService(Service):
 
     def __init__(self, config):
-        super(NOVAService, self).__init__(config)
+        super().__init__(config)
         self._nova_client = init_nova_client(config)
         self._templates = []
         self._resources = {}
@@ -120,6 +120,7 @@ class NOVAService(Service):
         # here, server must exist
         return self._machines[server].get(field_name)
 
+    @property
     def resource_multitask(self):
         return 'hybrid'
 
@@ -150,7 +151,8 @@ class NOVAService(Service):
             }
         }
 
-    def check(self, options, docker_registries_list):
+    @staticmethod
+    def check(options, docker_registries_list):  # pylint: disable=unused-argument
         # TODO: Check create new instance.
         return ""
 
@@ -159,7 +161,7 @@ class NOVAService(Service):
                options,
                xpulist,
                resource,
-               storages,
+               storages,  # pylint: disable=unused-argument
                docker_config,
                docker_registry,
                docker_image,
@@ -219,13 +221,13 @@ class NOVAService(Service):
         task['dynamic'] = params.get('dynamic')
         return task
 
-    def status(self, task_id, params, get_log=True):
+    def status(self, task_id, params, get_log=True):  # pylint: disable=arguments-differ
         ssh_client = get_client(params, self._config)
         if 'container_id' in params:
-            exit_status, stdout, stderr = common.run_docker_command(
+            exit_status, _, _ = common.run_docker_command(
                 ssh_client, 'inspect -f {{.State.Status}} %s' % params['container_id'])
         else:
-            exit_status, stdout, stderr = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
+            exit_status, _, _ = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
 
         if get_log:
             common.update_log(task_id, ssh_client, params['log_dir'], self._config.get('callback_url'))
@@ -246,12 +248,12 @@ class NOVAService(Service):
                 common.run_docker_command(ssh_client, 'rm --force %s' % params['container_id'])
                 time.sleep(5)
             if 'pgid' in params:
-                exit_status, stdout, stderr = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
+                exit_status, _, stderr = common.run_command(ssh_client, 'kill -0 -%d' % params['pgid'])
                 if exit_status != 0:
                     logger.info("exist_status %d: %s", exit_status, stderr.read())
                     ssh_client.close()
                     return
-                exit_status, stdout, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
+                exit_status, _, stderr = common.run_command(client, 'kill -9 -%d' % params['pgid'])
                 if exit_status != 0:
                     logger.info("exist_status %d: %s", exit_status, stderr.read())
                     ssh_client.close()
@@ -292,7 +294,7 @@ def wait_until_running(nova_client, config, params, name):
         if status == 'ERROR':
             nova_client.servers.delete(instance.id)
             raise EnvironmentError("OVH - Create instance failed")
-        elif status == 'ACTIVE':
+        if status == 'ACTIVE':
             params['host'] = [addr for addr in instance.addresses['Ext-Net'] if addr.get('version') == 4][0]['addr']
             ssh_client = paramiko.SSHClient()
             try:
