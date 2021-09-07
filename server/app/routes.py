@@ -1483,8 +1483,7 @@ def parse_request_data_of_evaluation(current_request):
     models = request_data.getlist("models")
     evaluation_corpus = request_files.getlist("corpus")
 
-    model_info = builtins.pn9model_db.catalog_get_info(models[0], True)
-    language_pair = model_info[1].get('lp')
+    language_pair = request_data.get('lp')
     source_language = language_pair.split("_")[0]
     target_language = language_pair.split("_")[1]
 
