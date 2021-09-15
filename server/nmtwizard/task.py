@@ -469,6 +469,7 @@ def change(redis, task_id, service, priority, ngpus, ncpus):
     with redis.acquire_lock(keyt):
         prev_service = redis.hget(keyt, "service")
         status = redis.hget(keyt, "status")
+        content = json.loads(redis.hget(keyt, 'content'))
         if status != "queued":
             return False, "cannot move task `%s` - not in queued status" % task_id
         if service:
@@ -476,14 +477,22 @@ def change(redis, task_id, service, priority, ngpus, ncpus):
                 disable(redis, task_id, prev_service)
                 enable(redis, task_id, service)
                 redis.hset(keyt, "service", service)
+                content['service'] = service
+                redis.hset(keyt, "content", json.dumps(content))
                 redis.lrem('queued:'+prev_service, 0, task_id)
                 redis.lpush('queued:'+service, task_id)
         if priority:
             redis.hset(keyt, "priority", priority)
+            content['priority'] = int(priority)
+            redis.hset(keyt, "content", json.dumps(content))
         if ngpus:
             redis.hset(keyt, "ngpus", ngpus)
+            content['ngpus'] = int(ngpus)
+            redis.hset(keyt, "content", json.dumps(content))
         if ncpus:
             redis.hset(keyt, "ncpus", ncpus)
+            content['ncpus'] = int(ncpus)
+            redis.hset(keyt, "content", json.dumps(content))
     return True, ""
 
 
