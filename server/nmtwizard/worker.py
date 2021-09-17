@@ -460,7 +460,7 @@ class Worker:
             for _ in range(task_asked_capacity.ncpus):
                 while self._redis.hget(keycr, str(cpu_idx)) is not None:
                     cpu_idx += 1
-                    assert cpu_idx <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
+                    assert cpu_idx + 1 <= capacity.ncpus, "invalid cpu alloc for %s" % keycr
                 self._logger.debug('reserve CPU idx = %d', cpu_idx)
                 self._redis.hset(keycr, str(cpu_idx), task_id)
 
