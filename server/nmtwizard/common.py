@@ -292,17 +292,17 @@ def cmd_docker_run(lxpu, docker_options, task_id,
     env = {}
     nbgpu = len(lgpu)
     if nbgpu == 0 or (nbgpu == 1 and lgpu[0] == 0):
-        gpu_id = '0'
+        gpu_id = None
     else:
         env['NV_GPU'] = ",".join([str(int(g)-1) for g in lgpu])
-        gpu_id = ",".join([str(v) for v in range(1, nbgpu+1)])
+        gpu_id = ",".join([str(v) for v in range(0, nbgpu)])
 
     if docker_options.get('dev') == 1:
         return "sleep 35"
 
     docker_cmd = 'docker'
     need_expose_gpus = False
-    if gpu_id != '0':
+    if gpu_id is not None:
         if server_params and server_params.get('with_nvidia_docker'):
             docker_cmd = 'nvidia-docker'
         else:
@@ -364,7 +364,10 @@ def cmd_docker_run(lxpu, docker_options, task_id,
                     docker_command = ['-msw', s + ':'] + docker_command
                     break
 
-    cmd += '_o_-g_o_%s' % gpu_id
+    # remove -g option if the task does not use GPU
+    if gpu_id is not None:
+        cmd += '_o_-g_o_%s' % gpu_id
+
     cmd += '_o_-t_o_%s' % task_id
     if callback_url is not None and callback_url != '':
         cmd += '_o_-b_o_%s' % callback_url
