@@ -87,7 +87,9 @@ disable=invalid-name,
         no-value-for-parameter,
         consider-using-with,
         unspecified-encoding,
-        too-many-boolean-expressions
+        too-many-boolean-expressions,
+        consider-using-f-string,
+        global-variable-not-assigned
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
