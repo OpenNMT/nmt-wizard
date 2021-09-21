@@ -4,12 +4,14 @@ import re
 import os
 import subprocess
 from subprocess import Popen as pop
+from distutils.util import strtobool
 import json
 
 task_id = "%s"
 cmd = """
 %s
 """.strip().split("\n")
+check_storage_config = "%s"
 log_file = "%s"
 callback_url = "%s"
 myenv = json.loads(%s)
@@ -69,11 +71,23 @@ def rmprivate(lst):
 f = open(log_file, "w")
 f.write(ensure_str("COMMAND: " + displaycmd(cmd) + "\n"))
 
-p1 = pop(rmprivate(cmd),
-         stdout=subprocess.PIPE,
-         stderr=subprocess.STDOUT,
-         universal_newlines=True,
-         env=dict(os.environ, **myenv))
+if strtobool(check_storage_config):
+    vertical_slash_index = 2 # position of the vertical slash to split the cmd if cat appears in cmd
+    cat_cmd = cmd[:vertical_slash_index]
+    docker_cmd = rmprivate(cmd[vertical_slash_index+1:])
+    p0 = pop(cat_cmd, stdout=subprocess.PIPE)
+    p1 = pop(docker_cmd,
+             stdin=p0.stdout,
+             stdout=subprocess.PIPE,
+             stderr=subprocess.STDOUT,
+             universal_newlines=True,
+             env=dict(os.environ, **myenv))
+else:
+    p1 = pop(rmprivate(cmd),
+             stdout=subprocess.PIPE,
+             stderr=subprocess.STDOUT,
+             universal_newlines=True,
+             env=dict(os.environ, **myenv))
 
 current_log = ""
 

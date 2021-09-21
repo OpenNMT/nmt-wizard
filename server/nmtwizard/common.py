@@ -344,10 +344,8 @@ def cmd_docker_run(lxpu, docker_options, task_id,
     cmd += '_o_%s' % image_ref
 
     if storages is not None and storages != {}:
-        v = json.dumps(storages)
-        v = v.replace("<TASK_ID>", task_id)
-        v = v.replace("<CALLBACK_URL>", callback_url)
-        cmd += '_o_-s_o_%s' % v
+        cmd = "cat_o_/tmp/storage_config.json_o_|_o_" + cmd
+        cmd += '_o_-s_o_-'
 
         # if model storage is not specified, check if there is a default
         # model storage (in read/write or both)
@@ -506,12 +504,22 @@ def launch_task(task_id,
                 raise RuntimeError("error retrieving files: %s, %s" %
                                    (cmd_get_files, six.ensure_str(stderr.read())))
 
+    check_storage_config = False
+    if storages is not None and storages != {}:
+        check_storage_config = True
+        v = json.dumps(storages)
+        v = v.replace("<TASK_ID>", task_id)
+        v = v.replace("<CALLBACK_URL>", callback_url)
+        exit_status, stdout, stderr = run_command(client, "echo '%s' > /tmp/storage_config.json" % v)
+        if exit_status != 0:
+            raise RuntimeError("Create storage_config file failed: %s" % (six.ensure_str(stderr.read())))
+
     cmd, env = cmd_docker_run((lgpu, lcpu), docker_options, task_id,
                               docker_image, image_ref, callback_url, callback_interval,
                               storages, docker_command, server_params, support_statistics)
     env_txt = json.dumps(json.dumps(json.loads(env if env else "{}")))
 
-    cmd = "nohup python -c \'" + python_run % (task_id, cmd, "%s/%s.log" % (log_dir, task_id),
+    cmd = "nohup python -c \'" + python_run % (task_id, cmd, check_storage_config, "%s/%s.log" % (log_dir, task_id),
                                                callback_url or '', env_txt, callback_interval) + \
           "' > %s/%s_launch.log" % (log_dir, task_id)
 
