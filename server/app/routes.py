@@ -1115,6 +1115,9 @@ def get_final_training_config(request_data, training_corpus_infos):
 
 
 def delete_nfa_feature_from_config(config):
+    if 'supported_features' in config and 'NFA' in config.get('supported_features'):
+        config['supported_features']['NFA'] = 'false'
+
     def apply(sampling_rule):
         if len(sampling_rule) > 2 and isinstance(sampling_rule[2], dict) and sampling_rule[2].get("bpreprocess"):
             bpreprocess = sampling_rule[2].get("bpreprocess")
@@ -1126,14 +1129,11 @@ def delete_nfa_feature_from_config(config):
                     del sampling_rule[2]
         return sampling_rule
 
-    if 'supported_features' in config and 'NFA' in config.get('supported_features'):
-        config['supported_features']['NFA'] = 'false'
+    sample_dist = config.get('data').get('sample_dist')
 
-        sample_dist = config.get('data').get('sample_dist')
-
-        for storage_block in sample_dist:
-            if storage_block.get('distribution'):
-                storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+    for storage_block in sample_dist:
+        if storage_block.get('distribution'):
+            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
 
     return config
 
