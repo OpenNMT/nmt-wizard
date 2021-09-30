@@ -703,7 +703,7 @@ def launch_v2():
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
     content["trainer_email"] = g.user.email
-    content["trainer_name"] = g.user.last_name
+    content["trainer_name"] = g.user.first_name
     if g.get('session'):
         content["application_mode"] = g.session.get('mode')
     image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
@@ -1424,7 +1424,7 @@ def create_evaluation():
         "options": {},
         'support_statistics': True,
         'trainer_email': g.user.email,
-        'trainer_name': g.user.last_name,
+        'trainer_name': g.user.first_name,
         'application_mode': g.session.get('mode'),
         'eval_name': request_data["evaluation_name"]
     }
@@ -1460,7 +1460,7 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
         "options": {},
         'support_statistics': True,
         'trainer_email': g.user.email,
-        'trainer_name': g.user.last_name,
+        'trainer_name': g.user.first_name,
         'application_mode': g.session.get('mode')
     }
 
@@ -1619,7 +1619,7 @@ def launch(service):
     if content is not None:
         content = json.loads(content)
         content["trainer_email"] = g.user.email
-        content["trainer_name"] = g.user.last_name
+        content["trainer_name"] = g.user.first_name
         if g.get('session'):
             content["application_mode"] = g.session.get('mode')
     else:
