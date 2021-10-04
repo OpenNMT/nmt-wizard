@@ -703,7 +703,7 @@ def launch_v2():
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
     content["trainer_email"] = g.user.email
-    content["trainer_name"] = g.user.last_name
+    content["trainer_name"] = g.user.first_name
     if g.get('session'):
         content["application_mode"] = g.session.get('mode')
     image_tag = f'{content["docker"]["image"]}:{content["docker"]["tag"]}'
@@ -1115,6 +1115,9 @@ def get_final_training_config(request_data, training_corpus_infos):
 
 
 def delete_nfa_feature_from_config(config):
+    if 'supported_features' in config and 'NFA' in config.get('supported_features'):
+        config['supported_features']['NFA'] = 'false'
+
     def apply(sampling_rule):
         if len(sampling_rule) > 2 and isinstance(sampling_rule[2], dict) and sampling_rule[2].get("bpreprocess"):
             bpreprocess = sampling_rule[2].get("bpreprocess")
@@ -1126,14 +1129,11 @@ def delete_nfa_feature_from_config(config):
                     del sampling_rule[2]
         return sampling_rule
 
-    if 'supported_features' in config and 'NFA' in config.get('supported_features'):
-        config['supported_features']['NFA'] = 'false'
+    sample_dist = config.get('data').get('sample_dist')
 
-        sample_dist = config.get('data').get('sample_dist')
-
-        for storage_block in sample_dist:
-            if storage_block.get('distribution'):
-                storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+    for storage_block in sample_dist:
+        if storage_block.get('distribution'):
+            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
 
     return config
 
@@ -1424,7 +1424,7 @@ def create_evaluation():
         "options": {},
         'support_statistics': True,
         'trainer_email': g.user.email,
-        'trainer_name': g.user.last_name,
+        'trainer_name': g.user.first_name,
         'application_mode': g.session.get('mode'),
         'eval_name': request_data["evaluation_name"]
     }
@@ -1460,7 +1460,7 @@ def create_trans_score_tasks_for_model(model, to_translate_corpus, to_score_corp
         "options": {},
         'support_statistics': True,
         'trainer_email': g.user.email,
-        'trainer_name': g.user.last_name,
+        'trainer_name': g.user.first_name,
         'application_mode': g.session.get('mode')
     }
 
@@ -1619,7 +1619,7 @@ def launch(service):
     if content is not None:
         content = json.loads(content)
         content["trainer_email"] = g.user.email
-        content["trainer_name"] = g.user.last_name
+        content["trainer_name"] = g.user.first_name
         if g.get('session'):
             content["application_mode"] = g.session.get('mode')
     else:
