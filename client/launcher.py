@@ -71,8 +71,7 @@ def find_files_parameters(v, files):
                         for f in os.listdir(v) if os.path.isfile(os.path.join(v, f))]
         allfiles = [(v, global_basename)]
         for f in allfiles:
-            with open(f[0], 'rb') as f0:
-                files[f[1]] = (f[1], f0)
+            files[f[1]] = (f[1], open(f[0], 'rb'))
             LOGGER.info('transferring local file: %s -> ${TMP_DIR}/%s', f[0], f[1])
         return "${TMP_DIR}/%s" % global_basename
     if isinstance(v, list):
@@ -316,8 +315,7 @@ def _parse_local_filename(argument, files):
 
     basename = os.path.basename(argument)
     if basename not in files:
-        with open(argument, 'rb') as arg_file:
-            files[basename] = (basename, arg_file)
+        files[basename] = (basename, open(argument, 'rb'))
     argument = "${TMP_DIR}/%s" % basename
 
     return argument
