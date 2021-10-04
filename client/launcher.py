@@ -123,8 +123,8 @@ subparsers = parser.add_subparsers(help='command help', dest='cmd')
 subparsers.required = True
 
 subparsers_map = {
-    "service": subparsers.add_parser(u'service'),
-    "task": subparsers.add_parser(u'task'),
+    "service": subparsers.add_parser('service'),
+    "task": subparsers.add_parser('task'),
 }
 shortcut_map = {}
 
