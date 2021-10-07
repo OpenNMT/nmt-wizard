@@ -1157,18 +1157,25 @@ def delete_nfa_v2(config):
 
 
 def adapt_distribution_proportions(distribution, get_new_value, new_val, is_parent=True):
+    to_remove = []
+
     def apply(sampling_rule):
         sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
+        if is_parent and sampling_rule[1] == '*':
+            to_remove.append(sampling_rule)
         return sampling_rule
 
     for storage_block in distribution:
         if storage_block.get('distribution'):
             storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+        for item_to_remove in to_remove:
+            storage_block.get('distribution').remove(item_to_remove)
+        to_remove = []
     return distribution
 
 
 def get_parent_formula_distribution_proportions(old_weight, client_ratio):
-    if not isinstance(old_weight, float):
+    if not isinstance(old_weight, float) and not isinstance(old_weight, int):
         return old_weight
 
     parent_ratio = float(100 - client_ratio) / 100.0
