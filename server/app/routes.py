@@ -1116,8 +1116,15 @@ def get_final_training_config(request_data, training_corpus_infos):
 
 def delete_nfa_feature_from_config(config):
     if 'supported_features' in config and 'NFA' in config.get('supported_features'):
-        config['supported_features']['NFA'] = 'false'
+        config['supported_features']['NFA'] = False
+    if 'mpreprocess' in config or 'bpreprocess' in config or 'preprocess' not in config:
+        config = delete_nfa_v1(config)
+    else:
+        config = delete_nfa_v2(config)
+    return config
 
+
+def delete_nfa_v1(config):
     def apply(sampling_rule):
         if len(sampling_rule) > 2 and isinstance(sampling_rule[2], dict) and sampling_rule[2].get("bpreprocess"):
             bpreprocess = sampling_rule[2].get("bpreprocess")
@@ -1134,6 +1141,17 @@ def delete_nfa_feature_from_config(config):
     for storage_block in sample_dist:
         if storage_block.get('distribution'):
             storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
+
+    return config
+
+
+def delete_nfa_v2(config):
+    if not config.get('preprocess'):
+        return config
+
+    operator_to_remove = ['tm', 'tm_noise']
+    config['preprocess'] = [operator for operator in config.get('preprocess')
+                            if operator.get('op') not in operator_to_remove]
 
     return config
 
