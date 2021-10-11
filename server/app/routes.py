@@ -909,7 +909,7 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
                                                                      storage_id=routes_config.global_storage_name,
                                                                      partition_value=testing_proportion.get('value'),
                                                                      is_percent=testing_proportion.get('isPercentage'))
-        except (Exception, ):
+        except (Exception,):
             abort(flask.make_response(flask.jsonify(message=str("Cannot push uploaded file(s).")), 400))
 
         assert push_infos and push_infos['files'] and len(push_infos['files']) == 2
@@ -1192,8 +1192,18 @@ def get_client_weight(sample_size, client_ratio, client_volume):
     return result if result > 0 else 1
 
 
+def get_client_corpus_info(client_corpus_size):
+    client_corpus_object = app.get_other_config(['training_options', 'client_corpus'], fallback=[])
+    for operator in client_corpus_object:
+        current_func = operator.get('function', 'False')
+        values = operator.get('values') if len(operator.get('values')) > 1 else operator.get('values')[0]
+        if eval(current_func.format(client_corpus_size, values)):  # pylint: disable=eval-used
+            return operator.get('client_ratio'), operator.get('sample_size')
+    return 70, 2000000
+
+
 def get_sample_data(current_data, parent_data, sample_by_path):
-    client_ratio = app.get_other_config(['training_options', 'client_ratio'], fallback=12)
+    client_ratio, new_sample_size = get_client_corpus_info(current_data.get('sample', 0))
     current_sample_dists = current_data["sample_dist"]
     sample_dists = parent_data["sample_dist"]
     new_sample_dists = []
@@ -1213,7 +1223,6 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
         new_sample_dists.append(current_sample_dist)
 
-    new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
     sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions,
                                                   client_ratio)
@@ -1903,8 +1912,8 @@ def launch(service):
                 content_translate["priority"] = priority + 1
                 content_translate["ngpus"] = 0
                 content_translate["ncpus"] = ncpus_trans or ncpus or get_cpu_count(service_config,
-                                                                    content_translate["ngpus"],
-                                                                    "trans")
+                                                                                   content_translate["ngpus"],
+                                                                                   "trans")
 
                 translate_resource = service_module.select_resource_from_capacity(
                     resource, Capacity(content_translate["ngpus"],
