@@ -1223,7 +1223,6 @@ def get_sample_data(current_data, parent_data, sample_by_path):
 
         new_sample_dists.append(current_sample_dist)
 
-    new_sample_size = app.get_other_config(['training_options', 'sample_size'], fallback=10000000)
     client_weight = get_client_weight(new_sample_size, client_ratio, client_sample)
     sample_dists = adapt_distribution_proportions(sample_dists, get_parent_formula_distribution_proportions,
                                                   client_ratio)
