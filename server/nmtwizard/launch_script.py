@@ -10,6 +10,7 @@ task_id = "%s"
 cmd = """
 %s
 """.strip().split("\n")
+storage_config = json.loads(%s)
 log_file = "%s"
 callback_url = "%s"
 myenv = json.loads(%s)
@@ -69,11 +70,20 @@ def rmprivate(lst):
 f = open(log_file, "w")
 f.write(ensure_str("COMMAND: " + displaycmd(cmd) + "\n"))
 
-p1 = pop(rmprivate(cmd),
-         stdout=subprocess.PIPE,
-         stderr=subprocess.STDOUT,
-         universal_newlines=True,
-         env=dict(os.environ, **myenv))
+if storage_config:
+    p0 = pop(rmprivate(["echo", json.dumps(storage_config)]), stdout=subprocess.PIPE)
+    p1 = pop(rmprivate(cmd),
+             stdin=p0.stdout,
+             stdout=subprocess.PIPE,
+             stderr=subprocess.STDOUT,
+             universal_newlines=True,
+             env=dict(os.environ, **myenv))
+else:
+    p1 = pop(rmprivate(cmd),
+             stdout=subprocess.PIPE,
+             stderr=subprocess.STDOUT,
+             universal_newlines=True,
+             env=dict(os.environ, **myenv))
 
 current_log = ""
 
