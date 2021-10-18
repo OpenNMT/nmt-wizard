@@ -71,13 +71,14 @@ f = open(log_file, "w")
 f.write(ensure_str("COMMAND: " + displaycmd(cmd) + "\n"))
 
 if storage_config:
-    p0 = pop(rmprivate(["echo", json.dumps(storage_config)]), stdout=subprocess.PIPE)
     p1 = pop(rmprivate(cmd),
-             stdin=p0.stdout,
+             stdin=subprocess.PIPE,
              stdout=subprocess.PIPE,
              stderr=subprocess.STDOUT,
              universal_newlines=True,
              env=dict(os.environ, **myenv))
+    p1.stdin.write(rmprivate([json.dumps(storage_config)])[0])
+    p1.stdin.close()
 else:
     p1 = pop(rmprivate(cmd),
              stdout=subprocess.PIPE,
