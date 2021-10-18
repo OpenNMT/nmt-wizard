@@ -159,11 +159,16 @@ class EC2Service(Service):
         }
 
     def check(self, options, docker_registries_list):  # pylint: disable=unused-argument
-        if "launchTemplateName" not in options:
+        template_name = options.get("server")
+        if not template_name:
             raise ValueError("missing launchTemplateName option")
+        p = template_name.rfind(":")
+        if p != -1:
+            template_name = template_name[:p]
         try:
             ec2_client = self._session.client("ec2")
-            _ = _run_instance(ec2_client, options["launchTemplateName"], dry_run=True)
+            _ = _run_instance(ec2_client, template_name,
+                              instance_init_limit=self._config["variables"].get("instanceInitLimit"), dry_run=True)
         except ClientError as e:
             if e.response["Error"]["Code"] == "DryRunOperation":
                 pass
@@ -171,7 +176,7 @@ class EC2Service(Service):
                 raise RuntimeError("not authorized to run instances") from e
             else:
                 raise e
-        return ""
+        return True
 
     def launch(self,
                task_id,
