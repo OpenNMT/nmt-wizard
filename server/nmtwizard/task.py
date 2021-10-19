@@ -440,7 +440,7 @@ def info(redis, taskfile_dir, task_id, fields):
     keyt = "task:" + task_id
     if fields is None:
         # only if we want all information - add a lock on the resource
-        with redis.acquire_lock(keyt):
+        with redis.acquire_lock(keyt, acquire_timeout=600):
             fields = redis.hkeys(keyt)
             fields.append("ttl")
             r = info(redis, taskfile_dir, task_id, fields)
