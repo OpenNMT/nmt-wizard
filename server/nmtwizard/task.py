@@ -452,7 +452,9 @@ def info(redis, taskfile_dir, task_id, fields):
         fields = [field]
     r = {}
     for f in fields:
-        if f != "ttl":
+        if f == 'files':
+            r['files'] = file_list(taskfile_dir, task_id)
+        elif f != "ttl":
             r[f] = redis.hget(keyt, f)
         else:
             r[f] = redis.ttl("beat:" + task_id)
