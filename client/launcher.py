@@ -504,9 +504,6 @@ def process_request(s_list, cmd, subcmd, is_json, args, auth=None):
             "options": options,
             "ngpus": args.gpus,
             "ncpus": args.cpus,
-            "ncpus_prepr": args.cpus_prepr,
-            "ncpus_train": args.cpus_train,
-            "ncpus_trans": args.cpus_trans
         }
 
         if cmd == "exec":
@@ -519,6 +516,10 @@ def process_request(s_list, cmd, subcmd, is_json, args, auth=None):
             content["dependency"] = args.dependency
 
         if cmd == "task" and subcmd == "launch":
+            content["ncpus_prepr"] = args.cpus_prepr
+            content["ncpus_train"] = args.cpus_train
+            content["ncpus_trans"] = args.cpus_trans
+
             if args.iterations:
                 content["iterations"] = args.iterations
             if args.nochainprepr:
