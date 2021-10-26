@@ -1675,6 +1675,7 @@ def launch(service):
     content["service"] = service
 
     exec_mode = content.get('exec_mode', False)
+    is_standalone = False
 
     if not exec_mode:
         task_type = '????'
@@ -1688,6 +1689,9 @@ def launch(service):
             task_type = TASK_RELEASE_TYPE
         elif "buildvocab" in content["docker"]["command"]:
             task_type = "vocab"
+        elif "standalone" in content["docker"]["command"]:
+            task_type = "prepr"
+            is_standalone = True
     else:
         task_type = 'exec'
 
@@ -1814,7 +1818,8 @@ def launch(service):
     first_of_chain = True
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_task_id, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
+            prepr_suffix = "standalone" if is_standalone else "prepr"
+            prepr_task_id, explicit_name = build_task_id(content, xxyy, prepr_suffix, parent_task_id)
 
             if "dependency" in content and first_of_chain:
                 parent_task_id = content["dependency"]
@@ -1826,15 +1831,18 @@ def launch(service):
             idx = 0
             prepr_command = []
             train_command = content["docker"]["command"]
-            while train_command[idx] != 'train' and train_command[idx] != 'preprocess':
+            while train_command[idx] != 'train' and train_command[idx] not in ['preprocess', 'standalone']:
                 prepr_command.append(train_command[idx])
                 idx += 1
 
             # create preprocess command, don't push the model on the catalog,
             # and generate a pseudo model
-            prepr_command.append("--no_push")
+            if not is_standalone:
+                prepr_command.append("--no_push")
             prepr_command.append("preprocess")
             prepr_command.append("--build_model")
+            if is_standalone:
+                prepr_command.append("standalone")
 
             content["docker"]["command"] = prepr_command
 
