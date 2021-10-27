@@ -1818,8 +1818,8 @@ def launch(service):
     first_of_chain = True
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_suffix = "standalone" if is_standalone else "prepr"
-            prepr_task_id, explicit_name = build_task_id(content, xxyy, prepr_suffix, parent_task_id)
+            _, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
+            prepr_task_id = parent_task_id + "_standalone"
 
             if "dependency" in content and first_of_chain:
                 parent_task_id = content["dependency"]

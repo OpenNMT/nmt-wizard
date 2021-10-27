@@ -186,7 +186,7 @@ def build_task_id(content, xxyy, task_type, parent_task):
         else:
             nn = 1
     else:
-        if task_type in ["prepr", "standalone"] or (task_type == "train" and parent_task_type != "prepr"):
+        if task_type == "prepr" or (task_type == "train" and parent_task_type != "prepr"):
             nn += 1
 
     explicitname = None
