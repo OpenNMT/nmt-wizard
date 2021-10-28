@@ -11,6 +11,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import datetime
 from functools import wraps
+from threading import Thread
 
 import flask
 import semver
@@ -30,6 +31,7 @@ from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreproce
     TaskScoring, TASK_RELEASE_TYPE
 from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted
 from utils.storage_utils import StorageUtils
+from utils.email_utils import send_task_status_notification_email
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
@@ -2264,6 +2266,12 @@ def terminate_internal(task_id):
 @filter_request("PUT/task/beat")
 @task_write_control
 def task_beat(task_id):
+    log_file = os.path.join(taskfile_dir, task_id, 'log')
+    if os.path.isfile(log_file) and check_exceed_log_update_delay(log_file) and app.get_other_config(
+            ['email', 'allow_send_mail'], fallback=True):
+        infos = task.info(redis_db, taskfile_dir, task_id, ["type", "content", "eval_model", "model"])
+        Thread(target=send_task_status_notification_email,
+               args=({**infos, **{"id": task_id}}, 'running', g.user.receive_mail)).start()
     duration = flask.request.args.get('duration')
     try:
         if duration is not None:
