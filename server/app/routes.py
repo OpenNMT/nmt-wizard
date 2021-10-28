@@ -9,6 +9,7 @@ import time
 import traceback
 from collections import Counter
 from copy import deepcopy
+from datetime import datetime
 from functools import wraps
 
 import flask
@@ -2343,6 +2344,16 @@ def post_log(task_id):
     content = task.set_log(taskfile_dir, task_id, content, max_log_size)
     post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
+
+
+def check_exceed_log_update_delay(log_file):
+    with open(log_file, 'r') as f:
+        last_log_time_str = f.readlines()[-1].split('UTC')[0].strip()
+        last_log_time = datetime.strptime(last_log_time_str, '%Y-%b-%d %H:%M:%S.%f')
+        time_delta = (datetime.utcnow() - last_log_time).total_seconds()
+        if time_delta > app.get_other_config(['default', 'log_update_delay'], fallback=3600):
+            return True
+    return False
 
 
 @app.route("/task/stat/<string:task_id>", methods=["POST"])
