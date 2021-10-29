@@ -886,7 +886,10 @@ def upload_user_files(routes_config, path, files):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
     for file in files:
-        file.save(os.path.join(temp_files, file.filename))
+        tmp_file = os.path.join(temp_files, file.filename)
+        file.save(tmp_file)
+        if os.stat(tmp_file).st_size == 0:
+            abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
         push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
                                                        routes_config.global_storage_name)
         assert push_infos and push_infos['nbSegments']
@@ -901,6 +904,8 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
     for file in files:
         tmp_file = os.path.join(temp_files, file.filename)
         file.save(tmp_file)
+        if os.stat(tmp_file).st_size == 0:
+            abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
         try:
             push_infos = routes_config.storage_client.partition_auto(tmp_file,
                                                                      training_path,
