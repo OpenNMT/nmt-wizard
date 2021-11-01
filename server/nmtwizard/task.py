@@ -481,6 +481,7 @@ def change(redis, task_id, service, priority, ngpus, ncpus):
                 redis.hset(keyt, "service", service)
                 content['service'] = service
                 redis.hset(keyt, "content", json.dumps(content))
+                redis.hset(keyt, "resource", "auto")
                 redis.lrem('queued:'+prev_service, 0, task_id)
                 redis.lpush('queued:'+service, task_id)
         if priority:
