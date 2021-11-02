@@ -1161,7 +1161,7 @@ def adapt_distribution_proportions(distribution, get_new_value, new_val, is_pare
 
     def apply(sampling_rule):
         sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
-        if is_parent and sampling_rule[1] == '*':
+        if is_parent and '*' in str(sampling_rule[1]):
             to_remove.append(sampling_rule)
         return sampling_rule
 
