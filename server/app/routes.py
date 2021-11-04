@@ -1703,7 +1703,8 @@ def launch(service):
         entity_code = g.user.entity.entity_code
 
         if entity_code not in allow_entities:
-            abort(flask.make_response(flask.jsonify(message="insufficient credentials for generate standalone model"), 403))
+            abort(flask.make_response(
+                flask.jsonify(message="insufficient credentials for generate standalone model"), 403))
 
     elif task_type != "exec":
         task_suffix = task_type
