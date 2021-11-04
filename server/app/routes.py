@@ -700,6 +700,8 @@ def launch_v2():
             return make_response(jsonify(message=f"Dataset \"{dataset_name}\" already exists"), 400)
 
     data_file_info = get_data_file_info(request_data, routes_config)
+    if not data_file_info.get("training"):
+        return make_response(jsonify(message="Missing training data in dataset. Please check again."), 400)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
     content["trainer_email"] = g.user.email
@@ -1166,7 +1168,7 @@ def adapt_distribution_proportions(distribution, get_new_value, new_val, is_pare
 
     def apply(sampling_rule):
         sampling_rule[1] = get_new_value(sampling_rule[1], new_val) if is_parent else get_new_value(new_val)
-        if is_parent and sampling_rule[1] == '*':
+        if is_parent and '*' in str(sampling_rule[1]):
             to_remove.append(sampling_rule)
         return sampling_rule
 
