@@ -1098,6 +1098,9 @@ def get_final_training_config(request_data, training_corpus_infos):
                 }
             parent_config["options"]["config"]["train"]["batch_size"] = batch_size
 
+        # Remove option moving_average_decay from parent config
+        if "config" in parent_config["options"] and "train" in parent_config["options"].get("config"):
+            parent_config["options"]["config"]["train"].pop("moving_average_decay", None)
         parent_config = delete_nfa_feature_from_config(parent_config)
         sample_size, sample_dist = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
 
