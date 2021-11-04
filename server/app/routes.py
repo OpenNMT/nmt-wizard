@@ -892,8 +892,11 @@ def upload_user_files(routes_config, path, files):
         file.save(tmp_file)
         if os.stat(tmp_file).st_size == 0:
             abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
-        push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
-                                                       routes_config.global_storage_name)
+        try:
+            push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
+                                                           routes_config.global_storage_name)
+        except (Exception,):
+            abort(flask.make_response(flask.jsonify(message=str("Cannot push uploaded file(s).")), 400))
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
@@ -2411,6 +2414,9 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             if v.get('status') not in ['error', 'pending']:
                 result[key].append(
                     {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
+            else:
+                abort(flask.make_response(flask.jsonify(message="Dataset is in %s upload status." % v.get('status')),
+                                          400))
 
     return result
 
