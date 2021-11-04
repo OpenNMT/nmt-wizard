@@ -1698,7 +1698,7 @@ def launch(service):
     if task_type == '????':
         abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
 
-    if is_standalone == True:
+    if is_standalone:
         allow_entities = app.get_other_config(['standalone_allow_entities'], fallback=[])
         entity_code = g.user.entity.entity_code
 
