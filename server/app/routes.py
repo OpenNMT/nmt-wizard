@@ -1018,6 +1018,8 @@ def get_exists_dataset_file_info(dataset_ids):
 
         result["training"].extend(training_files)
         result["testing"].extend(testing_files)
+    if not result.get("training") and not result.get("testing"):
+        abort(flask.make_response(flask.jsonify(message="All selected dataset is in pending/error status."), 400))
 
     return result
 
@@ -2414,9 +2416,6 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
             if v.get('status') not in ['error', 'pending']:
                 result[key].append(
                     {**v, **{"filename": k if k.startswith('/') else '/' + k, "nbSegments": v.get("entries")}})
-            else:
-                abort(flask.make_response(flask.jsonify(message="Dataset is in %s upload status." % v.get('status')),
-                                          400))
 
     return result
 
