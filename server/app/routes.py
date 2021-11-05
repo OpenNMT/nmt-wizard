@@ -1018,8 +1018,6 @@ def get_exists_dataset_file_info(dataset_ids):
 
         result["training"].extend(training_files)
         result["testing"].extend(testing_files)
-    if not result.get("training") and not result.get("testing"):
-        abort(flask.make_response(flask.jsonify(message="All selected dataset is in pending/error status."), 400))
 
     return result
 
