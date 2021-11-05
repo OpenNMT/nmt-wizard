@@ -700,6 +700,8 @@ def launch_v2():
             return make_response(jsonify(message=f"Dataset \"{dataset_name}\" already exists"), 400)
 
     data_file_info = get_data_file_info(request_data, routes_config)
+    if not data_file_info.get("training"):
+        return make_response(jsonify(message="Missing training data in dataset. Please check again."), 400)
 
     content = get_training_config(service, request_data, routes_config, data_file_info)
     content["trainer_email"] = g.user.email
@@ -886,9 +888,15 @@ def upload_user_files(routes_config, path, files):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
     for file in files:
-        file.save(os.path.join(temp_files, file.filename))
-        push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
-                                                       routes_config.global_storage_name)
+        tmp_file = os.path.join(temp_files, file.filename)
+        file.save(tmp_file)
+        if os.stat(tmp_file).st_size == 0:
+            abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
+        try:
+            push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
+                                                           routes_config.global_storage_name)
+        except (Exception,):
+            abort(flask.make_response(flask.jsonify(message=str("Cannot push uploaded file(s).")), 400))
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
@@ -901,6 +909,8 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
     for file in files:
         tmp_file = os.path.join(temp_files, file.filename)
         file.save(tmp_file)
+        if os.stat(tmp_file).st_size == 0:
+            abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
         try:
             push_infos = routes_config.storage_client.partition_auto(tmp_file,
                                                                      training_path,
