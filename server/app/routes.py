@@ -9,7 +9,9 @@ import time
 import traceback
 from collections import Counter
 from copy import deepcopy
+from datetime import datetime
 from functools import wraps
+from threading import Thread
 
 import flask
 import semver
@@ -29,6 +31,7 @@ from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreproce
     TaskScoring, TASK_RELEASE_TYPE
 from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted
 from utils.storage_utils import StorageUtils
+from utils.email_utils import send_task_status_notification_email
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
@@ -2295,6 +2298,12 @@ def task_beat(task_id):
         task.beat(redis_db, task_id, duration, container_id)
     except Exception as e:
         abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+    log_file = os.path.join(taskfile_dir, task_id, 'log')
+    if os.path.isfile(log_file) and check_exceed_log_update_delay(log_file) and app.get_other_config(
+            ['email', 'allow_send_mail'], fallback=True):
+        infos = task.info(redis_db, taskfile_dir, task_id, ["type", "content", "eval_model", "model"])
+        Thread(target=send_task_status_notification_email,
+               args=({**infos, **{"id": task_id}}, 'running', g.user.receive_mail)).start()
     return flask.jsonify(200)
 
 
@@ -2364,6 +2373,16 @@ def post_log(task_id):
     content = task.set_log(taskfile_dir, task_id, content, max_log_size)
     post_function('POST/task/log', task_id, content)
     return flask.jsonify(200)
+
+
+def check_exceed_log_update_delay(log_file):
+    with open(log_file, 'r') as f:
+        last_log_time_str = f.readlines()[-1].split('UTC')[0].strip()
+        last_log_time = datetime.strptime(last_log_time_str, '%Y-%b-%d %H:%M:%S.%f')
+        time_delta = (datetime.utcnow() - last_log_time).total_seconds()
+        if time_delta > app.get_other_config(['default', 'log_update_delay'], fallback=3600):
+            return True
+    return False
 
 
 @app.route("/task/stat/<string:task_id>", methods=["POST"])
