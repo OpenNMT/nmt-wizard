@@ -1093,9 +1093,13 @@ def get_final_training_config(request_data, training_corpus_infos):
             "distribution": [["*", "*"]]
         }, training_corpus_folders))
     }
+    parent_model = request_data["parent_model"]
+    # add suffix if model type is standalone
+    exist_model, model_info = builtins.pn9model_db.catalog_get_info(request_data["parent_model"], True)
+    if exist_model and model_info.get('type') == 'base' and is_standalone_model(model_info):
+        parent_model += '_standalone'
 
-    ok, parent_config = builtins.pn9model_db.catalog_get_info(request_data["parent_model"],
-                                                              boolean_param(request.args.get('short')))
+    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
     if ok:
         # Remove build object from parent config
         parent_config.pop('build', None)
@@ -1125,6 +1129,14 @@ def get_final_training_config(request_data, training_corpus_infos):
     abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % (
         request_data["parent_model"])), 400))
     return None
+
+
+def is_standalone_model(model_info):
+    standalone_model_name = model_info.get('model') + '_standalone'
+    if model_info.get('standalone') and model_info['standalone'].get(standalone_model_name) and \
+            model_info['standalone'][standalone_model_name].get('state') == 'completed':
+        return True
+    return False
 
 
 def delete_nfa_feature_from_config(config):
