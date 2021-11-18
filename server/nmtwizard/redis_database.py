@@ -10,6 +10,7 @@ from nmtwizard.helper import cust_jsondump
 logger = logging.getLogger(__name__)
 
 
+# pylint: disable=W0223
 class RedisDatabase(redis.Redis):
     """Extension to redis.Redis."""
     ROOT_CACHE_KEY = "cache"
