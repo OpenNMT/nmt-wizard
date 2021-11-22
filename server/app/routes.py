@@ -1700,6 +1700,9 @@ def launch(service):
     content["service"] = service
 
     exec_mode = content.get('exec_mode', False)
+    docker_version = content['docker']['tag']
+    if docker_version.startswith('v'):
+        docker_version = docker_version[1:]
     is_standalone = False
 
     if not exec_mode:
@@ -1724,6 +1727,9 @@ def launch(service):
         abort(flask.make_response(flask.jsonify(message="incorrect task definition"), 400))
 
     if is_standalone:
+        if not semver.match(docker_version, ">1.58.1"):
+            abort(flask.make_response(flask.jsonify(
+                message="This feature is only supported for docker images with tag version greater than 1.58.1"), 400))
         allow_entities = app.get_other_config(['standalone_allow_entities'], fallback=[])
         entity_code = g.user.entity.entity_code
 
@@ -1809,9 +1815,6 @@ def launch(service):
     else:
         totuminer = None
 
-    docker_version = content['docker']['tag']
-    if docker_version.startswith('v'):
-        docker_version = docker_version[1:]
     try:
         chain_prepr_train = (not exec_mode and not content.get("nochainprepr", False) and
                              task_type == "train" and
@@ -1851,9 +1854,8 @@ def launch(service):
     first_of_chain = True
     while iterations > 0:
         if (chain_prepr_train and parent_task_type != "prepr") or task_type == "prepr":
-            prepr_task_id, explicit_name = build_task_id(content, xxyy, "prepr", parent_task_id)
-            if is_standalone:
-                prepr_task_id = parent_task_id + "_standalone"
+            suffix_name = "standalone" if is_standalone else "prepr"
+            prepr_task_id, explicit_name = build_task_id(content, xxyy, suffix_name, parent_task_id)
 
             if "dependency" in content and first_of_chain:
                 parent_task_id = content["dependency"]
@@ -1873,10 +1875,9 @@ def launch(service):
             # and generate a pseudo model
             if not is_standalone:
                 prepr_command.append("--no_push")
-            prepr_command.append("preprocess")
-            prepr_command.append("--build_model")
+            prepr_command += ["preprocess", "--build_model"]
             if is_standalone:
-                prepr_command.append("standalone")
+                prepr_command += ["standalone", "--output_model_name", parent_task_id+"_standalone"]
 
             content["docker"]["command"] = prepr_command
 
