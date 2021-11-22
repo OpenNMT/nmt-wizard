@@ -1132,10 +1132,10 @@ def get_final_training_config(request_data, training_corpus_infos):
 
 
 def is_standalone_model(model_info):
-    standalone_model_name = model_info.get('model') + '_standalone'
-    if model_info.get('standalone') and model_info['standalone'].get(standalone_model_name) and \
-            model_info['standalone'][standalone_model_name].get('state') == 'completed':
-        return True
+    if model_info.get('standalone'):
+        for standalone in model_info['standalone'].values():
+            if standalone.get('state') == 'completed':
+                return True
     return False
 
 
