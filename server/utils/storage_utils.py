@@ -31,9 +31,9 @@ class StorageUtils:
                 pool_entity = service_name[0:2].upper()
                 local_storages[service_name] = {"entities": {pool_entity: json_config["storages"]}}
             elif "entities" in json_config:
-                local_storages[service_name] = {"entities": {ent: json_config["entities"][ent]["storages"]
-                                                             for ent in json_config["entities"].keys()
-                                                             if has_ability(g, "train", ent)}}
+                local_storages[service_name] = {
+                    "entities": {ent: json_config["entities"][ent]["storages"] for ent in json_config["entities"].keys()
+                                 if has_ability(g, "train", ent) and json_config["entities"][ent].get('storage')}}
         return local_storages
 
     @staticmethod
