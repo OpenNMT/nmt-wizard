@@ -28,10 +28,9 @@ class DatabaseUtils:
     def get_redis_uri(system_config):
         assert "redis" in system_config, "Can't read redis config from system config"
         redis_config = system_config["redis"]
-        redis_password = None
         redis_uri = "redis://" + redis_config["host"] + ":" + str(redis_config["port"])
         if "password" in redis_config:
             redis_password = redis_config["password"]
-            redis_uri = "redis://" + redis_password + "@" + redis_config["host"] + ":" + str(redis_config["port"])
+            redis_uri = "redis://:" + redis_password + "@" + redis_config["host"] + ":" + str(redis_config["port"])
 
         return redis_uri
