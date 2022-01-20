@@ -513,7 +513,7 @@ def launch_task(task_id,
                               storages, docker_command, server_params, support_statistics)
     env_txt = json.dumps(json.dumps(json.loads(env if env else "{}")))
 
-    cmd = "nohup python -c \'" + python_run % (task_id, cmd, storage_config, "%s/%s.log" % (log_dir, task_id),
+    cmd = "nohup python3 -c \'" + python_run % (task_id, cmd, storage_config, "%s/%s.log" % (log_dir, task_id),
                                                callback_url or '', env_txt, callback_interval) + \
           "' > %s/%s_launch.log" % (log_dir, task_id)
 
