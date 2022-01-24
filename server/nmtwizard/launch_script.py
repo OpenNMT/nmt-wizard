@@ -104,6 +104,7 @@ def _update_log_loop():
         current_log = ""
         mutex.release()
         if copy_log:
+            copy_log = ensure_str("COMMAND: " + displaycmd(cmd) + "\n") + copy_log
             try:
                 p = subprocess.Popen(["curl", "--retry", "3", "-X", "PATCH",
                                       callback_url+"/task/log/"+task_id+"?duration=%d",
