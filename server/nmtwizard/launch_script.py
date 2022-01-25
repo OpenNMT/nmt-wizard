@@ -86,7 +86,7 @@ else:
              universal_newlines=True,
              env=dict(os.environ, **myenv))
 
-current_log = ""
+current_log = ensure_str("COMMAND: " + displaycmd(cmd) + "\n")
 
 mutex = Lock()
 completed = False
