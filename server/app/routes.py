@@ -2284,12 +2284,13 @@ def terminate_internal(task_id):
             return "%s already stopped" % task_id, current_status
 
     phase = flask.request.args.get('phase')
+    status_code = flask.request.args.get('status_code')
     res = post_function('GET/task/terminate', task_id, phase)
     if res:
-        task.terminate(redis_db, task_id, phase="publish_error")
+        task.terminate(redis_db, task_id, phase="publish_error", status_code=status_code)
         return "problem while posting model: %s" % res, current_status
 
-    task.terminate(redis_db, task_id, phase=phase)
+    task.terminate(redis_db, task_id, phase=phase, status_code=status_code)
     return "terminating %s" % task_id, current_status
 
 

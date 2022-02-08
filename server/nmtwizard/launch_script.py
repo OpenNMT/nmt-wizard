@@ -157,4 +157,5 @@ if callback_url:
     mutex.release()
     subprocess.call(["curl", "--retry", "3", "-X", "POST", callback_url + "/task/log/" + task_id,
                      "--data-binary", "@" + log_file])
-    subprocess.call(["curl", "-X", "GET", callback_url + "/task/terminate/" + task_id + "?phase=" + phase])
+    subprocess.call(["curl", "-X", "GET", callback_url + "/task/terminate/" + task_id + "?phase=" + phase +
+                     "&status_code=" + str(p1.returncode)])
