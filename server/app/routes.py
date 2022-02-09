@@ -1122,6 +1122,9 @@ def get_final_training_config(request_data, training_corpus_infos):
             "sample": sample_size,
             "sample_dist": sample_dist
         }
+        prepr_batch_size = app.get_other_config(['training_options', 'prepr_batch_size'], fallback=None)
+        if prepr_batch_size is not None:
+            parent_config["data"]["batch_size"] = prepr_batch_size
 
         parent_config["product"] = "SYSTRAN ModelStudio Lite"
         return parent_config
