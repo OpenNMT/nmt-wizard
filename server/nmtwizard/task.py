@@ -370,7 +370,7 @@ def create_internal(redis, taskfile_dir, task_id, task_type, parent_task, resour
     service_queue(redis, task_id, service)
 
 
-def terminate(redis, task_id, phase):
+def terminate(redis, task_id, phase, status_code=None):
     """Requests task termination (assume it is locked)."""
     if phase is None:
         phase = "aborted"
@@ -385,6 +385,9 @@ def terminate(redis, task_id, phase):
 
     redis.hset(keyt, "message", phase)
     set_status(redis, keyt, "terminating")
+
+    if str(status_code).isnumeric():
+        redis.hset(keyt, "status_code", str(status_code))
     work_queue(redis, task_id)
 
 
