@@ -895,8 +895,8 @@ def upload_user_files(routes_config, path, files):
         try:
             push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
                                                            routes_config.global_storage_name)
-        except (Exception,):
-            abort(flask.make_response(flask.jsonify(message=str("Cannot push uploaded file(s).")), 400))
+        except Exception as e:
+            abort(flask.make_response(flask.jsonify(message=str(e)), 400))
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
@@ -919,8 +919,8 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
                                                                      storage_id=routes_config.global_storage_name,
                                                                      partition_value=testing_proportion.get('value'),
                                                                      is_percent=testing_proportion.get('isPercentage'))
-        except (Exception,):
-            abort(flask.make_response(flask.jsonify(message=str("Cannot push uploaded file(s).")), 400))
+        except Exception as e:
+            abort(flask.make_response(flask.jsonify(message=str(e)), 400))
 
         assert push_infos and push_infos['files'] and len(push_infos['files']) == 2
         training_file_info = push_infos['files'][0]
