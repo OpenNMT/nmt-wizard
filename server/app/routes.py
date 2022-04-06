@@ -884,20 +884,23 @@ def validate_numeric_value(value, name):
         raise Exception(str(name + 'must be numeric'))
 
 
-def upload_user_files(routes_config, path, files):
+def upload_user_files(routes_config, path, files, is_evaluation=False):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
     for file in files:
-        tmp_file = os.path.join(temp_files, file.filename)
+        pretty_filename = get_pretty_filename(file.filename) if is_evaluation else file.filename
+        tmp_file = os.path.join(temp_files, pretty_filename)
         file.save(tmp_file)
         if os.stat(tmp_file).st_size == 0:
             abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
         try:
-            push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
+            push_infos = routes_config.storage_client.push(os.path.join(temp_files, pretty_filename), path,
                                                            routes_config.global_storage_name)
         except Exception as e:
             abort(flask.make_response(flask.jsonify(message=str(e)), 400))
         assert push_infos and push_infos['nbSegments']
+        if is_evaluation and pretty_filename != file.filename:
+            push_infos['real_filename'] = file.filename
         push_infos_list.append(push_infos)
     return push_infos_list
 
@@ -929,6 +932,10 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
         training_push_infos_list.append(training_file_info)
         testing_push_infos_list.append(testing_file_info)
     return training_push_infos_list, testing_push_infos_list
+
+
+def get_pretty_filename(filename):
+    return re.sub(r'\W+', '', filename.split('.')[0]) + '.' + filename.split('.')[-1]
 
 
 def validate_file(corpus_type, testing_proportion, corpus_config, training_data, testing_data, model_data, dataset):
@@ -1033,10 +1040,13 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
         corpus_path = corpus["filename"]
         if corpus_path[0] == '/':
             corpus_path = corpus_path[1:]
-        to_translate_corpus.append([
+        translate_corpus_items = [
             f'{routes_config.global_storage_name}:{corpus_path}.{source}',
             f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{source}.{target}'
-        ])
+        ]
+        if corpus.get('real_filename'):
+            translate_corpus_items.append(corpus.get('real_filename'))
+        to_translate_corpus.append(translate_corpus_items)
         to_score_corpus.append([
             f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{source}.{target}',
             f'{routes_config.global_storage_name}:{corpus_path}.{target}'
@@ -1464,7 +1474,8 @@ def create_evaluation():
 
     models = request_data.get("models")
 
-    testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
+    testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'),
+                                     is_evaluation=True)
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False,
                                                                       output_path)
 
@@ -1607,6 +1618,8 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
                 "score": {},
                 "output": result_corpus.replace("<MODEL>", model["model"])
             }
+            if len(corpus) == 3:
+                model_evaluation_info["tests"][source_corpus]['real_filename'] = corpus[2]
 
         result["models"].append(model_evaluation_info)
 
