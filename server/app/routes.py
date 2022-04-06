@@ -7,6 +7,7 @@ import re
 import tempfile
 import time
 import traceback
+import urllib.parse
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
@@ -2326,7 +2327,7 @@ def get_file(task_id, filename):
     # https://www.pythonanywhere.com/forums/topic/13570/
     w = FileWrapper(io.BytesIO(content))
     return Response(w, mimetype="application/octet-stream", direct_passthrough=True,
-                    headers={'Content-Disposition': 'attachment; filename="{}"'.format(filename)})
+                    headers={'Content-Disposition': 'attachment; filename="{}"'.format(urllib.parse.quote(filename))})
 
 
 @app.route("/file/<string:task_id>/<path:filename>", methods=["POST"])

@@ -5,6 +5,7 @@ import logging
 import io
 import os
 
+import urllib.parse
 import paramiko
 import six
 
@@ -494,7 +495,7 @@ def launch_task(task_id,
             cmd_get_files = 'curl "%s/task/file/%s/%s" > %s/%s/%s' % (
                 callback_url,
                 task_id,
-                file,
+                urllib.parse.quote(file),
                 mount_tmpdir,
                 task_id,
                 file)
