@@ -6,8 +6,8 @@ import io
 import os
 
 import paramiko
-import six
 import urllib.parse
+import six
 
 logger = logging.getLogger(__name__)
 
