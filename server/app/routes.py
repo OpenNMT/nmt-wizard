@@ -33,6 +33,7 @@ from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
+GLOBAL_PROVIDER = 'systran'
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
