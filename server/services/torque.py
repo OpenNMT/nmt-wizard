@@ -42,10 +42,10 @@ class TorqueService(Service):
         return {'torque': self._config['maxInstance']}
 
     @staticmethod
-    def get_resource_from_options(options):  # pylint: disable=unused-argument
+    def get_resource_from_options(options):  # pylint: disable=unused-argument,arguments-differ
         return "torque"
 
-    def describe(self):
+    def describe(self):  # pylint: disable=arguments-differ
         desc = {}
         if 'login' not in self._config['variables']:
             desc['login'] = {
@@ -215,7 +215,7 @@ class TorqueService(Service):
     # pylint: enable=unused-argument,arguments-differ
 
     @staticmethod
-    def terminate(params):
+    def terminate(params):   # pylint: disable=arguments-differ
         client = paramiko.client.SSHClient()
         client.load_system_host_keys()
         client.connect(params['master_node'], username=params['login'])
