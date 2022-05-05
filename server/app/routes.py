@@ -1691,9 +1691,9 @@ def launch(service):
 
     # check + update storage environment variable
     active_cm2_migration = app.get_other_config(['corpus_manager_migration', 'active'], fallback=False)
-    if active_cm2_migration:
+    docker_command = content["docker"]["command"]
+    if active_cm2_migration and 'train' in docker_command:
         j = 0
-        docker_command = content["docker"]["command"]
         parent_model = ''
         while j < len(docker_command) - 1:
             if docker_command[j] == "-m" or docker_command[j] == "--model":
