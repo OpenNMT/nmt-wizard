@@ -1144,7 +1144,8 @@ def is_standalone_model(model_info):
 
 
 def delete_nfa_feature_from_config(config):
-    if 'supported_features' in config and 'NFA' in config.get('supported_features'):
+    supported_features = config.get('supported_features')
+    if supported_features and supported_features.get('NFA'):
         config['supported_features']['NFA'] = False
     if 'mpreprocess' in config or 'bpreprocess' in config or 'preprocess' not in config:
         config = delete_nfa_v1(config)
