@@ -2159,7 +2159,7 @@ def status(task_id):
 @task_write_control
 def del_task(task_id):
     response = task.delete(redis_db, taskfile_dir, task_id)
-    if isinstance(response, list) and not response[0]:
+    if isinstance(response, tuple) and not response[0]:
         abort(flask.make_response(flask.jsonify(message=response[1]), 400))
     return flask.jsonify(message="deleted %s" % task_id)
 
