@@ -33,6 +33,7 @@ from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
 SYSTRAN_BASE_STORAGE = "shared_testdata"
+SYSTRAN = "SA"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(app.logger)
@@ -302,7 +303,8 @@ def task_write_control(func):
         entity = get_task_entity(task_id)
 
         ok = has_ability(flask.g, 'admin_task', entity) or (has_ability(flask.g, 'train', entity) and
-                                                            flask.g.user.user_code == task_id[2:5])
+                                                            flask.g.user.user_code == task_id[2:5]) or has_ability(
+            flask.g, 'view_all_tasks', SYSTRAN)
         if not ok:
             abort(make_response(jsonify(message="insufficient credentials for tasks %s" % task_id),
                                 403))
@@ -314,7 +316,7 @@ def task_write_control(func):
 
 def task_readonly_control(task_id):
     entity = get_task_entity(task_id)
-    if not has_ability(flask.g, 'train', entity):
+    if not has_ability(flask.g, 'train', entity) and not has_ability(flask.g, 'view_all_tasks', SYSTRAN):
         abort(
             make_response(jsonify(message="insufficient credentials for tasks %s" % task_id), 403))
 
@@ -390,7 +392,8 @@ def list_services():
         if not show_all and flask.g.user.entity.entity_code not in pool_entities:
             continue
 
-        if any(has_ability(flask.g, "train", pool_entity) for pool_entity in pool_entities):
+        if has_ability(flask.g, "view_all_services", SYSTRAN) or \
+                any(has_ability(flask.g, "train", pool_entity) for pool_entity in pool_entities):
             service_def = get_service(service_name)
             name = service_def.display_name
             if minimal:
@@ -1882,7 +1885,7 @@ def launch(service):
                 prepr_command.append("--no_push")
             prepr_command += ["preprocess", "--build_model"]
             if is_standalone:
-                prepr_command += ["standalone", "--output_model_name", parent_task_id+"_standalone"]
+                prepr_command += ["standalone", "--output_model_name", parent_task_id + "_standalone"]
 
             content["docker"]["command"] = prepr_command
 
@@ -2202,8 +2205,7 @@ def list_tasks(pattern):
         suffix = '*'
 
     task_where_clauses = []
-    if has_ability(flask.g, '',
-                   ''):  # super admin so no control on the prefix of searching criteria
+    if has_ability(g, 'view_all_tasks', SYSTRAN):
         task_where_clauses.append(prefix)
     else:
         search_entity_expression = to_regex_format(prefix[:2])  # empty == all entities
