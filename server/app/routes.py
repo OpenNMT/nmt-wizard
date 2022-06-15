@@ -1690,19 +1690,12 @@ def launch(service):
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
     # check + update storage environment variable
+    (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
     active_cm2_migration = app.get_other_config(['corpus_manager_migration', 'active'], fallback=False)
     if active_cm2_migration:
-        j = 0
-        docker_command = content["docker"]["command"]
-        parent_model = ''
-        while j < len(docker_command) - 1:
-            if docker_command[j] == "-m" or docker_command[j] == "--model":
-                parent_model = docker_command[j + 1]
-                break
-            j += 1
         migration_info = builtins.pn9model_db.get_storage_migration_info()
-        if parent_model and check_lp_in_migration_supported_language(parent_model, migration_info['supported_lps']):
-            content["docker"]["command"] = update_config_in_docker_command(docker_command, parent_model,
+        if check_lp_in_migration_supported_language(xxyy, parent_task_id, migration_info['supported_lps']):
+            content["docker"]["command"] = update_config_in_docker_command(content["docker"]["command"], parent_task_id,
                                                                            migration_info["envvar_migration"])
 
     # Parse tags
@@ -1851,7 +1844,6 @@ def launch(service):
 
     priority = content.get("priority", 0)
 
-    (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
     parent_struct = None
     parent_task_type = None
     if not exec_mode and parent_task_id:
@@ -2151,37 +2143,50 @@ def launch(service):
     return flask.jsonify(task_ids)
 
 
-def check_lp_in_migration_supported_language(model, supported_lps):
-    split = model.split("_")
-    if len(split) > 2:
-        lp = split[1]
-        m = re.match(r"^([a-z]{2}([-+][A-Z]+)?)([a-z]{2}.*)$", lp)
-        if m is not None:
-            src_lang = m.group(1)
-            tgt_lang = m.group(3)
-            sorted_lp = src_lang + '_' + tgt_lang if src_lang < tgt_lang else tgt_lang + '_' + src_lang
-            if sorted_lp in supported_lps:
-                return True
+def check_lp_in_migration_supported_language(xxyy, parent_model, supported_lps):
+    src_lang = xxyy[:2]
+    tgt_lang = xxyy[2:]
+    if xxyy == 'xxyy' and parent_model:
+        split = parent_model.split("_")
+        if len(split) > 2:
+            lp = split[1]
+            m = re.match(r"^([a-z]{2}([-+][A-Z]+)?)([a-z]{2}.*)$", lp)
+            if m is not None:
+                src_lang = m.group(1)
+                tgt_lang = m.group(3)
+
+    sorted_lp = src_lang + '_' + tgt_lang if src_lang < tgt_lang else tgt_lang + '_' + src_lang
+    if sorted_lp in supported_lps:
+        return True
 
     return False
 
 
 def update_config_in_docker_command(docker_command, parent_model, envvar_migration):
-    ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, False)
-    if ok:
-        if '-c' in docker_command or '--config' in docker_command:
+    current_config = {}
+    parent_config = {}
+    config_index = 0
+    if '-c' in docker_command or '--config' in docker_command:
+        config_index = docker_command.index('-c') if '-c' in docker_command else docker_command.index('--config')
+        current_config = json.loads(docker_command[config_index + 1])
+
+    if parent_model:
+        ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, False)
+        if not ok:
+            abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model),
+                                      400))
+
+    if current_config:
+        if parent_model:
             # merge current config with parent config then update storage env var
-            config_index = docker_command.index('-c') if '-c' in docker_command else docker_command.index('--config')
-            current_config = json.loads(docker_command[config_index + 1])
             merged_config = merge_config(parent_config, current_config)
             updated_config = update_sample_dist_path_env(merged_config, envvar_migration)
-            docker_command[config_index + 1] = json.dumps(updated_config)
         else:
-            updated_config = update_sample_dist_path_env(parent_config, envvar_migration)
-            docker_command = ['-c', json.dumps(updated_config)] + docker_command
-    else:
-        abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model),
-                                  400))
+            updated_config = update_sample_dist_path_env(current_config, envvar_migration)
+        docker_command[config_index + 1] = json.dumps(updated_config)
+    elif parent_model:
+        updated_config = update_sample_dist_path_env(parent_config, envvar_migration)
+        docker_command = ['-c', json.dumps(updated_config)] + docker_command
 
     return docker_command
 
