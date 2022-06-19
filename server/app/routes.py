@@ -1100,7 +1100,7 @@ def get_final_training_config(request_data, training_corpus_infos):
     parent_model = request_data["parent_model"]
     # add suffix if model type is standalone
     exist_model, model_info = builtins.pn9model_db.catalog_get_info(request_data["parent_model"], True)
-    if exist_model and model_info.get('type') == 'base' and is_standalone_model(model_info):
+    if exist_model and is_standalone_model(model_info):
         parent_model += '_standalone'
 
     ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, boolean_param(request.args.get('short')))
