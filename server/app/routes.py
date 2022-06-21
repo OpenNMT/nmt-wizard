@@ -955,6 +955,10 @@ def get_dataset_by_name(entity, dataset_name):
     return builtins.pn9model_db.get_dataset_by_name(entity, dataset_name)
 
 
+def build_dataset_path(entity_code, dataset_name, corpus_type):
+    return os.path.join(entity_code, dataset_name, corpus_type)
+
+
 def get_data_file_info(request_data, routes_config):
     corpus_type = request_data.get("corpus_type")
     testing_proportion = request_data.get("testing_proportion")
@@ -979,12 +983,12 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     dataset_name = request_data.get('dataset_name')
     testing_proportion = request_data.get("testing_proportion")
 
-    training_data_path = os.path.join(entity_code, dataset_name, "train") + os.path.sep
-    testing_data_path = os.path.join(entity_code, dataset_name, "test") + os.path.sep
+    training_data_path = build_dataset_path(entity_code, dataset_name, "train") + os.path.sep
+    testing_data_path = build_dataset_path(entity_code, dataset_name, "test") + os.path.sep
 
     if testing_proportion:
-        training_data_path = "/" + os.path.join(entity_code, dataset_name, "train") + os.path.sep
-        testing_data_path = "/" + os.path.join(entity_code, dataset_name, "test") + os.path.sep
+        training_data_path = "/" + build_dataset_path(entity_code, dataset_name, "train") + os.path.sep
+        testing_data_path = "/" + build_dataset_path(entity_code, dataset_name, "test") + os.path.sep
         data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path,
                                                                       testing_data_path, training_data,
                                                                       testing_proportion)
@@ -1013,7 +1017,7 @@ def get_exists_dataset_file_info(dataset_ids):
     for dataset in exists_dataset:
         dataset_name = dataset["name"]
         entity_code = dataset["entity"]
-        files = get_all_files_of_dataset(f"{entity_code}/{dataset_name}", global_storage_name, storage_client)
+        files = get_all_files_of_dataset(entity_code, dataset_name, global_storage_name, storage_client)
 
         training_files = files.get("train", [])
         testing_files = files.get("test", [])
@@ -2430,7 +2434,7 @@ def get_worker_pids(service_name):
     return worker_pids
 
 
-def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
+def get_all_files_of_dataset(entity_code, dataset_name, global_storage_name, storage_client):
     keys = ["train", "test"]
     result = {
         "train": [],
@@ -2438,7 +2442,7 @@ def get_all_files_of_dataset(dataset_path, global_storage_name, storage_client):
     }
 
     for key in keys:
-        data_path = f"{dataset_path}/{key}/"
+        data_path = build_dataset_path(entity_code, dataset_name, key)
         if not storage_client.exists(data_path, storage_id=global_storage_name):
             continue
         directories = storage_client.list(data_path, storage_id=global_storage_name)
