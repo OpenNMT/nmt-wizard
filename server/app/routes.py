@@ -2201,6 +2201,10 @@ def update_config_in_docker_command(docker_command, parent_model, envvar_migrati
 def update_sample_dist_path_env(old_config, migration_env):
     sample_dist = old_config['data']['sample_dist']
     for item in sample_dist:
+        # Do not update env in case sample dist path is monolingual, only update when it is bilingual
+        # Bilingual sample dist path ex: ${SHARED_DATA_TRAIN_DIR}/en_fr/train
+        if '_' not in item['path'].split('/')[1]:
+            pass
         path_env = item['path'].split('{')[1].split('}')[0]
         if path_env in migration_env:
             item['path'] = item['path'].replace(path_env, migration_env[path_env])
@@ -2212,7 +2216,7 @@ def merge_config(a, b):
     """Merges config b in a."""
     if isinstance(a, dict):
         for k, v in six.iteritems(b):
-            if k in a and isinstance(v, dict) and type(a[k]) == type(v):
+            if k in a and isinstance(v, dict) and type(a[k]) is type(v):
                 merge_config(a[k], v)
             else:
                 a[k] = v
