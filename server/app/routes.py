@@ -1696,6 +1696,15 @@ def launch(service):
     else:
         abort(flask.make_response(flask.jsonify(message="missing content in request"), 400))
 
+    # check + update storage environment variable
+    (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
+    active_cm2_migration = app.get_other_config(['corpus_manager_migration', 'active'], fallback=False)
+    if active_cm2_migration:
+        migration_info = builtins.pn9model_db.get_storage_migration_info()
+        if check_lp_in_migration_supported_language(xxyy, parent_task_id, migration_info['supported_lps']):
+            content["docker"]["command"] = update_config_in_docker_command(content["docker"]["command"], parent_task_id,
+                                                                           migration_info["envvar_migration"])
+
     # Parse tags
     if content.get('tags') and isinstance(content.get('tags'), list):
         res, parsed_tags = parse_tags(content.get('tags'))
@@ -1842,7 +1851,6 @@ def launch(service):
 
     priority = content.get("priority", 0)
 
-    (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
     parent_struct = None
     parent_task_type = None
     if not exec_mode and parent_task_id:
@@ -2140,6 +2148,76 @@ def launch(service):
         task_ids = task_ids[0]
 
     return flask.jsonify(task_ids)
+
+
+def check_lp_in_migration_supported_language(xxyy, parent_model, supported_lps):
+    src_lang = xxyy[:2]
+    tgt_lang = xxyy[2:]
+    if xxyy == 'xxyy' and parent_model:
+        split = parent_model.split("_")
+        if len(split) > 2:
+            lp = split[1]
+            m = re.match(r"^([a-z]{2}([-+][A-Z]+)?)([a-z]{2}.*)$", lp)
+            if m is not None:
+                src_lang = m.group(1)
+                tgt_lang = m.group(3)
+
+    sorted_lp = src_lang + '_' + tgt_lang if src_lang < tgt_lang else tgt_lang + '_' + src_lang
+    if sorted_lp in supported_lps:
+        return True
+
+    return False
+
+
+def update_config_in_docker_command(docker_command, parent_model, envvar_migration):
+    current_config = {}
+    parent_config = {}
+    config_index = 0
+    if '-c' in docker_command or '--config' in docker_command:
+        config_index = docker_command.index('-c') if '-c' in docker_command else docker_command.index('--config')
+        current_config = json.loads(docker_command[config_index + 1])
+
+    if parent_model:
+        ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, False)
+        if not ok:
+            abort(flask.make_response(flask.jsonify(message="No configuration for parent model %s" % parent_model),
+                                      400))
+
+    if current_config:
+        if parent_model:
+            # merge current config with parent config then update storage env var
+            merged_config = merge_config(parent_config, current_config)
+            updated_config = update_sample_dist_path_env(merged_config, envvar_migration)
+        else:
+            updated_config = update_sample_dist_path_env(current_config, envvar_migration)
+        docker_command[config_index + 1] = json.dumps(updated_config)
+    elif parent_model:
+        updated_config = update_sample_dist_path_env(parent_config, envvar_migration)
+        docker_command = ['-c', json.dumps(updated_config)] + docker_command
+
+    return docker_command
+
+
+def update_sample_dist_path_env(old_config, migration_env):
+    sample_dist = old_config['data']['sample_dist']
+    for item in sample_dist:
+        path_env = item['path'].split('{')[1].split('}')[0]
+        if path_env in migration_env:
+            item['path'] = item['path'].replace(path_env, migration_env[path_env])
+
+    return old_config
+
+
+def merge_config(a, b):
+    """Merges config b in a."""
+    if isinstance(a, dict):
+        for k, v in six.iteritems(b):
+            if k in a and isinstance(v, dict) and type(a[k]) == type(v):
+                merge_config(a[k], v)
+            else:
+                a[k] = v
+
+    return a
 
 
 @app.route("/task/status/<string:task_id>", methods=["GET"])
