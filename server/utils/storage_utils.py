@@ -62,7 +62,7 @@ class StorageUtils:
 
     @staticmethod
     def get_global_storage_name(accessible_storages):
-        return next(filter(lambda key: accessible_storages[key].get("is_global"), accessible_storages.keys()))
+        return next(filter(lambda key: accessible_storages[key].get("is_global"), accessible_storages.keys()), None)
 
     @staticmethod
     def get_storage_client(accessible_storages):
