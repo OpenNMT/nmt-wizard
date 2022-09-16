@@ -693,8 +693,10 @@ def launch_v2():
     if request_data.get("corpus_type") == CORPUS_TYPE["USER_UPLOAD"]:
         dataset_name = request_data.get("dataset_name")
 
-        if dataset_name is None:
-            abort(make_response(jsonify(message="unknown dataset"), 400))
+        if not is_valid_dataset_name(dataset_name):
+            return make_response(
+                jsonify(message="Invalid dataset name. It should only include alphanumeric characters and underscores"),
+                400)
 
         entity_code = routes_config.creator['entity_code']
 
@@ -702,6 +704,14 @@ def launch_v2():
 
         if exists_dataset:
             return make_response(jsonify(message=f"Dataset \"{dataset_name}\" already exists"), 400)
+
+        corpus_file_names = []
+        if request_data.get('testing_proportion'):
+            corpus_file_names.extend([corpus.filename for corpus in request_data.get('model_data')])
+        else:
+            corpus_file_names.extend([corpus.filename for corpus in request_data.get('training_data')])
+            corpus_file_names.extend([corpus.filename for corpus in request_data.get('testing_data')])
+        validate_corpus_name(corpus_file_names)
 
     data_file_info = get_data_file_info(request_data, routes_config)
     if not data_file_info.get("training"):
@@ -886,6 +896,19 @@ def validate_numeric_value(value, name):
         return
     if not value.isnumeric():
         raise Exception(str(name + 'must be numeric'))
+
+
+def is_valid_dataset_name(dataset_name):
+
+    return dataset_name and len(dataset_name) > 5 and re.match("^[a-zA-Z0-9_]*$", dataset_name)
+
+
+def validate_corpus_name(corpus_names):
+    for corpus_name in corpus_names:
+        if not re.match("^[a-zA-Z0-9_.-]*$", corpus_name):
+            message = "Invalid corpus name: %s. " % corpus_name
+            message += "It should only include alphanumeric characters, underscores, dots and dashes."
+            abort(make_response(jsonify(message=message), 400))
 
 
 def upload_user_files(routes_config, path, files):
@@ -1472,6 +1495,9 @@ def create_evaluation():
     routes_config = RoutesConfiguration(flask.g, service)
 
     models = request_data.get("models")
+
+    corpus_file_names = [corpus.filename for corpus in request_data.get('corpus')]
+    validate_corpus_name(corpus_file_names)
 
     testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False,
