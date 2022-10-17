@@ -76,7 +76,7 @@ def _patched_exec_command(self,
                           stdin_binary=False,
                           stdout_binary=False,
                           stderr_binary=True):
-    chan = self._transport.open_session()
+    chan = self._transport.open_session(timeout=timeout)
     if get_pty:
         chan.get_pty()
     chan.settimeout(timeout)
@@ -104,7 +104,10 @@ def run_command(client, cmd, stdin_content=None, sudo=False, handle_private=True
             logger.info("RUN `%s`...", cmd[:p])
     if handle_private:
         cmd = rmprivate(cmd)
-    stdin, stdout, stderr = client.exec_command(cmd)
+    try:
+        stdin, stdout, stderr = client.exec_command(cmd, timeout=30)
+    except paramiko.SSHException as err:
+        raise EnvironmentError('SSH connection closed: %s' % err) from err
     if stdin_content is not None:
         stdin.write(stdin_content)
         stdin.flush()
