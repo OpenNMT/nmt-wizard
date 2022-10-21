@@ -1146,7 +1146,6 @@ def get_final_training_config(request_data, training_corpus_infos):
         # Remove option moving_average_decay from parent config
         if "config" in parent_config["options"] and "train" in parent_config["options"].get("config"):
             parent_config["options"]["config"]["train"].pop("moving_average_decay", None)
-        parent_config = delete_nfa_feature_from_config(parent_config)
         sample_size, sample_dist = get_sample_data(training_data_config, parent_config["data"], sample_by_path)
 
         parent_config["data"] = {
@@ -1171,49 +1170,6 @@ def is_standalone_model(model_info):
             if standalone.get('state') == 'completed':
                 return True
     return False
-
-
-def delete_nfa_feature_from_config(config):
-    supported_features = config.get('supported_features')
-    if supported_features and supported_features.get('NFA'):
-        config['supported_features']['NFA'] = False
-    if 'mpreprocess' in config or 'bpreprocess' in config or 'preprocess' not in config:
-        config = delete_nfa_v1(config)
-    else:
-        config = delete_nfa_v2(config)
-    return config
-
-
-def delete_nfa_v1(config):
-    def apply(sampling_rule):
-        if len(sampling_rule) > 2 and isinstance(sampling_rule[2], dict) and sampling_rule[2].get("bpreprocess"):
-            bpreprocess = sampling_rule[2].get("bpreprocess")
-            if bpreprocess.get("tm") and len(bpreprocess) > 1:
-                del sampling_rule[2]["bpreprocess"]["tm"]
-            elif bpreprocess.get("tm"):
-                del sampling_rule[2]["bpreprocess"]
-                if not sampling_rule[2]:
-                    del sampling_rule[2]
-        return sampling_rule
-
-    sample_dist = config.get('data').get('sample_dist')
-
-    for storage_block in sample_dist:
-        if storage_block.get('distribution'):
-            storage_block['distribution'] = list(map(apply, storage_block.get('distribution')))
-
-    return config
-
-
-def delete_nfa_v2(config):
-    if not config.get('preprocess'):
-        return config
-
-    operator_to_remove = ['tm', 'tm_noise']
-    config['preprocess'] = [operator for operator in config.get('preprocess')
-                            if operator.get('op') not in operator_to_remove]
-
-    return config
 
 
 def adapt_distribution_proportions(distribution, get_new_value, new_val, is_parent=True):
