@@ -81,6 +81,12 @@ def _patched_exec_command(self,
         chan.get_pty()
     chan.settimeout(timeout)
     chan.exec_command(command)
+    count = 0
+    while not chan.exit_status_ready() and count <= timeout:
+        count += 1
+        time.sleep(1)
+    if count > timeout:
+        raise EnvironmentError('Timeout receiving exit status')
     stdin = chan.makefile('wb' if stdin_binary else 'w', bufsize)
     stdout = chan.makefile('rb' if stdin_binary else 'r', bufsize)
     stderr = chan.makefile_stderr('rb' if stdin_binary else 'r', bufsize)
@@ -105,8 +111,8 @@ def run_command(client, cmd, stdin_content=None, sudo=False, handle_private=True
     if handle_private:
         cmd = rmprivate(cmd)
     try:
-        stdin, stdout, stderr = client.exec_command(cmd, timeout=30)
-    except paramiko.SSHException as err:
+        stdin, stdout, stderr = client.exec_command(cmd, timeout=60)
+    except Exception as err:
         raise EnvironmentError('SSH connection closed: %s' % err) from err
     if stdin_content is not None:
         stdin.write(stdin_content)
