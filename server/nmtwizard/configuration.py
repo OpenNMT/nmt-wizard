@@ -220,11 +220,14 @@ def process_base_config(mongo_client):
     config = mongo_client.get_base_config(views={"_id": 0})
     if config is not None:
         config["database"] = system_config["database"]
+        resource_types = get_storage_resource_type(config['storages'])
         if system_config['application']['mode'] == 'lite' and system_config.get('similar_search') and system_config[
                 'similar_search'].get('active'):
-            resource_types = get_storage_resource_type(config['storages'])
             assert resource_types and {'similar_base', 'similar_result'}.issubset(
                 set(resource_types)), "Missing similar search storage config"
+        if system_config['application']['mode'] == 'advanced' and system_config.get('regex_search') and system_config[
+                'regex_search'].get('active'):
+            assert resource_types and 'regex_result' in resource_types, "Missing regex search storage config"
         return config
 
     base_config_file = os.path.join(os.path.dirname(system_config_file), "configurations", "default.json")
