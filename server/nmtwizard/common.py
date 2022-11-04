@@ -111,7 +111,7 @@ def run_command(client, cmd, stdin_content=None, sudo=False, handle_private=True
     if handle_private:
         cmd = rmprivate(cmd)
     try:
-        stdin, stdout, stderr = client.exec_command(cmd, timeout=60)
+        stdin, stdout, stderr = client.exec_command(cmd, timeout=300)
     except Exception as err:
         raise EnvironmentError('SSH connection closed: %s' % err) from err
     if stdin_content is not None:
