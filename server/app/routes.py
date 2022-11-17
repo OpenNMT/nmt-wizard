@@ -1671,6 +1671,7 @@ def launch(service):
         abort(make_response(jsonify(message="insufficient credentials for train (entity %s)" % service), 403))
 
     content = flask.request.form.get('content')
+    auto_patch_envvar = flask.request.form.get('auto_patch_envvar') == 'true'
     if content is not None:
         content = json.loads(content)
         content["trainer_email"] = g.user.email
@@ -1682,22 +1683,13 @@ def launch(service):
     # check + update storage environment variable
     (xxyy, parent_task_id) = shallow_command_analysis(content["docker"]["command"])
     active_cm2_migration = app.get_other_config(['corpus_manager_migration', 'active'], fallback=False)
-    if active_cm2_migration:
+    if active_cm2_migration and auto_patch_envvar and "standalone" not in content["docker"]["command"]:
         migration_info = builtins.pn9model_db.get_storage_migration_info()
         lp_migration_enable = check_lp_in_migration_supported_language(xxyy, parent_task_id,
                                                                        migration_info['supported_lps'])
         if lp_migration_enable:
-            docker_command = content["docker"]["command"]
-            current_config = {}
-            config_index = 0
-            if '-c' in docker_command or '--config' in docker_command:
-                config_index = docker_command.index('-c') if '-c' in docker_command else docker_command.index(
-                    '--config')
-                current_config = json.loads(docker_command[config_index + 1])
-            if 'auto_patch_env' not in current_config or current_config.get('auto_patch_env'):
-                content["docker"]["command"] = update_config_in_docker_command(current_config, config_index,
-                                                                               docker_command, parent_task_id,
-                                                                               migration_info["envvar_migration"])
+            content["docker"]["command"] = update_config_in_docker_command(content["docker"]["command"], parent_task_id,
+                                                                           migration_info["envvar_migration"])
 
     # Parse tags
     if content.get('tags') and isinstance(content.get('tags'), list):
@@ -2163,8 +2155,14 @@ def check_lp_in_migration_supported_language(xxyy, parent_model, supported_lps):
     return False
 
 
-def update_config_in_docker_command(current_config, config_index, docker_command, parent_model, envvar_migration):
+def update_config_in_docker_command(docker_command, parent_model, envvar_migration):
+    current_config = {}
     parent_config = {}
+    config_index = 0
+    if '-c' in docker_command or '--config' in docker_command:
+        config_index = docker_command.index('-c') if '-c' in docker_command else docker_command.index('--config')
+        current_config = json.loads(docker_command[config_index + 1])
+
     if parent_model:
         ok, parent_config = builtins.pn9model_db.catalog_get_info(parent_model, False)
         if not ok:

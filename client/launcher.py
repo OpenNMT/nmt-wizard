@@ -514,6 +514,7 @@ def process_request(s_list, cmd, subcmd, is_json, args, auth=None):
             content["priority"] = args.priority
         if args.dependency:
             content["dependency"] = args.dependency
+        auto_patch_envvar = 'true' if not args.not_patch_envvar else 'false'
 
         if cmd == "task" and subcmd == "launch":
             content["ncpus_prepr"] = args.cpus_prepr
@@ -553,7 +554,7 @@ def process_request(s_list, cmd, subcmd, is_json, args, auth=None):
         LOGGER.debug("sending request: %s", json.dumps(content))
 
         launch_url = os.path.join(args.url, "task/launch", args.service)
-        data = {'content': json.dumps(content)}
+        data = {'content': json.dumps(content), 'auto_patch_envvar': auto_patch_envvar}
         if "entity_owner" in args:
             data['entity_owner'] = args.entity_owner
         r = requests.post(launch_url,
