@@ -897,7 +897,6 @@ def validate_numeric_value(value, name):
     if not value.isnumeric():
         raise Exception(str(name + 'must be numeric'))
 
-
 def is_valid_dataset_name(dataset_name):
 
     return dataset_name and len(dataset_name) > 5 and re.match("^[a-zA-Z0-9_]*$", dataset_name)
@@ -911,7 +910,7 @@ def validate_corpus_name(corpus_names):
             abort(make_response(jsonify(message=message), 400))
 
 
-def upload_user_files(routes_config, path, files):
+def upload_user_files(routes_config, path, files, lp):
     temp_files = tempfile.mkdtemp()
     push_infos_list = []
     for file in files:
@@ -921,7 +920,7 @@ def upload_user_files(routes_config, path, files):
             abort(flask.make_response(flask.jsonify(message=str("The file %s is empty." % file.filename)), 400))
         try:
             push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
-                                                           routes_config.global_storage_name)
+                                                           routes_config.global_storage_name, lp)
         except Exception as e:
             abort(flask.make_response(flask.jsonify(message=str(e)), 400))
         assert push_infos and push_infos['nbSegments']
@@ -929,7 +928,7 @@ def upload_user_files(routes_config, path, files):
     return push_infos_list
 
 
-def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_proportion):
+def partition_and_upload_user_files(routes_config, training_path, testing_path, files, testing_proportion, lp):
     training_push_infos_list = []
     testing_push_infos_list = []
     temp_files = tempfile.mkdtemp()
@@ -945,7 +944,8 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
                                                                      remote_path=training_path,
                                                                      storage_id=routes_config.global_storage_name,
                                                                      partition_value=testing_proportion.get('value'),
-                                                                     is_percent=testing_proportion.get('isPercentage'))
+                                                                     is_percent=testing_proportion.get('isPercentage'),
+                                                                     lp=lp)
         except Exception as e:
             abort(flask.make_response(flask.jsonify(message=str(e)), 400))
 
@@ -1009,15 +1009,17 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     training_data_path = build_dataset_path(entity_code, dataset_name, "train") + os.path.sep
     testing_data_path = build_dataset_path(entity_code, dataset_name, "test") + os.path.sep
 
+    lp = {"source": request_data.get('source', ''), "targets": [request_data.get('target', '')]}
+
     if testing_proportion:
         training_data_path = "/" + build_dataset_path(entity_code, dataset_name, "train") + os.path.sep
         testing_data_path = "/" + build_dataset_path(entity_code, dataset_name, "test") + os.path.sep
         data_training, data_testing = partition_and_upload_user_files(routes_config, training_data_path,
                                                                       testing_data_path, training_data,
-                                                                      testing_proportion)
+                                                                      testing_proportion, lp)
     else:
-        data_training = upload_user_files(routes_config, training_data_path, training_data)
-        data_testing = upload_user_files(routes_config, testing_data_path, testing_data)
+        data_training = upload_user_files(routes_config, training_data_path, training_data, lp)
+        data_testing = upload_user_files(routes_config, testing_data_path, testing_data, lp)
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
@@ -1457,7 +1459,9 @@ def create_evaluation():
     corpus_file_names = [corpus.filename for corpus in request_data.get('corpus')]
     validate_corpus_name(corpus_file_names)
 
-    testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'))
+    lp = {"source": request_data.get('source', ''), "targets": [request_data.get('target', '')]}
+    testing_info = upload_user_files(routes_config, f"{upload_path}/test/", request_data.get('corpus'), lp)
+
     to_translate_corpus, to_score_corpus = get_translate_score_corpus(testing_info, request_data, routes_config, False,
                                                                       output_path)
 
