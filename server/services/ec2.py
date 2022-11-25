@@ -237,7 +237,7 @@ class EC2Service(Service):
             task = common.launch_task(
                 task_id,
                 client,
-                (xpulist[0], None),
+                xpulist,
                 params,
                 docker_config,
                 docker_registry,
