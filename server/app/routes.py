@@ -998,6 +998,8 @@ def get_data_file_info(request_data, routes_config):
 
     dataset = request_data.get("dataset")
     dataset_ids = list(map(ObjectId, dataset))
+    for dataset_id in dataset_ids:
+        builtins.pn9model_db.update_dataset_last_usage(dataset_id)
 
     return get_exists_dataset_file_info(dataset_ids)
 
@@ -1024,6 +1026,7 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
+    builtins.pn9model_db.update_dataset_last_usage(dataset["_id"])
 
     return {
         'training': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_training)),

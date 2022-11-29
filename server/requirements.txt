@@ -9,3 +9,4 @@ flask_ini
 semver
 python-novaclient
 python-keystoneclient
+Flask-APScheduler
