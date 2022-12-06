@@ -42,6 +42,8 @@ def get_entities(config):
 
 def get_entities_from_service(mongo_client, service_name):
     service_config = get_service_config(mongo_client, service_name)
+    if not service_config:
+        return {}
     entities = get_entities(service_config)
     return entities
 
