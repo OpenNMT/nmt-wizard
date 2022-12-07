@@ -28,7 +28,8 @@ from nmtwizard.helper import build_task_id, shallow_command_analysis, get_docker
 from nmtwizard.task import TaskBase
 from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
     TaskScoring, TASK_RELEASE_TYPE
-from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted
+from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted, \
+    get_pretty_error_message
 from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
@@ -470,7 +471,7 @@ def set_service_config(service):
         command_response = post_admin_request(app, service, "restart")
         return flask.jsonify(command_response)
     except Exception as e:
-        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+        abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 400))
     return None
 
 
@@ -533,9 +534,9 @@ def check(service):
     try:
         details = service_module.check(service_options, registries)
     except ValueError as e:
-        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+        abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 400))
     except Exception as e:
-        abort(flask.make_response(flask.jsonify(message=str(e)), 500))
+        abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 500))
     else:
         return flask.jsonify(details)
     return None
@@ -907,7 +908,7 @@ def validate_corpus_name(corpus_names):
         if not re.match("^[a-zA-Z0-9_.-]*$", corpus_name):
             message = "Invalid corpus name: %s. " % corpus_name
             message += "It should only include alphanumeric characters, underscores, dots and dashes."
-            abort(make_response(jsonify(message=message), 400))
+            abort(make_response(jsonify(message=get_pretty_error_message(message)), 400))
 
 
 def upload_user_files(routes_config, path, files, lp):
@@ -922,7 +923,7 @@ def upload_user_files(routes_config, path, files, lp):
             push_infos = routes_config.storage_client.push(os.path.join(temp_files, file.filename), path,
                                                            routes_config.global_storage_name, lp)
         except Exception as e:
-            abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+            abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 400))
         assert push_infos and push_infos['nbSegments']
         push_infos_list.append(push_infos)
     return push_infos_list
@@ -947,7 +948,7 @@ def partition_and_upload_user_files(routes_config, training_path, testing_path, 
                                                                      is_percent=testing_proportion.get('isPercentage'),
                                                                      lp=lp)
         except Exception as e:
-            abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+            abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 400))
 
         assert push_infos and push_infos['files'] and len(push_infos['files']) == 2
         training_file_info = push_infos['files'][0]
@@ -2239,7 +2240,7 @@ def status(task_id):
 def del_task(task_id):
     response = task.delete(redis_db, taskfile_dir, task_id)
     if isinstance(response, tuple) and not response[0]:
-        abort(flask.make_response(flask.jsonify(message=response[1]), 400))
+        abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(response[1])), 400))
     return flask.jsonify(message="deleted %s" % task_id)
 
 
@@ -2391,7 +2392,7 @@ def task_beat(task_id):
     try:
         task.beat(redis_db, task_id, duration, container_id)
     except Exception as e:
-        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+        abort(flask.make_response(flask.jsonify(get_pretty_error_message(str(e))), 400))
     return flask.jsonify(200)
 
 
@@ -2449,7 +2450,7 @@ def append_log(task_id):
     try:
         task.beat(redis_db, task_id, duration, None)
     except Exception as e:
-        abort(flask.make_response(flask.jsonify(message=str(e)), 400))
+        abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 400))
     return flask.jsonify(200)
 
 
