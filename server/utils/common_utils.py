@@ -4,6 +4,11 @@ from flask import g
 from app import app
 
 
+def get_pretty_error_message(error_message):
+    format_error_messages = app.get_other_config(['format_error_messages'], fallback={})
+    return format_error_messages.get(error_message, error_message)
+
+
 def verify_resource_train_restricted(path, permission):
     if not is_resource_train_restricted(path):
         return True
