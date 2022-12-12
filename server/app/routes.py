@@ -11,6 +11,7 @@ import urllib.parse
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
+from datetime import datetime
 
 import flask
 import semver
@@ -999,7 +1000,7 @@ def get_data_file_info(request_data, routes_config):
     dataset = request_data.get("dataset")
     dataset_ids = list(map(ObjectId, dataset))
     for dataset_id in dataset_ids:
-        builtins.pn9model_db.update_dataset_last_usage(dataset_id)
+        builtins.pn9model_db.update_dataset(str(dataset_id), {"last_usage": datetime.now()})
 
     return get_exists_dataset_file_info(dataset_ids)
 
@@ -1026,7 +1027,7 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
-    builtins.pn9model_db.update_dataset_last_usage(dataset["_id"])
+    builtins.pn9model_db.update_dataset(str(dataset['_id']), {"last_usage": datetime.now()})
 
     return {
         'training': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_training)),
@@ -1353,6 +1354,8 @@ def create_model_catalog(training_task_id, input_name, request_data, image_tag, 
     target = request_data.get("target")
     parent_model = request_data.get("parent_model")
     tags = [{'entity': tag.get('entity'), 'tag': tag.get('tag')} for tag in tags]
+    default_expiration_time = app.get_other_config(['automatic_data_deletion', 'expiration_time'], fallback={})
+    translation_expiration_time = int(default_expiration_time.get('translation', 3))
     config = {
         "source": source,
         "target": target,
@@ -1361,7 +1364,11 @@ def create_model_catalog(training_task_id, input_name, request_data, image_tag, 
         "tags": tags,
         "tasks": tasks,
         "domain": domain,
-        "user_corpus": user_corpus
+        "user_corpus": user_corpus,
+        "automatically_delete_translation_data": {
+            "expiration_time": translation_expiration_time,
+            "is_deleted": False
+        }
     }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
