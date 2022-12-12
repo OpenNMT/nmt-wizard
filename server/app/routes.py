@@ -1581,6 +1581,8 @@ def get_input_name(model):
 def create_evaluation_catalog(evaluation_id, request_data, creator, models_info, to_translate_corpus, model_task_map):
     source_language = request_data.get("source")
     target_language = request_data.get("target")
+    default_expiration_time = app.get_other_config(['automatic_data_deletion', 'expiration_time'], fallback={})
+    evaluation_expiration_time = int(default_expiration_time.get('evaluation', 3))
     result = {
         "_id": evaluation_id,
         "name": request_data["evaluation_name"],
@@ -1589,7 +1591,11 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
         "target_language": target_language,
         "lp": f"{source_language}_{target_language}",
         "models": [],
-        "created_at": int(time.time())
+        "created_at": int(time.time()),
+        "automatically_delete_evaluation_data": {
+            "expiration_time": evaluation_expiration_time,
+            "is_deleted": False
+        }
     }
 
     for model in models_info:
