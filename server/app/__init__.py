@@ -4,6 +4,7 @@ import redis
 
 from flask import Flask
 from flask_session import Session
+from flask_apscheduler import APScheduler
 from nmtwizard import common
 from nmtwizard import configuration as config
 from utils.database_utils import DatabaseUtils
@@ -80,5 +81,10 @@ if input_dir is not None:
         input_dir = os.path.join(os.path.dirname(config.system_config_file), input_dir)
         app.other_config['push_model']['inputDir'] = input_dir
     assert os.path.isdir(input_dir), "Invalid input directory used for deploying model: %s" % input_dir
+
+scheduler = APScheduler()
+scheduler.init_app(app)
+if app.get_other_config(["automatic_data_deletion", "active"], fallback=False):
+    scheduler.start()
 
 from app import routes  # pylint: disable=wrong-import-position

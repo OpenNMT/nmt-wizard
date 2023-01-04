@@ -11,6 +11,7 @@ import urllib.parse
 from collections import Counter
 from copy import deepcopy
 from functools import wraps
+from datetime import datetime, timedelta
 
 import flask
 import semver
@@ -998,6 +999,8 @@ def get_data_file_info(request_data, routes_config):
 
     dataset = request_data.get("dataset")
     dataset_ids = list(map(ObjectId, dataset))
+    for dataset_id in dataset_ids:
+        builtins.pn9model_db.update_dataset(str(dataset_id), {"last_usage": datetime.now()})
 
     return get_exists_dataset_file_info(dataset_ids)
 
@@ -1024,6 +1027,7 @@ def get_user_upload_file_info(routes_config, request_data, training_data, testin
     create_model_dataset(routes_config, request_data, GLOBAL_POOL_NAME)
 
     dataset = get_dataset_by_name(entity_code, dataset_name)
+    builtins.pn9model_db.update_dataset(str(dataset['_id']), {"last_usage": datetime.now()})
 
     return {
         'training': list(map(lambda ele: {**ele, 'dataset_id': str(dataset["_id"])}, data_training)),
@@ -1360,6 +1364,14 @@ def create_model_catalog(training_task_id, input_name, request_data, image_tag, 
         "domain": domain,
         "user_corpus": user_corpus
     }
+    active = app.get_other_config(['automatic_data_deletion', 'active'], fallback=False)
+    if active:
+        default_expiration_time = app.get_other_config(['automatic_data_deletion', 'expiration_time'], fallback={})
+        translation_expiration_time = int(default_expiration_time.get('translation', 3))
+        config["automatically_delete_translation_data"] = {
+            "expiration_time": translation_expiration_time,
+            "is_deleted": False
+        }
 
     return builtins.pn9model_db.catalog_declare(training_task_id, config,
                                                 entity_owner=creator['entity_code'],
@@ -1588,6 +1600,14 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
         "models": [],
         "created_at": int(time.time())
     }
+    active = app.get_other_config(['automatic_data_deletion', 'active'], fallback=False)
+    if active:
+        default_expiration_time = app.get_other_config(['automatic_data_deletion', 'expiration_time'], fallback={})
+        evaluation_expiration_time = int(default_expiration_time.get('evaluation', 3))
+        result["automatically_delete_evaluation_data"] = {
+            "expiration_time": evaluation_expiration_time,
+            "is_deleted": False
+        }
 
     for model in models_info:
         model_evaluation_info = {
@@ -1616,6 +1636,20 @@ def create_evaluation_catalog(evaluation_id, request_data, creator, models_info,
 def get_evaluations():
     visible_entities = [g.user.entity.entity_code]
     evaluation_catalogs = list(mongo_client.get_evaluation_catalogs(visible_entities))
+    for evaluation in evaluation_catalogs:
+        if evaluation.get('automatically_delete_evaluation_data'):
+            expiration_date = (datetime.fromtimestamp(evaluation['created_at']) + timedelta(
+                days=evaluation['automatically_delete_evaluation_data'].get('expiration_time', 3))).date()
+            time_delta = (expiration_date - datetime.now().date()).days
+            if time_delta > 1:
+                expiration_status = f"{time_delta} days left"
+            elif time_delta == 1:
+                expiration_status = "1 day left"
+            else:
+                expiration_status = "Expired"
+            evaluation['data_expiration_date'] = expiration_date.strftime("%Y-%m-%d")
+            evaluation['data_expiration_status'] = expiration_status
+
     return cust_jsonify(evaluation_catalogs)
 
 
