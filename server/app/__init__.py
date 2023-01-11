@@ -84,7 +84,14 @@ if input_dir is not None:
 
 scheduler = APScheduler()
 scheduler.init_app(app)
+scheduler_logger = None
 if app.get_other_config(["automatic_data_deletion", "active"], fallback=False):
+    scheduler_handler = logging.FileHandler(
+        app.get_other_config(["automatic_data_deletion", "log_file"], fallback="/tmp/scheduler.log"))
+    scheduler_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    scheduler_logger = logging.getLogger('scheduler')
+    scheduler_logger.setLevel(app.get_other_config(["automatic_data_deletion", "log_level"], fallback='INFO'))
+    scheduler_logger.addHandler(scheduler_handler)
     scheduler.start()
 
 from app import routes  # pylint: disable=wrong-import-position
