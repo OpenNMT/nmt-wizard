@@ -30,7 +30,7 @@ from nmtwizard.task import TaskBase
 from nmtwizard.task import TaskEnum, TaskInfos, TasksCreationInfos, TaskPreprocess, TaskTrain, TaskTranslate, \
     TaskScoring, TASK_RELEASE_TYPE
 from utils.common_utils import is_resource_train_restricted, check_permission_access_train_restricted, \
-    get_pretty_error_message
+    get_pretty_error_message, get_expiration_status
 from utils.storage_utils import StorageUtils
 
 GLOBAL_POOL_NAME = "global_pool"
@@ -1640,15 +1640,8 @@ def get_evaluations():
         if evaluation.get('automatically_delete_evaluation_data'):
             expiration_date = (datetime.fromtimestamp(evaluation['created_at']) + timedelta(
                 days=evaluation['automatically_delete_evaluation_data'].get('expiration_time', 3))).date()
-            time_delta = (expiration_date - datetime.now().date()).days
-            if time_delta > 1:
-                expiration_status = f"{time_delta} days left"
-            elif time_delta == 1:
-                expiration_status = "1 day left"
-            else:
-                expiration_status = "Expired"
             evaluation['data_expiration_date'] = expiration_date.strftime("%Y-%m-%d")
-            evaluation['data_expiration_status'] = expiration_status
+            evaluation['data_expiration_status'] = get_expiration_status(expiration_date)
 
     return cust_jsonify(evaluation_catalogs)
 
