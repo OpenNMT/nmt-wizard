@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from flask import g
 
 from app import app
@@ -41,3 +42,14 @@ def is_resource_train_restricted(path):
     regex_pattern = r'\/train_restricted(\/.*)*$'
 
     return re.search(regex_pattern, path)
+
+
+def get_expiration_status(expiration_date):
+    time_delta = (expiration_date - datetime.now().date()).days
+    if time_delta > 1:
+        expiration_status = f"{time_delta} days left"
+    elif time_delta == 1:
+        expiration_status = "1 day left"
+    else:
+        expiration_status = "Expired"
+    return expiration_status
