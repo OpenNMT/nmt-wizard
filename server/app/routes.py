@@ -1742,6 +1742,11 @@ def launch(service):
     docker_version = content['docker']['tag']
     if docker_version.startswith('v'):
         docker_version = docker_version[1:]
+    docker_image = f"{content['docker']['image']}:{content['docker']['tag']}"
+    ok, msg = check_dependency_common_image(docker_image)
+    if not ok:
+        abort(make_response(jsonify(message=msg), 400))
+
     is_standalone = False
 
     if not exec_mode:
@@ -2166,6 +2171,16 @@ def launch(service):
         task_ids = task_ids[0]
 
     return flask.jsonify(task_ids)
+
+
+def check_dependency_common_image(docker_image):
+    image_detail = builtins.pn9model_db.docker_get_image_detail(docker_image)
+    if not image_detail:
+        return False, 'Invalid docker image'
+    if image_detail.get('state') and image_detail['state'] != 'pushed':
+        return False, 'Dependency common image of docker image not pushed successfully'
+
+    return True, ''
 
 
 def check_lp_in_migration_supported_language(xxyy, parent_model, supported_lps):
