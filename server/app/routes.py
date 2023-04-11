@@ -422,10 +422,28 @@ def describe(service):
 
 
 @app.route("/service/configs/_base", methods=["GET"])
-@filter_request("GET/service/configs", "is_super")
+@filter_request("GET/service/configs", "admin")
 def get_base_config():
+    if not has_ability(g, '', ''):  # super admin
+        abort(make_response(jsonify(message='Insufficient credential'), 403))
     base_config = nmtwizard_config.get_base_config(mongo_client)
     return flask.jsonify(base_config)
+
+
+# After updating the base configuration, the launcher server needs to be restarted
+@app.route("/service/configs/_base", methods=["POST"])
+@filter_request("GET/service/configs", "admin")
+def set_base_config():
+    if not has_ability(g, '', ''):  # super admin
+        abort(make_response(jsonify(message='Insufficient credential'), 403))
+    request_body = flask.request.form.get('config')
+    try:
+        update_config = json.loads(request_body)
+        update_config["updated_at"] = time.time()
+        nmtwizard_config.set_service_config(mongo_client, '_base', update_config)
+    except Exception as e:
+        abort(flask.make_response(flask.jsonify(message=get_pretty_error_message(str(e))), 400))
+    return jsonify(message='ok')
 
 
 @app.route("/service/configs/<string:service>", methods=["GET"])
