@@ -513,6 +513,14 @@ def launch_task(task_id,
                 raise RuntimeError("error retrieving files: %s, %s" %
                                    (cmd_get_files, six.ensure_str(stderr.read())))
 
+    if docker_command and ('-c' in docker_command or '--config' in docker_command):
+        config_index = docker_command.index('-c') if '-c' in docker_command else docker_command.index('--config')
+        current_config = json.loads(docker_command[config_index + 1])
+        # remove unnecessary "build" field in config of docker command
+        if 'build' in current_config:
+            current_config.pop("build")
+            docker_command[config_index + 1] = json.dumps(current_config)
+
     storage_config = '"{}"'
     if storages is not None and storages != {}:
         v = json.dumps(storages)
