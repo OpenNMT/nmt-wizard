@@ -164,7 +164,17 @@ class TaskBase:
 
     @staticmethod
     def get_latest_docker_image_tag(image, mongo_client):
-        docker_images = list(mongo_client.get_docker_images(image))
+        if image == "systran/pn9_tf":
+            # get docker images whose associated common image is stable
+            query = {
+                "image": {
+                    '$regex': f'^{image}:*'
+                },
+                "push": {"$elemMatch": {"stage": "stable"}}
+            }
+            docker_images = list(mongo_client.get_docker_images_by_query(query))
+        else:
+            docker_images = list(mongo_client.get_docker_images(image))
         if len(docker_images) == 0:
             return None
         only_tag_docker_images = list(

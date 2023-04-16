@@ -156,6 +156,11 @@ class MongoDatabase:
         images = the_table.find(conditions)
         return images
 
+    def get_docker_images_by_query(self, query):
+        the_table = self.get("dockers")
+        images = the_table.find(query)
+        return images
+
     def create_evaluation_catalog(self, evaluation_catalog):
         the_table = self.get("evaluations")
         the_table.insert(evaluation_catalog, check_keys=False)
