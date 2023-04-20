@@ -50,6 +50,7 @@ def get_connection_options(cfg):
 class MongoDatabase:
     def __init__(self, config):
         self._client = MongoClient(host=get_connection_uri(config), connect=False,
+                                   directConnection=config.get('directConnection', True),
                                    **get_connection_options(config))
         self._mongodb = self._client[config['db_name']]
 
@@ -163,7 +164,7 @@ class MongoDatabase:
 
     def create_evaluation_catalog(self, evaluation_catalog):
         the_table = self.get("evaluations")
-        the_table.insert(evaluation_catalog, check_keys=False)
+        the_table.insert_one(evaluation_catalog)
 
     def get_evaluation_catalogs(self, visible_entities):
         query = {}
