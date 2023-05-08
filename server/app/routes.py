@@ -1090,12 +1090,12 @@ def get_translate_score_corpus(testing_data_infos, request_data, routes_config, 
         if corpus_path[0] == '/':
             corpus_path = corpus_path[1:]
         to_translate_corpus.append([
-            f'{routes_config.global_storage_name}:{corpus_path}.{source}',
-            f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{source}.{target}'
+            f'{routes_config.global_storage_name}:{corpus_path}.json',
+            f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{target}'
         ])
         to_score_corpus.append([
-            f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{source}.{target}',
-            f'{routes_config.global_storage_name}:{corpus_path}.{target}'
+            f'pn9_testtrans:<MODEL>/{output_path + routes_config.global_storage_name}/{corpus_path}.{target}',
+            f'{routes_config.global_storage_name}:{corpus_path}.json'
         ])
 
     if default_test_data:
